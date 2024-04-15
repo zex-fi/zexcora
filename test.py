@@ -2,9 +2,11 @@ import hashlib
 import copy
 import json
 import time
+import random
+import requests
 from struct import pack
 from secp256k1 import PrivateKey, PublicKey
-from zex import *
+from zex import BUY, SELL, CANCEL, DEPOSIT, WITHDRAW
 
 tokens = {
     'pol:usdt': b'pol' + pack('I', 0),
@@ -74,13 +76,13 @@ def get_txs(n):
     return txs
 
 if __name__ == '__main__':
-    zex = Zex()
-    print('processing {} txs ...'.format(len(txs)))
-    t = time.time()
-    zex.process(txs)
-    print('total time: ', time.time() - t)
-    pair = tokens['eth:wbtc'] + tokens['pol:usdt']
-    print(len(zex.queues[pair].buy_orders))
-    print(len(zex.queues[pair].sell_orders))
-    # print(zex.balances)
-    # print(zex.trades)
+    txs = get_txs(1000)
+    txs = [tx.decode('latin-1') for tx in txs]
+    i = 0
+    while True:
+        if i >= len(txs): break
+        rand = random.randint(10, 100)
+        print(f'processing txs {i}:{i+rand} from total {len(txs)} txs')
+        requests.post('http://localhost:9513/api/txs', json=txs[i:i+rand])
+        i += rand
+        time.sleep(1)

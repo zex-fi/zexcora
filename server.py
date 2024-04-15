@@ -1,19 +1,19 @@
-import random
+import time
 import sys
 import os
 from threading import Thread
 from tss import pyfrost_blueprint
 from flask import Flask, Blueprint, request
 from zex import *
-from test import get_txs
 
 def api_blueprint():
     api = Blueprint('api', __name__)
-    api.route('/users/<user>/transactions', methods=['GET'])(user_transactions)
+    api.route('/users/<user>/txs', methods=['GET'])(user_txs)
     api.route('/users/<user>/orders', methods=['GET'])(user_orders)
+    api.route('/txs', methods=['POST'])(send_txs)
     return api
 
-def user_transactions(user):
+def user_txs(user):
     print(zex)
     return ['transaction', user]
 
@@ -21,16 +21,22 @@ def user_orders(user):
     print(zex)
     return ['order', user]
 
-def main_loop():
-    txs = get_txs(1000)
-    i = 0
-    while True:
-        if i >= len(txs): break
-        rand = random.randint(10, 100)
-        zex.process(txs[i:i+rand])
-        i += rand
-    print('main loop finished')
+txs_q = []
 
+def send_txs():
+    txs = [tx.encode('latin-1') for tx in request.json]
+    txs_q.extend(txs)
+    return { 'success': True }
+
+def main_loop():
+    while True:
+        if len(txs_q) == 0:
+            time.sleep(1)
+            continue
+        txs = txs_q[:]
+        print(f'processing {len(txs)} txs')
+        zex.process(txs_q)
+        txs_q.clear()
 
 if __name__ == '__main__':
     zex = Zex()
