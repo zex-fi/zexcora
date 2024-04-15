@@ -11,7 +11,7 @@ def __verify(txs):
     from zex import DEPOSIT, WITHDRAW, BUY, SELL, CANCEL
     res = [None] * len(txs)
     ts = 0
-    print(time.time())
+    # print(time.time())
     for i, tx in enumerate(txs):
         name = tx[1]
         if name == DEPOSIT:
@@ -31,7 +31,7 @@ def __verify(txs):
         if not verified:
             print('not verified', msg)
         res[i] = verified
-    print('chunk verification time:', ts)
+    # print('chunk verification time:', ts)
     return res
 
 def chunkify(lst, n_chunks):
@@ -52,9 +52,7 @@ def verify(txs):
                 txs[i] = None
             i += 1
     print('verification time:', time.time() - t)
-    # __verify(txs)
-    # for tx in txs:
-    #     tx['verified'] = True
+
 
 if __name__ == '__main__':
     print(list(chunkify([1, 2, 3, 4, 5, 6], 2)))

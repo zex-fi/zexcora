@@ -24,6 +24,8 @@ u2 =      PrivateKey(bytes(bytearray.fromhex(u2_private     )), raw=True)
 monitor = PrivateKey(bytes(bytearray.fromhex(monitor_private)), raw=True)
 
 pub = lambda u: u.pubkey.serialize()
+print(pub(u1).hex())
+print(pub(u2).hex())
 privs = { pub(u1): u1, pub(u2): u2 }
 
 deposit_usdt = tokens['pol:usdt'][3:] + pack('d', 1500000000)

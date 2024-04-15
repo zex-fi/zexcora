@@ -103,7 +103,7 @@ class TradingQueue:
         public = tx[40:73]
         assert self.zex.nonces[public] == nonce, 'invalid nonce'
         self.zex.nonces[public] += 1
-        index = unpack('d', tx[-8:])[0]
+        index = unpack('Q', tx[-8:])[0]
         if name == BUY:
             required = amount * price
             balance = self.zex.balances[quote_token].get(public, 0)
