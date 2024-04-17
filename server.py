@@ -1,11 +1,17 @@
 import time
 import sys
 import os
+import json
 from struct import unpack, pack
+import requests
 from threading import Thread
 from tss import pyfrost_blueprint
 from flask import Flask, Blueprint, request
 from zex import Zex, BUY, SELL, CANCEL, DEPOSIT, WITHDRAW
+
+ZSEQ_HOST = os.environ.get("ZSEQ_HOST")
+ZSEQ_PORT = int(os.environ.get("ZSEQ_PORT"))
+ZSEQ_URL = f'http://{ZSEQ_HOST}:{ZSEQ_PORT}/node/transactions'
 
 def api_blueprint():
     api = Blueprint('api', __name__)
@@ -48,7 +54,6 @@ def user_trades(user):
         'quote_chain': pair[7:10].decode('ascii'),
         'quote_token': unpack('>I', pair[10:14])[0],
     } for t, amount, pair, name in trades]
-    print(list(trades)[:1])
     return list(trades)
 
 def user_orders(user):
@@ -67,22 +72,31 @@ def user_orders(user):
     } for o in orders]
     return orders
 
-txs_q = []
-
 def send_txs():
-    txs = [tx.encode('latin-1') for tx in request.json]
-    txs_q.extend(txs)
+    headers = {"Content-Type": "application/json"}
+    data = {
+        'transactions': [{'tx': tx} for tx in request.json],
+        'timestamp': int(time.time())
+    }
+    requests.put(ZSEQ_URL, json.dumps(data), headers=headers)
     return { 'success': True }
 
 def process_loop():
+    last = 0
     while True:
-        if len(txs_q) == 0:
-            time.sleep(1)
-            continue
-        txs = txs_q[:]
-        print(f'processing {len(txs)} txs')
-        zex.process(txs_q)
-        txs_q.clear()
+        params={"after": last, "states": ["finalized"]}
+        response = requests.get(ZSEQ_URL, params=params)
+        finalized_txs = response.json().get("data")
+        if finalized_txs:
+            last = max(tx["index"] for tx in finalized_txs)
+            sorted_numbers = sorted([t["index"] for t in finalized_txs])
+            print(
+                f"\nreceive finalized indexes: [{sorted_numbers[0]}, ..., {sorted_numbers[-1]}]",
+            )
+            txs = [tx['tx'].encode('latin-1') for tx in finalized_txs]
+            zex.process(txs)
+        time.sleep(0.01)
+
 
 if __name__ == '__main__':
     zex = Zex()
@@ -92,4 +106,4 @@ if __name__ == '__main__':
     app.register_blueprint(api_blueprint(), url_prefix="/api")
     host = os.environ.get("ZEX_HOST")
     port = int(os.environ.get("ZEX_PORT"))
-    app.run(host=host, port=port, debug=True)
+    app.run(host=host, port=port, debug=False)

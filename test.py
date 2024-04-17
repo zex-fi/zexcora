@@ -6,6 +6,7 @@ import random
 import requests
 from struct import pack, unpack
 from secp256k1 import PrivateKey, PublicKey
+from eth_hash.auto import keccak
 from zex import BUY, SELL, CANCEL, DEPOSIT, WITHDRAW
 
 tokens = {
@@ -76,7 +77,7 @@ def order(tx):
     msg = '\x19Ethereum Signed Message:\n' + str(len(msg)) + msg
     nonces[public] += 1
     u = privs[public]
-    sig = u.ecdsa_sign(msg.encode('ascii'))
+    sig = u.ecdsa_sign(keccak(msg.encode('ascii')), raw=True)
     sig = u.ecdsa_serialize_compact(sig)
     tx += sig
     tx += pack('>Q', counter)
