@@ -18,22 +18,22 @@ def api_blueprint():
 
 def pair_orders(pair, name):
     pair = pair.split('_')
-    pair = pair[0].encode() + pack('I', int(pair[1])) +\
-           pair[2].encode() + pack('I', int(pair[3]))
+    pair = pair[0].encode() + pack('>I', int(pair[1])) +\
+           pair[2].encode() + pack('>I', int(pair[3]))
     q = zex.queues.get(pair)
     if not q:
         return []
     q = q.buy_orders if name == 'buy' else q.sell_orders
     return [{
-        'amount': unpack('d', o[16:24])[0],
-        'price': unpack('d', o[24:32])[0],
+        'amount': unpack('>d', o[16:24])[0],
+        'price': unpack('>d', o[24:32])[0],
     } for price, index, o in q]
 
 def user_balances(user):
     user = bytes.fromhex(user)
     return [{
         'chain': token[0:3].decode('ascii'),
-        'token': unpack('I', token[3:7])[0],
+        'token': unpack('>I', token[3:7])[0],
         'balance': zex.balances[token][user]
     } for token in zex.balances if zex.balances[token].get(user, 0) > 0]
 
@@ -44,9 +44,9 @@ def user_trades(user):
         't': t,
         'amount': amount,
         'base_chain': pair[0:3].decode('ascii'),
-        'base_token': unpack('I', pair[3:7])[0],
+        'base_token': unpack('>I', pair[3:7])[0],
         'quote_chain': pair[7:10].decode('ascii'),
-        'quote_token': unpack('I', pair[10:14])[0],
+        'quote_token': unpack('>I', pair[10:14])[0],
     } for t, amount, pair, name in trades]
     print(list(trades)[:1])
     return list(trades)
@@ -56,14 +56,14 @@ def user_orders(user):
     orders = [{
         'name': 'buy' if o[1] == BUY else 'sell',
         'base_chain': o[2:5].decode('ascii'),
-        'base_token': unpack('I', o[5:9])[0],
+        'base_token': unpack('>I', o[5:9])[0],
         'quote_chain': o[9:12].decode('ascii'),
-        'quote_token': unpack('I', o[12:16])[0],
-        'amount': unpack('d', o[16:24])[0],
-        'price': unpack('d', o[24:32])[0],
-        't': unpack('I', o[32:36])[0],
-        'nonce': unpack('I', o[36:40])[0],
-        'index': unpack('Q', o[-8:])[0],
+        'quote_token': unpack('>I', o[12:16])[0],
+        'amount': unpack('>d', o[16:24])[0],
+        'price': unpack('>d', o[24:32])[0],
+        't': unpack('>I', o[32:36])[0],
+        'nonce': unpack('>I', o[36:40])[0],
+        'index': unpack('>Q', o[-8:])[0],
     } for o in orders]
     return orders
 

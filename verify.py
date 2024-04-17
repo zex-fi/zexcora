@@ -1,11 +1,29 @@
 import time
 import copy
 import json
+from struct import unpack
 import multiprocessing
 from secp256k1 import PublicKey
+from eth_hash.auto import keccak
+
+DEPOSIT, WITHDRAW, BUY, SELL, CANCEL = b'dwbsc'
 
 monitor_pub = '033452c6fa7b1ac52c14bb4ed4b592ffafdae5f2dba7f360435fd9c71428029c71'
 monitor_pub = PublicKey(bytes.fromhex(monitor_pub), raw=True)
+
+def order_msg(tx):
+    msg = f'v: {tx[0]}\n'
+    msg += f'name: {"buy" if tx[1] == BUY else "sell"}\n'
+    msg += f'base token: {tx[2:5].decode("ascii")}:{unpack(">I", tx[5:9])[0]}\n'
+    msg += f'quote token: {tx[9:12].decode("ascii")}:{unpack(">I", tx[12:16])[0]}\n'
+    msg += f'amount: {unpack(">d", tx[16:24])[0]}\n'
+    msg += f'price: {unpack(">d", tx[24:32])[0]}\n'
+    msg += f't: {unpack(">I", tx[32:36])[0]}\n'
+    msg += f'nonce: {unpack(">I", tx[36:40])[0]}\n'
+    msg += f'public: {tx[40:73].hex()}\n'
+    msg = '\x19Ethereum Signed Message:\n' + str(len(msg)) + msg
+    return msg.encode()
+
 
 def __verify(txs):
     from zex import DEPOSIT, WITHDRAW, BUY, SELL, CANCEL
@@ -22,11 +40,14 @@ def __verify(txs):
             t = time.time()
             if name == CANCEL:
                 msg, pubkey, sig = tx[:74], tx[41:74], tx[74:74+64]
+            elif name in (BUY, SELL):
+                msg, pubkey, sig = order_msg(tx), tx[40:73], tx[73:73+64]
             else:
-                msg, pubkey, sig = tx[:73], tx[40:73], tx[73:73+64]
+                res[i] = False
+                continue
             pubkey = PublicKey(pubkey, raw=True)
             sig = pubkey.ecdsa_deserialize_compact(sig)
-            verified = pubkey.ecdsa_verify(msg, sig)
+            verified = pubkey.ecdsa_verify(keccak(msg), sig, raw=True)
             ts += time.time() - t
         if not verified:
             print('not verified', msg)

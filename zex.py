@@ -14,7 +14,7 @@ class Zex:
         self.amounts = {}
         self.trades = {}
         self.orders = {}
-        self.deposited_blocks = { b'pol': 0, b'eth': 0 }
+        self.deposited_blocks = { b'pol': 0, b'eth': 0, b'bst': 39493054 }
         self.nonces = {}
 
     def process(self, txs):
@@ -30,7 +30,7 @@ class Zex:
                     self.withdraw(tx)
                 elif name in (BUY, SELL):
                     pair = tx[2:16]
-                    t = unpack('I', tx[32:36])[0]
+                    t = unpack('>I', tx[32:36])[0]
                     if pair not in self.queues:
                         self.queues[pair] = TradingQueue(pair[:7], pair[7:], self)
                     self.queues[pair].place(tx)
@@ -44,13 +44,13 @@ class Zex:
 
     def deposit(self, tx):
         chain = tx[2:5]
-        from_block, to_block, count = unpack('QQH', tx[5:23])
-        assert self.deposited_blocks[chain] == from_block, 'invalid from block'
+        from_block, to_block, count = unpack('>QQH', tx[5:23])
+        assert self.deposited_blocks[chain] == from_block - 1, 'invalid from block'
         self.deposited_blocks[chain] = to_block
         deposits = list(chunkify(tx[23:23+49*count], 49))
         for chunk in deposits:
             token = chain + chunk[:4]
-            amount, t = unpack('dI', chunk[4:16])
+            amount, t = unpack('>dI', chunk[4:16])
             public = chunk[16:49]
             if token not in self.balances:
                 self.balances[token] = {}
@@ -65,8 +65,8 @@ class Zex:
     def cancel(self, tx):
         name = tx[2]
         base_token, quote_token = tx[3:10], tx[10:17]
-        amount, price = unpack('dd', tx[17:33])
-        t, nonce = unpack('II', tx[33:41])
+        amount, price = unpack('>dd', tx[17:33])
+        t, nonce = unpack('>II', tx[33:41])
         public = tx[41:74]
         order_slice = tx[2:41]
         for order in self.orders[public]:
@@ -98,12 +98,11 @@ class TradingQueue:
     def place(self, tx):
         name = tx[1]
         base_token, quote_token = tx[2:9], tx[9:16]
-        amount, price = unpack('dd', tx[16:32])
-        t, nonce = unpack('II', tx[32:40])
+        amount, price = unpack('>dd', tx[16:32])
+        t, nonce = unpack('>II', tx[32:40])
         public = tx[40:73]
         assert self.zex.nonces[public] == nonce, 'invalid nonce'
-        self.zex.nonces[public] += 1
-        index = unpack('Q', tx[-8:])[0]
+        index = unpack('>Q', tx[-8:])[0]
         if name == BUY:
             required = amount * price
             balance = self.zex.balances[quote_token].get(public, 0)
@@ -118,6 +117,7 @@ class TradingQueue:
             self.zex.balances[base_token][public] = balance - required
         self.zex.amounts[tx] = amount
         self.zex.orders[public][tx] = True
+        self.zex.nonces[public] += 1
 
     def match(self, t):
         # Match orders while there are matching orders available
