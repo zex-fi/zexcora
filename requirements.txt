@@ -1,0 +1,7 @@
+secp256k1
+requests
+fastapi
+pydantic
+websockets
+pandas
+pendulum
