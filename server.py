@@ -145,36 +145,6 @@ class JSONMessageManager:
                 return StreamResponse(id=request.id, result=None)
 
 
-client_websockets = set()
-
-
-class Kline(BaseModel):
-    t: int  # Kline start time
-    T: int  # Kline close time
-    s: str  # Symbol
-    i: str  # Interval
-    f: int  # First trade ID
-    L: int  # Last trade ID
-    o: str  # Open price
-    c: str  # Close price
-    h: str  # High price
-    l: str  # Low price
-    v: str  # Base asset volume
-    n: int  # Number of trades
-    x: bool  # Is this kline closed?
-    q: str  # Quote asset volume
-    V: str  # Taker buy base asset volume
-    Q: str  # Taker buy quote asset volume
-    b: str  # Ignore
-
-
-class KlineStreamPayload(BaseModel):
-    e: str  # Event type
-    E: int  # Event time
-    s: str  # Symbol
-    k: Kline
-
-
 async def broadcast(ws: WebSocket, channel: str, message: dict):
     try:
         await ws.send_json(message)
@@ -185,47 +155,47 @@ async def broadcast(ws: WebSocket, channel: str, message: dict):
             del manager.subscriptions[channel]
 
 
-async def broadcaster():
-    while True:
-        for channel, clients in manager.subscriptions.items():
-            symbol, details = channel.split("@")
-            if "depth" in details:
-                message = zex.get_order_book(symbol)
+# async def broadcaster():
+#     while True:
+#         for channel, clients in manager.subscriptions.items():
+#             symbol, details = channel.split("@")
+#             if "depth" in details:
+#                 message = zex.get_order_book(symbol)
 
-            elif "kline" in details:
-                now = int(time.time() * 1000)
-                base_klines = zex.get_kline(symbol)
-                last_candle = base_klines.iloc[-1]
-                message = {
-                    "e": "kline",  # Event type
-                    "E": int(time.time() * 1000),  # Event time
-                    "s": symbol.capitalize(),  # Symbol
-                    "k": {
-                        "t": last_candle.index,  # Kline start time
-                        "T": last_candle["CloseTime"],  # Kline close time
-                        "s": symbol.capitalize(),  # Symbol
-                        "i": "1m",  # Interval
-                        "f": 100,  # First trade ID
-                        "L": 200,  # Last trade ID
-                        "o": f"{last_candle['Open']:.2f}",  # Open price
-                        "c": f"{last_candle['Close']:.2f}",  # Close price
-                        "h": f"{last_candle['High']:.2f}",  # High price
-                        "l": f"{last_candle['Low']:.2f}",  # Low price
-                        "v": f"{last_candle['Volume']:.2f}",  # Base asset volume
-                        "n": last_candle["NumberOfTrades"],  # Number of trades
-                        "x": now >= last_candle["CloseTime"],  # Is this kline closed?
-                        "q": "1.0000",  # Quote asset volume
-                        "V": "500",  # Taker buy base asset volume
-                        "Q": "0.500",  # Taker buy quote asset volume
-                        "B": "123456",  # Ignore
-                    },
-                }
+#             elif "kline" in details:
+#                 now = int(time.time() * 1000)
+#                 base_klines = zex.get_kline(symbol)
+#                 last_candle = base_klines.iloc[-1]
+#                 message = {
+#                     "e": "kline",  # Event type
+#                     "E": int(time.time() * 1000),  # Event time
+#                     "s": symbol.capitalize(),  # Symbol
+#                     "k": {
+#                         "t": last_candle.index,  # Kline start time
+#                         "T": last_candle["CloseTime"],  # Kline close time
+#                         "s": symbol.capitalize(),  # Symbol
+#                         "i": "1m",  # Interval
+#                         "f": 100,  # First trade ID
+#                         "L": 200,  # Last trade ID
+#                         "o": f"{last_candle['Open']:.2f}",  # Open price
+#                         "c": f"{last_candle['Close']:.2f}",  # Close price
+#                         "h": f"{last_candle['High']:.2f}",  # High price
+#                         "l": f"{last_candle['Low']:.2f}",  # Low price
+#                         "v": f"{last_candle['Volume']:.2f}",  # Base asset volume
+#                         "n": last_candle["NumberOfTrades"],  # Number of trades
+#                         "x": now >= last_candle["CloseTime"],  # Is this kline closed?
+#                         "q": "1.0000",  # Quote asset volume
+#                         "V": "500",  # Taker buy base asset volume
+#                         "Q": "0.500",  # Taker buy quote asset volume
+#                         "B": "123456",  # Ignore
+#                     },
+#                 }
 
-            # Copy to avoid modification during iteration
-            for ws in clients.copy():
-                asyncio.create_task(broadcast(ws, channel, message))
+#             # Copy to avoid modification during iteration
+#             for ws in clients.copy():
+#                 asyncio.create_task(broadcast(ws, channel, message))
 
-        await asyncio.sleep(0.1)  # Broadcast every 200 milli seconds
+#         await asyncio.sleep(0.1)  # Broadcast every 200 milli seconds
 
 
 def process_loop():
@@ -321,7 +291,8 @@ async def klines(
     }
     base_klines = zex.get_kline(symbol)
 
-    return base_klines.resample(interval).agg(columns_dict).to_dict()
+    # return base_klines.resample(interval).agg(columns_dict).to_dict()
+    return base_klines.to_dict()
 
 
 @app.get("/orders/{pair}/{name}")
@@ -346,7 +317,7 @@ def pair_orders(pair, name):
     ]
 
 
-@app.get("/users/{user}/balances")
+@app.get("/user/{user}/balances")
 def user_balances(user):
     user = bytes.fromhex(user)
     return [
@@ -360,7 +331,7 @@ def user_balances(user):
     ]
 
 
-@app.get("/users/{user}/trades")
+@app.get("/user/{user}/trades")
 def user_trades(user):
     trades = zex.trades.get(bytes.fromhex(user), [])
     return [
@@ -377,7 +348,7 @@ def user_trades(user):
     ]
 
 
-@app.get("/users/{user}/orders")
+@app.get("/user/{user}/orders")
 def user_orders(user):
     orders = zex.orders.get(bytes.fromhex(user), {})
     orders = [
