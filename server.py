@@ -258,6 +258,11 @@ async def klines(
     limit: int = 500,
 ):
     base_klines = zex.get_kline(symbol.lower())
+    if not startTime:
+        startTime = base_klines.index[0]
+
+    if not endTime:
+        endTime = base_klines.iloc[-1]["CloseTime"]
 
     return [
         [
