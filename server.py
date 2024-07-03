@@ -257,7 +257,7 @@ async def klines(
     endTime: Optional[int] = None,
     limit: int = 500,
 ):
-    base_klines = zex.get_kline(symbol)
+    base_klines = zex.get_kline(symbol.lower())
 
     return [
         [
@@ -275,7 +275,8 @@ async def klines(
             -1,
         ]
         for idx, x in base_klines.iterrows()
-    ]
+        if startTime <= idx and endTime >= x["CloseTime"]
+    ][-limit:]
 
     # return base_klines.resample(interval).agg(columns_dict).to_dict()
     return base_klines.to_dict()
