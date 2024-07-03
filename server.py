@@ -30,7 +30,7 @@ def kline_event(kline: pd.DataFrame):
         return
     subs = manager.subscriptions.copy()
     for channel, clients in subs.items():
-        symbol, details = channel.split("@")
+        symbol, details = channel.lower().split("@")
         if "kline" not in details:
             continue
         now = int(time.time() * 1000)
@@ -65,19 +65,21 @@ def kline_event(kline: pd.DataFrame):
 
         # Copy to avoid modification during iteration
         for ws in clients:
-            asyncio.run(broadcast(ws, channel, message))
+            asyncio.run(broadcast(ws, channel.lower(), message))
 
 
 def depth_event(depth: dict):
     subs = manager.subscriptions.copy()
     for channel, clients in subs.items():
-        symbol, details = channel.split("@")
+        symbol, details = channel.lower().split("@")
         if "depth" not in details:
             continue
         # Copy to avoid modification during iteration
         for ws in clients:
             asyncio.run(
-                broadcast(ws, channel, {"stream": channel.lower(), "data": depth})
+                broadcast(
+                    ws, channel.lower(), {"stream": channel.lower(), "data": depth}
+                )
             )
 
 
@@ -139,14 +141,14 @@ class JSONMessageManager:
     @classmethod
     def handle(self, message, websocket: WebSocket, context: dict):
         request = StreamRequest.model_validate_json(message)
-        match request.method:
+        match request.method.upper():
             case "SUBSCRIBE":
                 for channel in request.params:
-                    manager.subscribe(websocket, channel)
+                    manager.subscribe(websocket, channel.lower())
                 return StreamResponse(id=request.id, result=None)
             case "UNSUBSCRIBE":
                 for channel in request.params:
-                    manager.unsubscribe(websocket, channel)
+                    manager.unsubscribe(websocket, channel.lower())
                 return StreamResponse(id=request.id, result=None)
 
 
@@ -184,7 +186,7 @@ def process_loop():
                 zex.process(txs)
             except Exception as e:
                 print(e)
-        time.sleep(0.01)
+        time.sleep(0.05)
 
 
 # Run the broadcaster in the background
@@ -255,14 +257,25 @@ async def klines(
     endTime: Optional[int] = None,
     limit: int = 500,
 ):
-    columns_dict = {
-        "open": "first",
-        "high": "max",
-        "low": "min",
-        "close": "last",
-        "volume": "sum",
-    }
     base_klines = zex.get_kline(symbol)
+
+    return [
+        [
+            idx,
+            x["Open"],
+            x["High"],
+            x["Low"],
+            x["Close"],
+            x["Volume"],
+            x["CloseTime"],
+            0,
+            x["NumberOfTrades"],
+            0,
+            0,
+            -1,
+        ]
+        for idx, x in base_klines.iterrows()
+    ]
 
     # return base_klines.resample(interval).agg(columns_dict).to_dict()
     return base_klines.to_dict()

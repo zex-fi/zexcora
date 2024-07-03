@@ -47,9 +47,9 @@ class MarketTransaction(BaseModel):
         return MarketTransaction(
             version=tx[0],
             operation=chr(tx[1]),
-            base_chain=tx[2:5],
+            base_chain=tx[2:5].lower(),
             base_token_id=unpack(">I", tx[5:9])[0],
-            quote_chain=tx[9:12],
+            quote_chain=tx[9:12].lower(),
             quote_token_id=unpack(">I", tx[12:16])[0],
             amount=unpack(">d", tx[16:24])[0],
             price=unpack(">d", tx[24:32])[0],
@@ -439,6 +439,7 @@ class TradingQueue:
 
         current_candle_index = get_current_1m_open_time()
         if current_candle_index in self.kline.index:
+            print("####################### update candle ###########################")
             self.kline.loc[current_candle_index, "High"] = max(
                 sell_price, self.kline.loc[current_candle_index, "High"]
             )
@@ -451,6 +452,7 @@ class TradingQueue:
             )
             self.kline.loc[current_candle_index, "NumberOfTrades"] += 1
         else:
+            print("####################### new candle ###########################")
             self.kline.loc[current_candle_index] = [
                 current_candle_index + 59999,  # CloseTime
                 sell_price,  # Open
