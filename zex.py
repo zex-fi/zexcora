@@ -267,7 +267,7 @@ class Zex(metaclass=SingletonMeta):
             "e": "depthUpdate",  # Event type
             "E": now,  # Event time
             "T": now,  # Transaction time
-            "s": pair.capitalize(),
+            "s": pair.upper(),
             "U": order_book["U"],
             "u": order_book["u"],
             "pu": order_book["pu"],
@@ -344,7 +344,9 @@ class TradingQueue:
         return data
 
     def place(self, tx: MarketTransaction):
-        assert self.zex.nonces[tx.public] == tx.nonce, "invalid nonce"
+        assert (
+            self.zex.nonces[tx.public] == tx.nonce
+        ), f"invalid nonce: {self.zex.nonces[tx.public]} != {tx.nonce}"
         if ord(tx.operation) == Operation.BUY.value:
             required = tx.amount * tx.price
             balance = self.zex.balances[tx.quote_token].get(tx.public, 0)
@@ -416,6 +418,7 @@ class TradingQueue:
             heapq.heappop(self.buy_orders)
             self._order_book_update["bids"][buy_price] = 0
             self.final_id += 1
+            del self.order_book["bids"][buy_price]
             del self.zex.amounts[buy_order.raw_tx]
             del self.zex.orders[buy_public][buy_order.raw_tx]
 
@@ -430,6 +433,7 @@ class TradingQueue:
             heapq.heappop(self.sell_orders)
             self._order_book_update["asks"][buy_price] = 0
             self.final_id += 1
+            del self.order_book["asks"][sell_price]
             del self.zex.amounts[sell_order.raw_tx]
             del self.zex.orders[sell_public][sell_order.raw_tx]
 

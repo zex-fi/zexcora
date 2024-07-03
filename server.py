@@ -25,7 +25,6 @@ ZSEQ_URL = f"http://{ZSEQ_HOST}:{ZSEQ_PORT}/node/transactions"
 
 
 def kline_event(kline: pd.DataFrame):
-    print(kline)
     if len(kline) == 0:
         return
     subs = manager.subscriptions.copy()
@@ -36,27 +35,30 @@ def kline_event(kline: pd.DataFrame):
         now = int(time.time() * 1000)
         last_candle = kline.iloc[len(kline) - 1]
         message = {
-            "e": "kline",  # Event type
-            "E": int(time.time() * 1000),  # Event time
-            "s": symbol.capitalize(),  # Symbol
-            "k": {
-                "t": int(last_candle.name),  # Kline start time
-                "T": last_candle["CloseTime"],  # Kline close time
-                "s": symbol.capitalize(),  # Symbol
-                "i": "1m",  # Interval
-                "f": 100,  # First trade ID
-                "L": 200,  # Last trade ID
-                "o": f"{last_candle['Open']:.2f}",  # Open price
-                "c": f"{last_candle['Close']:.2f}",  # Close price
-                "h": f"{last_candle['High']:.2f}",  # High price
-                "l": f"{last_candle['Low']:.2f}",  # Low price
-                "v": f"{last_candle['Volume']:.2f}",  # Base asset volume
-                "n": last_candle["NumberOfTrades"],  # Number of trades
-                "x": bool(now >= last_candle["CloseTime"]),  # Is this kline closed?
-                "q": "1.0000",  # Quote asset volume
-                "V": "500",  # Taker buy base asset volume
-                "Q": "0.500",  # Taker buy quote asset volume
-                "B": "123456",  # Ignore
+            "stream": channel.lower(),
+            "data": {
+                "e": "kline",  # Event type
+                "E": int(time.time() * 1000),  # Event time
+                "s": symbol.upper(),  # Symbol
+                "k": {
+                    "t": int(last_candle.name),  # Kline start time
+                    "T": last_candle["CloseTime"],  # Kline close time
+                    "s": symbol.upper(),  # Symbol
+                    "i": "1m",  # Interval
+                    "f": 100,  # First trade ID
+                    "L": 200,  # Last trade ID
+                    "o": f"{last_candle['Open']:.2f}",  # Open price
+                    "c": f"{last_candle['Close']:.2f}",  # Close price
+                    "h": f"{last_candle['High']:.2f}",  # High price
+                    "l": f"{last_candle['Low']:.2f}",  # Low price
+                    "v": f"{last_candle['Volume']:.2f}",  # Base asset volume
+                    "n": last_candle["NumberOfTrades"],  # Number of trades
+                    "x": bool(now >= last_candle["CloseTime"]),  # Is this kline closed?
+                    "q": "1.0000",  # Quote asset volume
+                    "V": "500",  # Taker buy base asset volume
+                    "Q": "0.500",  # Taker buy quote asset volume
+                    "B": "123456",  # Ignore
+                },
             },
         }
 
@@ -73,7 +75,9 @@ def depth_event(depth: dict):
             continue
         # Copy to avoid modification during iteration
         for ws in clients:
-            asyncio.run(broadcast(ws, channel, depth))
+            asyncio.run(
+                broadcast(ws, channel, {"stream": channel.lower(), "data": depth})
+            )
 
 
 zex = Zex(kline_callback=kline_event, depth_callback=depth_event)
@@ -155,49 +159,6 @@ async def broadcast(ws: WebSocket, channel: str, message: dict):
             del manager.subscriptions[channel]
 
 
-# async def broadcaster():
-#     while True:
-#         for channel, clients in manager.subscriptions.items():
-#             symbol, details = channel.split("@")
-#             if "depth" in details:
-#                 message = zex.get_order_book(symbol)
-
-#             elif "kline" in details:
-#                 now = int(time.time() * 1000)
-#                 base_klines = zex.get_kline(symbol)
-#                 last_candle = base_klines.iloc[-1]
-#                 message = {
-#                     "e": "kline",  # Event type
-#                     "E": int(time.time() * 1000),  # Event time
-#                     "s": symbol.capitalize(),  # Symbol
-#                     "k": {
-#                         "t": last_candle.index,  # Kline start time
-#                         "T": last_candle["CloseTime"],  # Kline close time
-#                         "s": symbol.capitalize(),  # Symbol
-#                         "i": "1m",  # Interval
-#                         "f": 100,  # First trade ID
-#                         "L": 200,  # Last trade ID
-#                         "o": f"{last_candle['Open']:.2f}",  # Open price
-#                         "c": f"{last_candle['Close']:.2f}",  # Close price
-#                         "h": f"{last_candle['High']:.2f}",  # High price
-#                         "l": f"{last_candle['Low']:.2f}",  # Low price
-#                         "v": f"{last_candle['Volume']:.2f}",  # Base asset volume
-#                         "n": last_candle["NumberOfTrades"],  # Number of trades
-#                         "x": now >= last_candle["CloseTime"],  # Is this kline closed?
-#                         "q": "1.0000",  # Quote asset volume
-#                         "V": "500",  # Taker buy base asset volume
-#                         "Q": "0.500",  # Taker buy quote asset volume
-#                         "B": "123456",  # Ignore
-#                     },
-#                 }
-
-#             # Copy to avoid modification during iteration
-#             for ws in clients.copy():
-#                 asyncio.create_task(broadcast(ws, channel, message))
-
-#         await asyncio.sleep(0.1)  # Broadcast every 200 milli seconds
-
-
 def process_loop():
     last = 0
     index = 0
@@ -248,7 +209,7 @@ async def server_time():
 
 @app.get("/fapi/v1/depth")
 async def depth(symbol: str, limit: int = 500):
-    raise NotImplementedError()
+    return zex.get_order_book(symbol, limit)
 
 
 @app.get("/fapi/v1/trades")
@@ -261,6 +222,11 @@ async def historical_trades(
     symbol: str, limit: int = 500, fromId: Optional[int] = None
 ):
     raise NotImplementedError()
+
+
+@app.get("/fapi/v1/pairs")
+async def pairs():
+    return list(zex.queues.keys())
 
 
 @app.get("/fapi/v1/aggTrades")
