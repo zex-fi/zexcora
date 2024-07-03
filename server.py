@@ -13,6 +13,7 @@ import requests
 import pandas as pd
 from pydantic import BaseModel
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 
 import asyncio
 
@@ -195,6 +196,12 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan, root_path="/api")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/fapi/v1/ping")
