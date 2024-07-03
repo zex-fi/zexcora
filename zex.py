@@ -339,7 +339,7 @@ class TradingQueue:
         data["U"] = self.first_id
         data["u"] = self.final_id
         data["pu"] = self.last_update_id
-        self.first_id = self.final_id
+        self.first_id = self.final_id + 1
         self.last_update_id = self.final_id
         return data
 
