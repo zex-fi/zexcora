@@ -186,7 +186,7 @@ def process_loop():
                 zex.process(txs)
             except Exception as e:
                 print(e)
-        time.sleep(0.05)
+        time.sleep(1)
 
 
 # Run the broadcaster in the background

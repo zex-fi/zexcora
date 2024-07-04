@@ -283,8 +283,18 @@ class Zex(metaclass=SingletonMeta):
             "lastUpdateId": last_update_id,
             "E": now,  # Message output time
             "T": now,  # Transaction time
-            "bids": [[p, q] for p, q in order_book["bids"].items()],
-            "asks": [[p, q] for p, q in order_book["asks"].items()],
+            "bids": [
+                [p, q]
+                for p, q in sorted(
+                    order_book["bids"].items(), key=lambda x: x[0], reverse=True
+                )[-limit:]
+            ],
+            "asks": [
+                [p, q]
+                for p, q in sorted(order_book["asks"].items(), key=lambda x: x[0])[
+                    -limit:
+                ]
+            ],
         }
 
     def get_order_book_all(self):

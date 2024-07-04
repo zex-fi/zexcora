@@ -5,6 +5,7 @@ from struct import unpack
 import multiprocessing
 from secp256k1 import PublicKey
 from eth_hash.auto import keccak
+import os
 
 DEPOSIT, WITHDRAW, BUY, SELL, CANCEL = b"dwbsc"
 
@@ -65,7 +66,7 @@ def verify(txs):
     t = time.time()
     n_chunks = multiprocessing.cpu_count()
     chunks = list(chunkify(txs, len(txs) // n_chunks + 1))
-    with multiprocessing.Pool(processes=n_chunks) as pool:
+    with multiprocessing.Pool(processes=min(n_chunks, os.cpu_count())) as pool:
         results = pool.map(__verify, chunks)
 
     i = 0
