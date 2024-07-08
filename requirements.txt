@@ -7,3 +7,4 @@ pandas
 pendulum
 eth_hash
 eth-hash[pycryptodome]
+-e git+https://github.com/zellular-xyz/eigensdk-python@main#egg=eigensdk

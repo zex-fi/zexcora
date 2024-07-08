@@ -60,11 +60,11 @@ deposit_nonces = {b"pol": 0, b"eth": 0}
 counter = 0
 
 
-def deposit(tx, pubkey):
+def deposit(tx, pubkey, from_block, to_block):
     global counter
     t = pack(">I", int(time.time()))
     chain = b"pol" if tx == deposit_usdt else b"eth"
-    block_range = pack(">QQ", 1, 5)
+    block_range = pack(">QQ", from_block, to_block)
     count = 10
     chunk = (tx + t + pubkey) * count
     tx = version + pack(">B", DEPOSIT) + chain + block_range + pack(">H", count)
@@ -93,9 +93,10 @@ def order(tx):
     return tx
 
 
-def withdraw(token, amount, u):
+def withdraw(token, amount, dest, u):
     global counter
-    tx = version + pack(">B", WITHDRAW) + token + pack(">d", amount)
+    dest = bytes.fromhex(dest.replace('0x', ''))
+    tx = version + pack(">B", WITHDRAW) + token + pack(">d", amount) + dest
     public = pub(u)
     t = int(time.time())
     tx += pack(">II", t, withdraw_nonces[public]) + public
@@ -111,15 +112,15 @@ def withdraw(token, amount, u):
 
 def get_txs(n):
     txs = [
-        # deposit(deposit_usdt, pub(u1)),
-        # deposit(deposit_wbtc, pub(u1)),
-        # deposit(deposit_usdt, pub(u2)),
-        # deposit(deposit_wbtc, pub(u2)),
+        deposit(deposit_usdt, pub(u1), 1, 5),
+        deposit(deposit_wbtc, pub(u1), 1, 5),
+        deposit(deposit_usdt, pub(u2), 6, 10),
+        deposit(deposit_wbtc, pub(u2), 6, 10),
     ]
     # for i in range(n):
     #     txs.append(order(buy))
     #     txs.append(order(sell))
-    txs.append(withdraw(tokens["pol:usdt"], 1, u1))
+    txs.append(withdraw(tokens["pol:usdt"], 1, '0xE8FB09228d1373f931007ca7894a08344B80901c', u1))
     return txs
 
 

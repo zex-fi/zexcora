@@ -139,18 +139,19 @@ class WithdrawTransaction(BaseModel):
 
     @classmethod
     def from_tx(cls, tx: bytes) -> "WithdrawTransaction":
-        assert len(tx) == 130, f"invalid transaction len(tx): {len(tx)}"
+        assert len(tx) == 150, f"invalid transaction len(tx): {len(tx)}"
         return WithdrawTransaction(
             version=tx[0],
             operation=chr(tx[1]),
             chain=tx[2:5].lower(),
             token_id=unpack(">I", tx[5:9])[0],
             amount=unpack(">d", tx[9:17])[0],
-            time=unpack(">I", tx[17:21])[0],
-            nonce=unpack(">I", tx[21:25])[0],
-            public=tx[25:58],
-            signature=tx[58:122],
-            index=unpack(">Q", tx[122:130])[0],
+            dest='0x' + tx[17:37].hex(),
+            time=unpack(">I", tx[37:41])[0],
+            nonce=unpack(">I", tx[41:45])[0],
+            public=tx[45:78],
+            signature=tx[78:142],
+            index=unpack(">Q", tx[142:150])[0],
             raw_tx=tx,
         )
 
@@ -302,14 +303,16 @@ class Zex(metaclass=SingletonMeta):
 
     def withdraw(self, tx):
         assert (
-            self.zex.nonces[tx.public] == tx.nonce
-        ), f"invalid nonce: {self.zex.nonces[tx.public]} != {tx.nonce}"
-        balance = self.zex.balances[tx.token].get(tx.public, 0)
+            self.nonces[tx.public] == tx.nonce
+        ), f"invalid nonce: {self.nonces[tx.public]} != {tx.nonce}"
+        balance = self.balances[tx.token].get(tx.public, 0)
         assert balance >= tx.amount, "balance not enough"
-        self.zex.balances[tx.token][tx.public] = balance - tx.amount
-        if tx.public not in self.zex.withdrawals:
-            self.zex.withdrawals[tx.public] = []
-        self.zex.withdrawals[tx.public].append(tx)
+        self.balances[tx.token][tx.public] = balance - tx.amount
+        if tx.chain not in self.withdrawals:
+            self.withdrawals[tx.chain] = {}
+        if tx.public not in self.withdrawals[tx.chain]:
+            self.withdrawals[tx.chain][tx.public] = []
+        self.withdrawals[tx.chain][tx.public].append(tx)
 
     def get_order_book_update(self, pair: str):
         order_book = self.queues[pair].order_book_update

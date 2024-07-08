@@ -17,13 +17,16 @@ from fastapi.middleware.cors import CORSMiddleware
 
 import asyncio
 
+from eigensdk.crypto.bls.attestation import KeyPair
+from eth_hash.auto import keccak
+import eth_abi
 
 from zex import Zex, Operation
 
 # ZSEQ_HOST = os.environ.get("ZSEQ_HOST")
 # ZSEQ_PORT = int(os.environ.get("ZSEQ_PORT"))
 # ZSEQ_URL = f"http://{ZSEQ_HOST}:{ZSEQ_PORT}/node/transactions"
-
+BLS_PRIVATE = os.environ.get("BLS_PRIVATE")
 
 def kline_event(kline: pd.DataFrame):
     if len(kline) == 0:
@@ -325,7 +328,8 @@ def user_balances(user):
 
 @app.get("/user/{user}/trades")
 def user_trades(user):
-    trades = zex.trades.get(bytes.fromhex(user), [])
+    user = bytes.fromhex(user)
+    trades = zex.trades.get(user, [])
     return [
         {
             "name": "buy" if name == Operation.BUY else "sell",
@@ -342,7 +346,8 @@ def user_trades(user):
 
 @app.get("/user/{user}/orders")
 def user_orders(user):
-    orders = zex.orders.get(bytes.fromhex(user), {})
+    user = bytes.fromhex(user)
+    orders = zex.orders.get(user, {})
     orders = [
         {
             "name": "buy" if o[1] == Operation.BUY else "sell",
@@ -359,6 +364,49 @@ def user_orders(user):
         for o in orders
     ]
     return orders
+
+@app.get("/user/{user}/nonce")
+def user_nonce(user):
+    user = bytes.fromhex(user)
+    return {
+        "nonce": zex.nonce[user],
+    }
+
+@app.get("/user/{user}/withdrawals/{chain}")
+def user_withdrawals(user, chain):
+    user = bytes.fromhex(user)
+    withdrawals = zex.withdrawals.get(chain, {}).get(user, [])
+    return [{
+        "token": withdrawal.token_id,
+        "amount": withdrawal.amount,
+        "time": withdrawal.time,
+        "nonce": i,
+    } for i, withdrawal in enumerate(withdrawals)]
+
+
+@app.get("/user/{user}/withdrawals/{chain}/{nonce}")
+def user_withdrawals(user, chain, nonce):
+    user = bytes.fromhex(user)
+    withdrawals = zex.withdrawals.get(chain, {}).get(user, [])
+    assert nonce.isdigit(), "invalid nonce: nonce should be an integer"
+    nonce = int(nonce)
+    assert (
+        nonce < len(withdrawals)
+    ), f"invalid nonce: maximum nonce is {len(withdrawals) - 1}"
+
+    withdrawal = withdrawals[nonce]
+    assert BLS_PRIVATE, 'BLS_PRIVATE env variable is not set'
+    key = KeyPair.from_string(BLS_PRIVATE)
+    encoded = eth_abi.encode(["address", "uint256", "uint256", "uint256"], ["0xE8FB09228d1373f931007ca7894a08344B80901c", 0, 1, 0])
+    hash_bytes = keccak(encoded)
+    signature = key.sign_message(msg_bytes=hash_bytes).to_json()
+    return {
+        "token": withdrawal.token_id,
+        "amount": withdrawal.amount,
+        "time": withdrawal.time,
+        "nonce": nonce,
+        "signature": signature,
+    }
 
 
 @app.post("/txs")
