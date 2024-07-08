@@ -5,3 +5,5 @@ pydantic
 websockets
 pandas
 pendulum
+eth_hash
+eth-hash[pycryptodome]

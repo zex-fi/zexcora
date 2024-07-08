@@ -1,3 +1,4 @@
+import traceback
 from copy import deepcopy
 from enum import Enum
 import heapq
@@ -122,13 +123,54 @@ class DepositTransaction(BaseModel):
             signature=tx[-32:],
         )
 
+class WithdrawTransaction(BaseModel):
+    version: int
+    operation: str
+    chain: str
+    token_id: int
+    amount: float
+    time: int
+    nonce: int
+    public: bytes
+    signature: bytes
+    index: int
+
+    raw_tx: Optional[bytes]
+
+    @classmethod
+    def from_tx(cls, tx: bytes) -> "WithdrawTransaction":
+        assert len(tx) == 130, f"invalid transaction len(tx): {len(tx)}"
+        return WithdrawTransaction(
+            version=tx[0],
+            operation=chr(tx[1]),
+            chain=tx[2:5].lower(),
+            token_id=unpack(">I", tx[5:9])[0],
+            amount=unpack(">d", tx[9:17])[0],
+            time=unpack(">I", tx[17:21])[0],
+            nonce=unpack(">I", tx[21:25])[0],
+            public=tx[25:58],
+            signature=tx[58:122],
+            index=unpack(">Q", tx[122:130])[0],
+            raw_tx=tx,
+        )
+
+    @property
+    def token(self):
+        return f"{self.chain}:{self.token_id}"
+
+    def hex(self):
+        return self.raw_tx.hex()
+
 
 def parse_tx(tx):
     assert tx[0] == 1, "invalid transaction version"
     if tx[1] in [Operation.BUY, Operation.SELL, Operation.CANCEL]:
         return MarketTransaction.from_tx(tx)
-    if tx[1] == Operation.DEPOSIT:
+    elif tx[1] == Operation.DEPOSIT:
         return DepositTransaction.from_tx(tx)
+    elif tx[1] == Operation.WITHDRAW:
+        return WithdrawTransaction.from_tx(tx)
+
     raise NotImplementedError(f"transaction operation {tx[1]} is not valid")
 
 
@@ -181,6 +223,7 @@ class Zex(metaclass=SingletonMeta):
         self.amounts = {}
         self.trades = {}
         self.orders = {}
+        self.withdrawals = {}
         self.deposited_blocks = {"pol": 0, "eth": 0, "bst": 39493054}
         self.nonces = {}
 
@@ -197,6 +240,7 @@ class Zex(metaclass=SingletonMeta):
                 if name == Operation.DEPOSIT.value:
                     self.deposit(tx)
                 elif name == Operation.WITHDRAW.value:
+                    tx = WithdrawTransaction.from_tx(tx)
                     self.withdraw(tx)
                 elif name in (Operation.BUY.value, Operation.SELL.value):
                     tx = MarketTransaction.from_tx(tx)
@@ -215,8 +259,8 @@ class Zex(metaclass=SingletonMeta):
                 else:
                     raise ValueError(f"invalid transaction name {name}")
             except Exception as e:
-                print(e, tx.hex())
-                raise
+                print(traceback.format_exc())
+                raise e
         for pair in modified_pairs:
             self.kline_callback(self.get_kline(pair))
             self.depth_callback(self.get_order_book_update(pair))
@@ -257,7 +301,15 @@ class Zex(metaclass=SingletonMeta):
             raise Exception("order not found")
 
     def withdraw(self, tx):
-        pass
+        assert (
+            self.zex.nonces[tx.public] == tx.nonce
+        ), f"invalid nonce: {self.zex.nonces[tx.public]} != {tx.nonce}"
+        balance = self.zex.balances[tx.token].get(tx.public, 0)
+        assert balance >= tx.amount, "balance not enough"
+        self.zex.balances[tx.token][tx.public] = balance - tx.amount
+        if tx.public not in self.zex.withdrawals:
+            self.zex.withdrawals[tx.public] = []
+        self.zex.withdrawals[tx.public].append(tx)
 
     def get_order_book_update(self, pair: str):
         order_book = self.queues[pair].order_book_update

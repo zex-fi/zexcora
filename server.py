@@ -20,9 +20,9 @@ import asyncio
 
 from zex import Zex, Operation
 
-ZSEQ_HOST = os.environ.get("ZSEQ_HOST")
-ZSEQ_PORT = int(os.environ.get("ZSEQ_PORT"))
-ZSEQ_URL = f"http://{ZSEQ_HOST}:{ZSEQ_PORT}/node/transactions"
+# ZSEQ_HOST = os.environ.get("ZSEQ_HOST")
+# ZSEQ_PORT = int(os.environ.get("ZSEQ_PORT"))
+# ZSEQ_URL = f"http://{ZSEQ_HOST}:{ZSEQ_PORT}/node/transactions"
 
 
 def kline_event(kline: pd.DataFrame):

@@ -7,6 +7,7 @@ import requests
 from struct import pack, unpack
 from secp256k1 import PrivateKey, PublicKey
 from eth_hash.auto import keccak
+from verify import order_msg, withdraw_msg
 
 DEPOSIT, WITHDRAW, BUY, SELL, CANCEL = b"dwbsc"
 
@@ -50,11 +51,11 @@ sell = (
     + pack(">d", 70000)
 )
 
-
 # cancel = chr(CANCEL).encode() + txs[-2][:66]
 # txs.insert(3, cancel)
 
 nonces = {pub(u1): 0, pub(u2): 0}
+withdraw_nonces = {pub(u1): 0, pub(u2): 0}
 deposit_nonces = {b"pol": 0, b"eth": 0}
 counter = 0
 
@@ -81,16 +82,7 @@ def order(tx):
     public = pub(u2) if name == SELL else pub(u1)
     t = int(time.time())
     tx += pack(">II", t, nonces[public]) + public
-    msg = "v: 1\n"
-    msg += f'name: {"buy" if name == BUY else "sell"}\n'
-    msg += f'base token: {tx[2:5].decode("ascii")}:{unpack(">I", tx[5:9])[0]}\n'
-    msg += f'quote token: {tx[9:12].decode("ascii")}:{unpack(">I", tx[12:16])[0]}\n'
-    msg += f'amount: {unpack(">d", tx[16:24])[0]}\n'
-    msg += f'price: {unpack(">d", tx[24:32])[0]}\n'
-    msg += f"t: {t}\n"
-    msg += f"nonce: {nonces[public]}\n"
-    msg += f"public: {public.hex()}\n"
-    msg = "\x19Ethereum Signed Message:\n" + str(len(msg)) + msg
+    msg = order_msg(tx)
     nonces[public] += 1
     u = privs[public]
     sig = u.ecdsa_sign(keccak(msg.encode("ascii")), raw=True)
@@ -101,16 +93,33 @@ def order(tx):
     return tx
 
 
+def withdraw(token, amount, u):
+    global counter
+    tx = version + pack(">B", WITHDRAW) + token + pack(">d", amount)
+    public = pub(u)
+    t = int(time.time())
+    tx += pack(">II", t, withdraw_nonces[public]) + public
+    msg = withdraw_msg(tx)
+    withdraw_nonces[public] += 1
+    sig = u.ecdsa_sign(keccak(msg), raw=True)
+    sig = u.ecdsa_serialize_compact(sig)
+    tx += sig
+    tx += pack(">Q", counter)
+    counter += 1
+    return tx
+
+
 def get_txs(n):
     txs = [
-        deposit(deposit_usdt, pub(u1)),
+        # deposit(deposit_usdt, pub(u1)),
         # deposit(deposit_wbtc, pub(u1)),
         # deposit(deposit_usdt, pub(u2)),
-        deposit(deposit_wbtc, pub(u2)),
+        # deposit(deposit_wbtc, pub(u2)),
     ]
-    for i in range(n):
-        txs.append(order(buy))
-        txs.append(order(sell))
+    # for i in range(n):
+    #     txs.append(order(buy))
+    #     txs.append(order(sell))
+    txs.append(withdraw(tokens["pol:usdt"], 1, u1))
     return txs
 
 
@@ -126,4 +135,4 @@ if __name__ == "__main__":
         print(f"processing txs {i}:{i+rand} from total {len(txs)} txs")
         requests.post("http://localhost:8000/api/txs", json=txs[i : i + rand])
         i += rand
-        time.sleep(5)
+        time.sleep(0.1)

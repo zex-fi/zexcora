@@ -3,21 +3,13 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {BLSSignatureChecker, IRegistryCoordinator} from "@eigenlayer-middleware/src/BLSSignatureChecker.sol";
 
-interface ISchnorrVerifier {
-    function verifySignature(
-        uint256 pubKeyX,
-        uint8 pubKeyYParity,
-        uint256 signature,
-        uint256 msgHash,
-        address nonceTimesGeneratorAddress
-    ) external view returns (bool);
-}
+contract Wallet is Ownable, BLSSignatureChecker {
 
-contract Wallet is Ownable {
-    uint256 public pubKeyX;
-    uint8 public pubKeyYParity;
-    ISchnorrVerifier public verifier;
+    uint256 internal constant _THRESHOLD_DENOMINATOR = 100;
+    uint256 internal constant _THRESHOLD_PERCENTAGE = 70;
+
     mapping(address => uint256) public nonces;
     mapping(address => uint256) private tokenToIndex;
     mapping(uint256 => address) private indexToToken;
@@ -27,21 +19,9 @@ contract Wallet is Ownable {
     event Withdrawal(address indexed token, address indexed to, uint256 amount);
     event PublicKeySet(uint256 indexed pubKeyX, uint8 indexed pubKeyYParity);
 
-    constructor(address _verifier, uint256 _pubKeyX, uint8 _pubKeyYParity) {
-        verifier = ISchnorrVerifier(_verifier);
-        pubKeyX = _pubKeyX;
-        pubKeyYParity = _pubKeyYParity;
-    }
-
-    function setVerifier(address _verifier) external onlyOwner {
-        verifier = ISchnorrVerifier(_verifier);
-    }
-
-    function setPublicKey(uint256 _pubKeyX, uint8 _pubKeyYParity) external onlyOwner {
-        pubKeyX = _pubKeyX;
-        pubKeyYParity = _pubKeyYParity;
-        emit PublicKeySet(pubKeyX, pubKeyYParity);
-    }
+    constructor(
+        IRegistryCoordinator _registryCoordinator
+    ) BLSSignatureChecker(_registryCoordinator) {}
 
     function deposit(address token, uint256 amount, uint256 _publicKeyX, uint8 _pubKeyYParity) external {
         require(amount > 0, "Amount must be greater than 0");
@@ -63,22 +43,33 @@ contract Wallet is Ownable {
         uint256 amount,
         address dest,
         uint256 nonce,
-        uint256 signature,
-        address nonceTimesGeneratorAddress
+        bytes calldata quorumNumbers,
+        NonSignerStakesAndSignature memory nonSignerStakesAndSignature
     ) external {
         require(nonce == nonces[dest], "Invalid nonce");
-        uint256 msgHash = uint256(keccak256(abi.encodePacked(dest, tokenIndex, amount, nonce)));
+        bytes32 message = keccak256(abi.encode(dest, tokenIndex, amount, nonce));
 
-        require(
-            verifier.verifySignature(
-                pubKeyX,
-                pubKeyYParity,
-                signature,
-                msgHash,
-                nonceTimesGeneratorAddress
-            ),
-            "Invalid signature"
-        );
+        // check the BLS signature
+        (
+            QuorumStakeTotals memory quorumStakeTotals,
+            bytes32 hashOfNonSigners
+        ) = checkSignatures(
+                message,
+                quorumNumbers,
+                uint32(block.number) - 1,
+                nonSignerStakesAndSignature
+            );
+
+        // check that signatories own at least a threshold percentage of each quourm
+        for (uint i = 0; i < quorumNumbers.length; i++) {
+            require(
+                quorumStakeTotals.signedStakeForQuorum[i] *
+                    _THRESHOLD_DENOMINATOR >=
+                    quorumStakeTotals.totalStakeForQuorum[i] *
+                        _THRESHOLD_PERCENTAGE,
+                "Signatories do not own at least threshold percentage of a quorum"
+            );
+        }
 
         nonces[dest] += 1;
 

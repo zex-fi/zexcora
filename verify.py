@@ -27,6 +27,18 @@ def order_msg(tx):
     return msg.encode()
 
 
+def withdraw_msg(tx):
+    msg = f"v: {tx[0]}\n"
+    msg += f'name: withdraw\n'
+    msg += f'token: {tx[2:5].decode("ascii")}:{unpack(">I", tx[5:9])[0]}\n'
+    msg += f'amount: {unpack(">d", tx[9:17])[0]}\n'
+    msg += f't: {unpack(">I", tx[17:21])[0]}\n'
+    msg += f'nonce: {unpack(">I", tx[21:25])[0]}\n'
+    msg += f"public: {tx[25:58].hex()}\n"
+    msg = "\x19Ethereum Signed Message:\n" + str(len(msg)) + msg
+    return msg.encode()
+
+
 def __verify(txs):
     res = [None] * len(txs)
     ts = 0
@@ -37,6 +49,16 @@ def __verify(txs):
             msg = tx[: -(8 + 64)]
             sig = tx[-(8 + 64) : -8]
             verified = monitor_pub.schnorr_verify(msg, sig, bip340tag="zex")
+
+        elif name == WITHDRAW:
+            t = time.time()
+            msg, pubkey, sig = withdraw_msg(tx), tx[25:58], tx[58 : 58 + 64]
+            print(pubkey, len(pubkey), 'pubkey')
+            pubkey = PublicKey(pubkey, raw=True)
+            sig = pubkey.ecdsa_deserialize_compact(sig)
+            verified = pubkey.ecdsa_verify(keccak(msg), sig, raw=True)
+            ts += time.time() - t
+
         else:
             t = time.time()
             if name == CANCEL:
