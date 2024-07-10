@@ -28,6 +28,7 @@ from zex import Zex, Operation
 # ZSEQ_URL = f"http://{ZSEQ_HOST}:{ZSEQ_PORT}/node/transactions"
 BLS_PRIVATE = os.environ.get("BLS_PRIVATE")
 
+
 def kline_event(kline: pd.DataFrame):
     if len(kline) == 0:
         return
@@ -36,6 +37,7 @@ def kline_event(kline: pd.DataFrame):
         symbol, details = channel.lower().split("@")
         if "kline" not in details:
             continue
+
         now = int(time.time() * 1000)
         last_candle = kline.iloc[len(kline) - 1]
         message = {
@@ -67,7 +69,7 @@ def kline_event(kline: pd.DataFrame):
         }
 
         # Copy to avoid modification during iteration
-        for ws in clients:
+        for ws in clients.copy():
             asyncio.run(broadcast(ws, channel.lower(), message))
 
 
@@ -77,8 +79,12 @@ def depth_event(depth: dict):
         symbol, details = channel.lower().split("@")
         if "depth" not in details:
             continue
+
         # Copy to avoid modification during iteration
-        for ws in clients:
+        for ws in clients.copy():
+            if ws not in manager.active_connections:
+                manager.disconnect
+
             asyncio.run(
                 broadcast(
                     ws, channel.lower(), {"stream": channel.lower(), "data": depth}
@@ -94,12 +100,12 @@ zseq_deque = deque()
 
 class ConnectionManager:
     def __init__(self):
-        self.active_connections: list[WebSocket] = []
+        self.active_connections: set[WebSocket] = set()
         self.subscriptions: dict[str, set[WebSocket]] = {}
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
-        self.active_connections.append(websocket)
+        self.active_connections.add(websocket)
 
     def disconnect(self, websocket: WebSocket):
         self.active_connections.remove(websocket)
@@ -198,6 +204,7 @@ async def lifespan(app: FastAPI):
     # asyncio.create_task(broadcaster())
     Thread(target=process_loop, daemon=True).start()
     yield
+    print(json.dumps(zex.get_order_book("eth:0-pol:0", 10), indent=2))
 
 
 app = FastAPI(lifespan=lifespan, root_path="/api")
@@ -365,6 +372,7 @@ def user_orders(user):
     ]
     return orders
 
+
 @app.get("/user/{user}/nonce")
 def user_nonce(user):
     user = bytes.fromhex(user)
@@ -372,16 +380,20 @@ def user_nonce(user):
         "nonce": zex.nonce[user],
     }
 
+
 @app.get("/user/{user}/withdrawals/{chain}")
 def user_withdrawals(user, chain):
     user = bytes.fromhex(user)
     withdrawals = zex.withdrawals.get(chain, {}).get(user, [])
-    return [{
-        "token": withdrawal.token_id,
-        "amount": withdrawal.amount,
-        "time": withdrawal.time,
-        "nonce": i,
-    } for i, withdrawal in enumerate(withdrawals)]
+    return [
+        {
+            "token": withdrawal.token_id,
+            "amount": withdrawal.amount,
+            "time": withdrawal.time,
+            "nonce": i,
+        }
+        for i, withdrawal in enumerate(withdrawals)
+    ]
 
 
 @app.get("/user/{user}/withdrawals/{chain}/{nonce}")
@@ -390,14 +402,17 @@ def user_withdrawals(user, chain, nonce):
     withdrawals = zex.withdrawals.get(chain, {}).get(user, [])
     assert nonce.isdigit(), "invalid nonce: nonce should be an integer"
     nonce = int(nonce)
-    assert (
-        nonce < len(withdrawals)
+    assert nonce < len(
+        withdrawals
     ), f"invalid nonce: maximum nonce is {len(withdrawals) - 1}"
 
     withdrawal = withdrawals[nonce]
-    assert BLS_PRIVATE, 'BLS_PRIVATE env variable is not set'
+    assert BLS_PRIVATE, "BLS_PRIVATE env variable is not set"
     key = KeyPair.from_string(BLS_PRIVATE)
-    encoded = eth_abi.encode(["address", "uint256", "uint256", "uint256"], ["0xE8FB09228d1373f931007ca7894a08344B80901c", 0, 1, 0])
+    encoded = eth_abi.encode(
+        ["address", "uint256", "uint256", "uint256"],
+        ["0xE8FB09228d1373f931007ca7894a08344B80901c", 0, 1, 0],
+    )
     hash_bytes = keccak(encoded)
     signature = key.sign_message(msg_bytes=hash_bytes).to_json()
     return {

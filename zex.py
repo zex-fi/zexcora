@@ -123,6 +123,7 @@ class DepositTransaction(BaseModel):
             signature=tx[-32:],
         )
 
+
 class WithdrawTransaction(BaseModel):
     version: int
     operation: str
@@ -146,7 +147,7 @@ class WithdrawTransaction(BaseModel):
             chain=tx[2:5].lower(),
             token_id=unpack(">I", tx[5:9])[0],
             amount=unpack(">d", tx[9:17])[0],
-            dest='0x' + tx[17:37].hex(),
+            dest="0x" + tx[17:37].hex(),
             time=unpack(">I", tx[37:41])[0],
             nonce=unpack(">I", tx[41:45])[0],
             public=tx[45:78],
@@ -315,7 +316,7 @@ class Zex(metaclass=SingletonMeta):
         self.withdrawals[tx.chain][tx.public].append(tx)
 
     def get_order_book_update(self, pair: str):
-        order_book = self.queues[pair].order_book_update
+        order_book = self.queues[pair].get_order_book_update()
         print(order_book)
         now = int(unix_time() * 1000)
         return {
@@ -396,8 +397,7 @@ class TradingQueue:
 
         self.zex = zex
 
-    @property
-    def order_book_update(self):
+    def get_order_book_update(self):
         data = self._order_book_update
         self._order_book_update = {"bids": {}, "asks": {}}
 
@@ -496,7 +496,7 @@ class TradingQueue:
             self.final_id += 1
         else:
             heapq.heappop(self.sell_orders)
-            self._order_book_update["asks"][buy_price] = 0
+            self._order_book_update["asks"][sell_price] = 0
             self.final_id += 1
             del self.order_book["asks"][sell_price]
             del self.zex.amounts[sell_order.raw_tx]

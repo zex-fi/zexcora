@@ -29,10 +29,10 @@ def order_msg(tx):
 
 def withdraw_msg(tx):
     msg = f"v: {tx[0]}\n"
-    msg += f'name: withdraw\n'
+    msg += "name: withdraw\n"
     msg += f'token: {tx[2:5].decode("ascii")}:{unpack(">I", tx[5:9])[0]}\n'
     msg += f'amount: {unpack(">d", tx[9:17])[0]}\n'
-    msg += f'to: {'0x' + tx[17:37].hex()}\n'
+    msg += f'to: {"0x" + tx[17:37].hex()}\n'
     msg += f't: {unpack(">I", tx[37:41])[0]}\n'
     msg += f'nonce: {unpack(">I", tx[41:45])[0]}\n'
     msg += f"public: {tx[45:78].hex()}\n"
@@ -54,7 +54,7 @@ def __verify(txs):
         elif name == WITHDRAW:
             t = time.time()
             msg, pubkey, sig = withdraw_msg(tx), tx[45:78], tx[78 : 78 + 64]
-            print(pubkey, len(pubkey), 'pubkey')
+            print(pubkey, len(pubkey), "pubkey")
             pubkey = PublicKey(pubkey, raw=True)
             sig = pubkey.ecdsa_deserialize_compact(sig)
             verified = pubkey.ecdsa_verify(keccak(msg), sig, raw=True)
