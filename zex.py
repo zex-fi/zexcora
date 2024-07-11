@@ -332,6 +332,15 @@ class Zex(metaclass=SingletonMeta):
         }
 
     def get_order_book(self, pair: str, limit: int):
+        if pair not in self.queues:
+            now = int(unix_time() * 1000)
+            return {
+                "lastUpdateId": 0,
+                "E": now,  # Message output time
+                "T": now,  # Transaction time
+                "bids": [],
+                "asks": [],
+            }
         order_book = deepcopy(self.queues[pair].order_book)
         last_update_id = self.queues[pair].last_update_id
         now = int(unix_time() * 1000)
