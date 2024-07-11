@@ -343,12 +343,12 @@ class Zex(metaclass=SingletonMeta):
                 [p, q]
                 for p, q in sorted(
                     order_book["bids"].items(), key=lambda x: x[0], reverse=True
-                )[-limit:]
+                )[:limit]
             ],
             "asks": [
                 [p, q]
                 for p, q in sorted(order_book["asks"].items(), key=lambda x: x[0])[
-                    -limit:
+                    :limit
                 ]
             ],
         }
