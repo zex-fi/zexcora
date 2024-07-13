@@ -21,118 +21,23 @@ from eigensdk.crypto.bls.attestation import KeyPair
 from eth_hash.auto import keccak
 import eth_abi
 
+from callbacks import depth_event, kline_event
+from connection_manager import ConnectionManager
+from models.response import BalanceResponse, NonceResponse, OrderResponse, TradeResponse
 from zex import Zex, Operation
 
 # ZSEQ_HOST = os.environ.get("ZSEQ_HOST")
 # ZSEQ_PORT = int(os.environ.get("ZSEQ_PORT"))
 # ZSEQ_URL = f"http://{ZSEQ_HOST}:{ZSEQ_PORT}/node/transactions"
 BLS_PRIVATE = os.environ.get("BLS_PRIVATE")
+assert BLS_PRIVATE, "BLS_PRIVATE env variableis not set"
 
+manager = ConnectionManager()
 
-def kline_event(kline: pd.DataFrame):
-    if len(kline) == 0:
-        return
-    subs = manager.subscriptions.copy()
-    for channel, clients in subs.items():
-        symbol, details = channel.lower().split("@")
-        if "kline" not in details:
-            continue
-
-        now = int(time.time() * 1000)
-        last_candle = kline.iloc[len(kline) - 1]
-        message = {
-            "stream": channel.lower(),
-            "data": {
-                "e": "kline",  # Event type
-                "E": int(time.time() * 1000),  # Event time
-                "s": symbol.upper(),  # Symbol
-                "k": {
-                    "t": int(last_candle.name),  # Kline start time
-                    "T": last_candle["CloseTime"],  # Kline close time
-                    "s": symbol.upper(),  # Symbol
-                    "i": "1m",  # Interval
-                    "f": 100,  # First trade ID
-                    "L": 200,  # Last trade ID
-                    "o": f"{last_candle['Open']:.2f}",  # Open price
-                    "c": f"{last_candle['Close']:.2f}",  # Close price
-                    "h": f"{last_candle['High']:.2f}",  # High price
-                    "l": f"{last_candle['Low']:.2f}",  # Low price
-                    "v": f"{last_candle['Volume']:.2f}",  # Base asset volume
-                    "n": last_candle["NumberOfTrades"],  # Number of trades
-                    "x": bool(now >= last_candle["CloseTime"]),  # Is this kline closed?
-                    "q": "1.0000",  # Quote asset volume
-                    "V": "500",  # Taker buy base asset volume
-                    "Q": "0.500",  # Taker buy quote asset volume
-                    "B": "123456",  # Ignore
-                },
-            },
-        }
-
-        # Copy to avoid modification during iteration
-        for ws in clients.copy():
-            asyncio.run(broadcast(ws, channel.lower(), message))
-
-
-def depth_event(depth: dict):
-    subs = manager.subscriptions.copy()
-    for channel, clients in subs.items():
-        symbol, details = channel.lower().split("@")
-        if "depth" not in details:
-            continue
-
-        # Copy to avoid modification during iteration
-        for ws in clients.copy():
-            if ws not in manager.active_connections:
-                manager.disconnect
-
-            asyncio.run(
-                broadcast(
-                    ws, channel.lower(), {"stream": channel.lower(), "data": depth}
-                )
-            )
-
-
-zex = Zex(kline_callback=kline_event, depth_callback=depth_event)
+zex = Zex(kline_callback=kline_event(manager), depth_callback=depth_event(manager))
 
 zseq_lock = Lock()
 zseq_deque = deque()
-
-
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: set[WebSocket] = set()
-        self.subscriptions: dict[str, set[WebSocket]] = {}
-
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        self.active_connections.add(websocket)
-
-    def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
-
-    async def send_personal_message(self, message: str, websocket: WebSocket):
-        await websocket.send_text(message)
-
-    async def broadcast(self, message: str):
-        for connection in self.active_connections:
-            await connection.send_text(message)
-
-    def subscribe(self, websocket: WebSocket, channel: str):
-        if channel not in self.subscriptions:
-            self.subscriptions[channel] = set()
-        self.subscriptions[channel].add(websocket)
-        return f"Subscribed to {channel}"
-
-    def unsubscribe(self, websocket: WebSocket, channel: str):
-        if channel in self.subscriptions and websocket in self.subscriptions[channel]:
-            self.subscriptions[channel].remove(websocket)
-            if not self.subscriptions[channel]:  # Remove channel if empty
-                del self.subscriptions[channel]
-            return f"Unsubscribed from {channel}"
-        return f"Not subscribed to {channel}"
-
-
-manager = ConnectionManager()
 
 
 class StreamRequest(BaseModel):
@@ -161,18 +66,7 @@ class JSONMessageManager:
                 return StreamResponse(id=request.id, result=None)
 
 
-async def broadcast(ws: WebSocket, channel: str, message: dict):
-    try:
-        await ws.send_json(message)
-    except Exception as e:
-        print(e)
-        manager.subscriptions[channel].remove(ws)
-        if not manager.subscriptions[channel]:
-            del manager.subscriptions[channel]
-
-
 def process_loop():
-    last = 0
     index = 0
     while True:
         # params = {"after": last, "states": ["finalized"]}
@@ -185,7 +79,6 @@ def process_loop():
             ]
         index += len(finalized_txs)
         if finalized_txs:
-            last = max(tx["index"] for tx in finalized_txs)
             sorted_numbers = sorted([t["index"] for t in finalized_txs])
             print(
                 f"\nreceive finalized indexes: [{sorted_numbers[0]}, ..., {sorted_numbers[-1]}]",
@@ -195,7 +88,7 @@ def process_loop():
                 zex.process(txs)
             except Exception as e:
                 print(e)
-        time.sleep(1)
+        time.sleep(0.1)
 
 
 # Run the broadcaster in the background
@@ -204,7 +97,6 @@ async def lifespan(app: FastAPI):
     # asyncio.create_task(broadcaster())
     Thread(target=process_loop, daemon=True).start()
     yield
-    print(json.dumps(zex.get_order_book("eth:0-pol:0", 10), indent=2))
 
 
 app = FastAPI(lifespan=lifespan, root_path="/api")
@@ -268,6 +160,8 @@ async def klines(
     limit: int = 500,
 ):
     base_klines = zex.get_kline(symbol.lower())
+    if len(base_klines) == 0:
+        return []
     if not startTime:
         startTime = base_klines.index[0]
 
@@ -293,9 +187,6 @@ async def klines(
         if startTime <= idx and endTime >= x["CloseTime"]
     ][-limit:]
 
-    # return base_klines.resample(interval).agg(columns_dict).to_dict()
-    return base_klines.to_dict()
-
 
 @app.get("/orders/{pair}/{name}")
 def pair_orders(pair, name):
@@ -320,21 +211,28 @@ def pair_orders(pair, name):
 
 
 @app.get("/user/{user}/balances")
-def user_balances(user):
+def user_balances(user: str) -> list[BalanceResponse]:
     user = bytes.fromhex(user)
+
     return [
-        {
-            "chain": token[0:3].decode("ascii"),
-            "token": unpack(">I", token[3:7])[0],
-            "balance": zex.balances[token][user],
-        }
+        BalanceResponse(
+            chain=token[0:3],
+            token=int(token[4]),
+            balance=str(zex.balances[token][user]),
+        )
         for token in zex.balances
         if zex.balances[token].get(user, 0) > 0
     ]
 
 
+@app.get("/balances")
+def all_balances():
+    print(zex.balances)
+    return {}
+
+
 @app.get("/user/{user}/trades")
-def user_trades(user):
+def user_trades(user: str) -> list[TradeResponse]:
     user = bytes.fromhex(user)
     trades = zex.trades.get(user, [])
     return [
@@ -352,12 +250,12 @@ def user_trades(user):
 
 
 @app.get("/user/{user}/orders")
-def user_orders(user):
+def user_orders(user: str) -> list[OrderResponse]:
     user = bytes.fromhex(user)
     orders = zex.orders.get(user, {})
     orders = [
         {
-            "name": "buy" if o[1] == Operation.BUY else "sell",
+            "name": "buy" if o[1] == Operation.BUY.value else "sell",
             "base_chain": o[2:5].decode("ascii"),
             "base_token": unpack(">I", o[5:9])[0],
             "quote_chain": o[9:12].decode("ascii"),
@@ -374,40 +272,21 @@ def user_orders(user):
 
 
 @app.get("/user/{user}/nonce")
-def user_nonce(user):
+def user_nonce(user: str) -> NonceResponse:
     user = bytes.fromhex(user)
-    return {
-        "nonce": zex.nonce[user],
-    }
-
-
-@app.get("/user/{user}/withdrawals/{chain}")
-def user_withdrawals(user, chain):
-    user = bytes.fromhex(user)
-    withdrawals = zex.withdrawals.get(chain, {}).get(user, [])
-    return [
-        {
-            "token": withdrawal.token_id,
-            "amount": withdrawal.amount,
-            "time": withdrawal.time,
-            "nonce": i,
-        }
-        for i, withdrawal in enumerate(withdrawals)
-    ]
+    return NonceResponse(nonce=zex.nonces.get(user, 0))
 
 
 @app.get("/user/{user}/withdrawals/{chain}/{nonce}")
-def user_withdrawals(user, chain, nonce):
+def user_withdrawals(user: str, chain: str, nonce: int):
     user = bytes.fromhex(user)
     withdrawals = zex.withdrawals.get(chain, {}).get(user, [])
-    assert nonce.isdigit(), "invalid nonce: nonce should be an integer"
     nonce = int(nonce)
     assert nonce < len(
         withdrawals
     ), f"invalid nonce: maximum nonce is {len(withdrawals) - 1}"
 
     withdrawal = withdrawals[nonce]
-    assert BLS_PRIVATE, "BLS_PRIVATE env variable is not set"
     key = KeyPair.from_string(BLS_PRIVATE)
     encoded = eth_abi.encode(
         ["address", "uint256", "uint256", "uint256"],

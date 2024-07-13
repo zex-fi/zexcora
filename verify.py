@@ -1,11 +1,11 @@
 import time
-import copy
-import json
 from struct import unpack
 import multiprocessing
 from secp256k1 import PublicKey
 from eth_hash.auto import keccak
 import os
+
+import line_profiler
 
 DEPOSIT, WITHDRAW, BUY, SELL, CANCEL = b"dwbsc"
 
@@ -43,7 +43,6 @@ def withdraw_msg(tx):
 def __verify(txs):
     res = [None] * len(txs)
     ts = 0
-    # print(time.time())
     for i, tx in enumerate(txs):
         name = tx[1]
         if name == DEPOSIT:
@@ -76,7 +75,6 @@ def __verify(txs):
         if not verified:
             print("not verified", msg)
         res[i] = verified
-    # print('chunk verification time:', ts)
     return res
 
 
@@ -85,8 +83,8 @@ def chunkify(lst, n_chunks):
         yield lst[i : i + n_chunks]
 
 
+@line_profiler.profile
 def verify(txs):
-    t = time.time()
     n_chunks = multiprocessing.cpu_count()
     chunks = list(chunkify(txs, len(txs) // n_chunks + 1))
     with multiprocessing.Pool(processes=min(n_chunks, os.cpu_count())) as pool:
@@ -98,7 +96,6 @@ def verify(txs):
             if not verified:
                 txs[i] = None
             i += 1
-    print("verification time:", time.time() - t)
 
 
 if __name__ == "__main__":

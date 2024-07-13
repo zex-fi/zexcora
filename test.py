@@ -47,8 +47,8 @@ sell = (
     pack(">B", SELL)
     + tokens["eth:wbtc"]
     + tokens["pol:usdt"]
-    + pack(">d", 0.01)
-    + pack(">d", 70000)
+    + pack(">d", 0.02)
+    + pack(">d", 71000)
 )
 
 # cancel = chr(CANCEL).encode() + txs[-2][:66]
@@ -85,7 +85,7 @@ def order(tx):
     msg = order_msg(tx)
     nonces[public] += 1
     u = privs[public]
-    sig = u.ecdsa_sign(keccak(msg.encode("ascii")), raw=True)
+    sig = u.ecdsa_sign(keccak(msg), raw=True)
     sig = u.ecdsa_serialize_compact(sig)
     tx += sig
     tx += pack(">Q", counter)
@@ -95,7 +95,7 @@ def order(tx):
 
 def withdraw(token, amount, dest, u):
     global counter
-    dest = bytes.fromhex(dest.replace('0x', ''))
+    dest = bytes.fromhex(dest.replace("0x", ""))
     tx = version + pack(">B", WITHDRAW) + token + pack(">d", amount) + dest
     public = pub(u)
     t = int(time.time())
@@ -117,15 +117,19 @@ def get_txs(n):
         deposit(deposit_usdt, pub(u2), 6, 10),
         deposit(deposit_wbtc, pub(u2), 6, 10),
     ]
-    # for i in range(n):
-    #     txs.append(order(buy))
-    #     txs.append(order(sell))
-    txs.append(withdraw(tokens["pol:usdt"], 1, '0xE8FB09228d1373f931007ca7894a08344B80901c', u1))
+    for i in range(n):
+        txs.append(order(buy))
+        txs.append(order(sell))
+    # txs.append(
+    #     withdraw(
+    #         tokens["pol:usdt"], 1, "0xE8FB09228d1373f931007ca7894a08344B80901c", u1
+    #     )
+    # )
     return txs
 
 
 if __name__ == "__main__":
-    txs = get_txs(2)
+    txs = get_txs(1)
     txs = [tx.decode("latin-1") for tx in txs]
     i = 0
     while True:

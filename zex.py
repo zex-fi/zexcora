@@ -11,6 +11,8 @@ from typing import Optional, Callable
 from pydantic import BaseModel
 import pandas as pd
 
+import line_profiler
+
 from verify import verify, chunkify
 
 
@@ -226,9 +228,10 @@ class Zex(metaclass=SingletonMeta):
         self.trades = {}
         self.orders = {}
         self.withdrawals = {}
-        self.deposited_blocks = {"pol": 0, "eth": 0, "bst": 39493054}
+        self.deposited_blocks = {"pol": 0, "eth": 0, "bst": 42051703}
         self.nonces = {}
 
+    @line_profiler.profile
     def process(self, txs: list[bytes]):
         verify(txs)
         modified_pairs = set()
@@ -302,7 +305,7 @@ class Zex(metaclass=SingletonMeta):
         else:
             raise Exception("order not found")
 
-    def withdraw(self, tx):
+    def withdraw(self, tx: WithdrawTransaction):
         assert (
             self.nonces[tx.public] == tx.nonce
         ), f"invalid nonce: {self.nonces[tx.public]} != {tx.nonce}"
