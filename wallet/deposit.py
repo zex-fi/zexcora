@@ -42,7 +42,7 @@ def create_tx(deposits, from_block, to_block, timestamp):
         pubKeyX = f"{deposit['pubKeyX']:#0{32}x}"[2:]
         public = bytes.fromhex(prefix + pubKeyX)
         print(deposit["tokenIndex"], deposit["amount"] / 1e18, timestamp, "t")
-        tx += pack(">IdI", deposit["tokenIndex"], deposit["amount"], timestamp)
+        tx += pack(">IdI", deposit["tokenIndex"], deposit["amount"] / 1e18, timestamp)
         tx += public
     tx += monitor.schnorr_sign(tx, bip340tag="zex")
     counter = 0
@@ -53,8 +53,8 @@ def create_tx(deposits, from_block, to_block, timestamp):
 def main():
     # processed_block = web3.eth.block_number - BLOCKS_CONFIRMATION # should be queried from zex
     # print(processed_block)
-    processed_block = 42051703
-    sent_block = processed_block
+    processed_block = 42052370
+    sent_block = 42051703
 
     while True:
         latest_block = web3.eth.block_number
