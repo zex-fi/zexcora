@@ -26,7 +26,7 @@ port = int(os.getenv("PORT"))
 
 class ZexBot:
     send_tx_lock = Lock()
-    last_block_range = 42051703
+    last_block_range = 42051704
 
     def __init__(
         self,
