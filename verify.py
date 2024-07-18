@@ -74,6 +74,9 @@ def __verify(txs):
             ts += time.time() - t
         if not verified:
             print("not verified", msg)
+        else:
+            print("verified", i)
+
         res[i] = verified
     return res
 
@@ -87,7 +90,8 @@ def chunkify(lst, n_chunks):
 def verify(txs):
     n_chunks = multiprocessing.cpu_count()
     chunks = list(chunkify(txs, len(txs) // n_chunks + 1))
-    with multiprocessing.Pool(processes=min(n_chunks, os.cpu_count())) as pool:
+    print("min procs", min(len(chunks), os.cpu_count()))
+    with multiprocessing.Pool(processes=min(len(chunks), os.cpu_count())) as pool:
         results = pool.map(__verify, chunks)
 
     i = 0

@@ -3,7 +3,7 @@ import json
 from threading import Thread, Lock
 import time
 import random
-from typing import Optional
+from typing import Optional, Union
 import requests
 from struct import pack, unpack
 from secp256k1 import PrivateKey
@@ -17,6 +17,7 @@ version = pack(">B", 1)
 
 u1_private = "31a84594060e103f5a63eb742bd46cf5f5900d8406e2726dedfc61c7cf43ebad"
 u2_private = "31a84594060e103f5a63eb742bd46cf5f5900d8406e2726dedfc61c7cf43ebac"
+client_private = "f27be51111abb3677c50ffa801bba89480f5686c3205510f00ae67d5b0035875"
 monitor_private = "cd7d94cd90d25d8722087a85e51ce3e5d8d06d98cb9f1c02e93f646c90af0193"
 
 monitor = PrivateKey(bytes(bytearray.fromhex(monitor_private)), raw=True)
@@ -52,10 +53,10 @@ class ZexBot:
             on_open=self.on_open_wrapper(),
             on_message=self.on_messsage_wrapper(),
         )
-        self.bids = {5000.0: 0.1}
-        self.best_bid = (5000.0, 0.1)
-        self.asks = {5000.0: 0.15}
-        self.best_ask = (5000.0, 0.15)
+        self.bids = {2000.0: 10}
+        self.best_bid = (2000.0, 10)
+        self.asks = {2000.0: 11}
+        self.best_ask = (2000.0, 11)
 
     def on_open_wrapper(self):
         def on_open(ws: WebSocket):
@@ -137,7 +138,9 @@ class ZexBot:
         self.counter += 1
         return tx
 
-    def create_order(self, price: float, volume: float = None, maker: bool = False):
+    def create_order(
+        self, price: Union[float, int], volume: float = None, maker: bool = False
+    ):
         if self.side == "buy":
             # price = price - (self.rng.random() * 0.01 * price) if maker else price
             # volume = self.rng.random() * 0.1 if volume is None else volume
@@ -148,7 +151,7 @@ class ZexBot:
                 + self.pair[6:9].encode()
                 + pack(">I", int(self.pair[10]))
                 + pack(">d", volume)
-                + pack(">d", price)
+                + pack(">d", float(price))
             )
         elif self.side == "sell":
             # price = price + (self.rng.random() * 0.01 * price) if maker else price
@@ -189,37 +192,51 @@ class ZexBot:
         websocket.enableTrace(False)
         Thread(target=self.websocket.run_forever, kwargs={"reconnect": 5}).start()
         while True:
-            time.sleep(4)
-            maker = self.rng.choices([True, False], [0.75, 0.25])[0]
+            time.sleep(2)
+            maker = self.rng.choices([True, False], [0.5, 0.5])[0]
             price = 0
             if maker:
                 if self.side == "buy":
                     price = self.best_ask[0] - (
-                        self.best_ask[0] * 0.01 * self.rng.random()
+                        self.best_ask[0] * 0.05 * self.rng.random()
                     )
                 elif self.side == "sell":
                     price = self.best_bid[0] + (
-                        self.best_bid[0] * 0.01 * self.rng.random()
+                        self.best_bid[0] * 0.05 * self.rng.random()
                     )
             else:
                 if self.side == "buy":
                     price = self.best_ask[0]
                 elif self.side == "sell":
                     price = self.best_bid[0]
-            price = round(price, 2)
+            # price = round(price, 2)
+            price = int(price)
             print(price)
-            volume = round(self.rng.random() * 0.01, 4)
+            volume = round(self.rng.random() * 0.02, 4)
             while volume < 0.0001:
-                volume = round(self.rng.random() * 0.01, 4)
+                volume = round(self.rng.random() * 0.02, 4)
 
+            resp = requests.get(
+                f"http://{ip}:{port}/api/user/{self.pubkey.hex()}/nonce"
+            )
+            self.nonce = resp.json()["nonce"]
             tx = self.create_order(price, volume, maker=maker).decode("latin-1")
             with ZexBot.send_tx_lock:
                 requests.post(f"http://{ip}:{port}/api/txs", json=[tx])
 
 
 if __name__ == "__main__":
-    buyer_bot = ZexBot(u1_private, "bst", 2, "bst:1-bst:2", "buy", None)
-    seller_bot = ZexBot(u2_private, "bst", 1, "bst:1-bst:2", "sell", None)
+    client = ZexBot(client_private, "bst", 1, "bst:1-bst:2", "sell", None)
+    tx = client.deposit(1000000, "bst".encode()).decode("latin-1")
+    with ZexBot.send_tx_lock:
+        requests.post(f"http://{ip}:{port}/api/txs", json=[tx])
+    client.deposit_token_id = 2
+    tx = client.deposit(1500000, "bst".encode()).decode("latin-1")
+    with ZexBot.send_tx_lock:
+        requests.post(f"http://{ip}:{port}/api/txs", json=[tx])
+
+    buyer_bot = ZexBot(u1_private, "bst", 2, "bst:1-bst:2", "buy", 1)
+    seller_bot = ZexBot(u2_private, "bst", 1, "bst:1-bst:2", "sell", 2)
     t1 = Thread(target=buyer_bot.run)
     t2 = Thread(target=seller_bot.run)
     t1.start()

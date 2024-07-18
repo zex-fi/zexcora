@@ -72,11 +72,16 @@ def process_loop():
         # params = {"after": last, "states": ["finalized"]}
         # response = requests.get(ZSEQ_URL, params=params)
         # finalized_txs = response.json().get("data")
+        if len(zseq_deque) == 0:
+            time.sleep(0.1)
+            continue
+
         with zseq_lock:
             finalized_txs = [
                 {"index": index + i, "tx": zseq_deque.popleft()}
                 for i in range(len(zseq_deque))
             ]
+            print("popping tx...")
         index += len(finalized_txs)
         if finalized_txs:
             sorted_numbers = sorted([t["index"] for t in finalized_txs])
@@ -87,7 +92,7 @@ def process_loop():
             try:
                 zex.process(txs)
             except Exception as e:
-                print(e)
+                print("process loop:", e)
         time.sleep(0.1)
 
 
@@ -313,6 +318,7 @@ def send_txs(txs: list[str]):
     # requests.put(ZSEQ_URL, json.dumps(data), headers=headers)
     with zseq_lock:
         zseq_deque.extend(txs)
+        print("tx added...")
     return {"success": True}
 
 

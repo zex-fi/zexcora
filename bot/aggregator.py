@@ -1,13 +1,14 @@
 import asyncio
 import json
+import os
 from websockets.sync.client import connect
 import requests
 from pprint import pprint
 
 ORDER_BOOK = {"lastUpdateId": 0, "bids": {}, "asks": {}}
 
-host = "89.106.206.214"
-port = 8000
+host = os.getenv("HOST")
+port = int(os.getenv("PORT"))
 
 
 def get_depth():

@@ -1,3 +1,4 @@
+import os
 import time
 from struct import pack, unpack
 from secp256k1 import PrivateKey
@@ -16,9 +17,10 @@ u2_private = "31a84594060e103f5a63eb742bd46cf5f5900d8406e2726dedfc61c7cf43ebac"
 monitor_private = "cd7d94cd90d25d8722087a85e51ce3e5d8d06d98cb9f1c02e93f646c90af0193"
 
 monitor = PrivateKey(bytes(bytearray.fromhex(monitor_private)), raw=True)
-# ip = "89.106.206.214"
-ip = "localhost"
-port = 8000
+
+ip = os.getenv("HOST")
+port = int(os.getenv("PORT"))
+
 
 privkey = PrivateKey(bytes(bytearray.fromhex(u2_private)), raw=True)
 pubkey = privkey.pubkey.serialize()
