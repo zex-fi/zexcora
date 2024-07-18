@@ -25,6 +25,7 @@ from callbacks import depth_event, kline_event
 from connection_manager import ConnectionManager
 from models.response import BalanceResponse, NonceResponse, OrderResponse, TradeResponse
 from zex import Zex, Operation
+from verify import pool
 
 # ZSEQ_HOST = os.environ.get("ZSEQ_HOST")
 # ZSEQ_PORT = int(os.environ.get("ZSEQ_PORT"))
@@ -66,14 +67,14 @@ class JSONMessageManager:
                 return StreamResponse(id=request.id, result=None)
 
 
-def process_loop():
+async def process_loop():
     index = 0
     while True:
         # params = {"after": last, "states": ["finalized"]}
         # response = requests.get(ZSEQ_URL, params=params)
         # finalized_txs = response.json().get("data")
         if len(zseq_deque) == 0:
-            time.sleep(0.1)
+            await asyncio.sleep(0.1)
             continue
 
         with zseq_lock:
@@ -93,15 +94,17 @@ def process_loop():
                 zex.process(txs)
             except Exception as e:
                 print("process loop:", e)
-        time.sleep(0.1)
+        await asyncio.sleep(0.1)
 
 
 # Run the broadcaster in the background
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # asyncio.create_task(broadcaster())
-    Thread(target=process_loop, daemon=True).start()
+    Thread(target=asyncio.run, args=(process_loop(),), daemon=True).start()
     yield
+    pool.close()
+    pool.join()
 
 
 app = FastAPI(lifespan=lifespan, root_path="/api")

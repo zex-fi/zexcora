@@ -86,13 +86,14 @@ def chunkify(lst, n_chunks):
         yield lst[i : i + n_chunks]
 
 
+pool = multiprocessing.Pool(processes=4)
+
+
 @line_profiler.profile
 def verify(txs):
     n_chunks = multiprocessing.cpu_count()
     chunks = list(chunkify(txs, len(txs) // n_chunks + 1))
-    print("min procs", min(len(chunks), os.cpu_count()))
-    with multiprocessing.Pool(processes=min(len(chunks), os.cpu_count())) as pool:
-        results = pool.map(__verify, chunks)
+    results = pool.map(__verify, chunks)
 
     i = 0
     for sublist in results:

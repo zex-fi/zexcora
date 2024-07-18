@@ -1,3 +1,4 @@
+import asyncio
 from pprint import pprint
 import traceback
 from copy import deepcopy
@@ -272,8 +273,8 @@ class Zex(metaclass=SingletonMeta):
                 print("process:", traceback.format_exc())
                 raise e
         for pair in modified_pairs:
-            self.kline_callback(self.get_kline(pair))
-            self.depth_callback(self.get_order_book_update(pair))
+            asyncio.create_task(self.kline_callback(self.get_kline(pair)))
+            asyncio.create_task(self.depth_callback(self.get_order_book_update(pair)))
 
     def deposit(self, tx: bytes):
         chain = tx[2:5].decode()
@@ -403,6 +404,7 @@ def get_current_1m_open_time():
 
 class TradingQueue:
     def __init__(self, base_token, quote_token, zex: Zex):
+        self.amount_tolerance = 1e-8
         # bid price
         self.buy_orders = []  # Max heap for buy orders, prices negated
         # ask price
@@ -522,8 +524,18 @@ class TradingQueue:
         else:
             heapq.heappop(self.buy_orders)
             with self.order_book_lock:
-                self._order_book_update["bids"][buy_price] = 0
-                del self.order_book["bids"][buy_price]
+                if (
+                    self.order_book["bids"][buy_price] < trade_amount
+                    or abs(self.order_book["bids"][buy_price] - trade_amount)
+                    < self.amount_tolerance
+                ):
+                    self._order_book_update["bids"][buy_price] = 0
+                    del self.order_book["bids"][buy_price]
+                else:
+                    self.order_book["bids"][buy_price] -= trade_amount
+                    self._order_book_update["bids"][buy_price] = self.order_book[
+                        "bids"
+                    ][buy_price]
             del self.zex.amounts[buy_order.raw_tx]
             del self.zex.orders[buy_public][buy_order.raw_tx]
             self.final_id += 1
@@ -541,8 +553,18 @@ class TradingQueue:
         else:
             heapq.heappop(self.sell_orders)
             with self.order_book_lock:
-                self._order_book_update["asks"][sell_price] = 0
-                del self.order_book["asks"][sell_price]
+                if (
+                    self.order_book["asks"][sell_price] < trade_amount
+                    or abs(self.order_book["asks"][sell_price] - trade_amount)
+                    < self.amount_tolerance
+                ):
+                    self._order_book_update["asks"][sell_price] = 0
+                    del self.order_book["asks"][sell_price]
+                else:
+                    self.order_book["asks"][sell_price] -= trade_amount
+                    self._order_book_update["asks"][sell_price] = self.order_book[
+                        "asks"
+                    ][sell_price]
             del self.zex.orders[sell_public][sell_order.raw_tx]
             del self.zex.amounts[sell_order.raw_tx]
             self.final_id += 1

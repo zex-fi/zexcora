@@ -92,6 +92,7 @@ class ZexBot:
 
     def on_messsage_wrapper(self):
         def on_message(ws, msg):
+            print("received message")
             data = json.loads(msg)
             if "id" in data:
                 return
@@ -192,8 +193,8 @@ class ZexBot:
         websocket.enableTrace(False)
         Thread(target=self.websocket.run_forever, kwargs={"reconnect": 5}).start()
         while True:
-            time.sleep(2)
-            maker = self.rng.choices([True, False], [0.5, 0.5])[0]
+            time.sleep(1)
+            maker = self.rng.choices([True, False], [0.25, 0.75])[0]
             price = 0
             if maker:
                 if self.side == "buy":

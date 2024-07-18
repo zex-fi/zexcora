@@ -18,7 +18,7 @@ async def broadcast(
 
 
 def kline_event(manager: ConnectionManager):
-    def f(kline: pd.DataFrame):
+    async def f(kline: pd.DataFrame):
         if len(kline) == 0:
             return
         subs = manager.subscriptions.copy()
@@ -61,13 +61,13 @@ def kline_event(manager: ConnectionManager):
 
             # Copy to avoid modification during iteration
             for ws in clients.copy():
-                asyncio.run(broadcast(manager, ws, channel.lower(), message))
+                await broadcast(manager, ws, channel.lower(), message)
 
     return f
 
 
 def depth_event(manager: ConnectionManager):
-    def f(depth: dict):
+    async def f(depth: dict):
         subs = manager.subscriptions.copy()
         for channel, clients in subs.items():
             symbol, details = channel.lower().split("@")
@@ -79,13 +79,11 @@ def depth_event(manager: ConnectionManager):
                 if ws not in manager.active_connections:
                     manager.disconnect
 
-                asyncio.run(
-                    broadcast(
-                        manager,
-                        ws,
-                        channel.lower(),
-                        {"stream": channel.lower(), "data": depth},
-                    )
+                await broadcast(
+                    manager,
+                    ws,
+                    channel.lower(),
+                    {"stream": channel.lower(), "data": depth},
                 )
 
     return f
