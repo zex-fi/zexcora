@@ -1,9 +1,8 @@
-import time
 from struct import unpack
 import multiprocessing
+from loguru import logger
 from secp256k1 import PublicKey
 from eth_hash.auto import keccak
-import os
 
 import line_profiler
 
@@ -13,17 +12,10 @@ monitor_pub = "033452c6fa7b1ac52c14bb4ed4b592ffafdae5f2dba7f360435fd9c71428029c7
 monitor_pub = PublicKey(bytes.fromhex(monitor_pub), raw=True)
 
 
+@line_profiler.profile
 def order_msg(tx):
-    msg = f"v: {tx[0]}\n"
-    msg += f'name: {"buy" if tx[1] == BUY else "sell"}\n'
-    msg += f'base token: {tx[2:5].decode("ascii")}:{unpack(">I", tx[5:9])[0]}\n'
-    msg += f'quote token: {tx[9:12].decode("ascii")}:{unpack(">I", tx[12:16])[0]}\n'
-    msg += f'amount: {unpack(">d", tx[16:24])[0]}\n'
-    msg += f'price: {unpack(">d", tx[24:32])[0]}\n'
-    msg += f't: {unpack(">I", tx[32:36])[0]}\n'
-    msg += f'nonce: {unpack(">I", tx[36:40])[0]}\n'
-    msg += f"public: {tx[40:73].hex()}\n"
-    msg = "\x19Ethereum Signed Message:\n" + str(len(msg)) + msg
+    msg = f"""v: {tx[0]}\nname: {"buy" if tx[1] == BUY else "sell"}\nbase token: {tx[2:5].decode("ascii")}:{unpack(">I", tx[5:9])[0]}\nquote token: {tx[9:12].decode("ascii")}:{unpack(">I", tx[12:16])[0]}\namount: {unpack(">d", tx[16:24])[0]}\nprice: {unpack(">d", tx[24:32])[0]}\nt: {unpack(">I", tx[32:36])[0]}\nnonce: {unpack(">I", tx[36:40])[0]}\npublic: {tx[40:73].hex()}\n"""
+    msg = "".join(("\x19Ethereum Signed Message:\n", str(len(msg)), msg))
     return msg.encode()
 
 
@@ -40,9 +32,9 @@ def withdraw_msg(tx):
     return msg.encode()
 
 
+@line_profiler.profile
 def __verify(txs):
     res = [None] * len(txs)
-    ts = 0
     for i, tx in enumerate(txs):
         name = tx[1]
         if name == DEPOSIT:
@@ -51,16 +43,14 @@ def __verify(txs):
             verified = monitor_pub.schnorr_verify(msg, sig, bip340tag="zex")
 
         elif name == WITHDRAW:
-            t = time.time()
             msg, pubkey, sig = withdraw_msg(tx), tx[45:78], tx[78 : 78 + 64]
-            print(pubkey, len(pubkey), "pubkey")
+            logger.info("withdraw request", pubkey=pubkey)
             pubkey = PublicKey(pubkey, raw=True)
             sig = pubkey.ecdsa_deserialize_compact(sig)
-            verified = pubkey.ecdsa_verify(keccak(msg), sig, raw=True)
-            ts += time.time() - t
+            msg_hash = keccak(msg)
+            verified = pubkey.ecdsa_verify(msg_hash, sig, raw=True)
 
         else:
-            t = time.time()
             if name == CANCEL:
                 msg, pubkey, sig = tx[:74], tx[41:74], tx[74 : 74 + 64]
             elif name in (BUY, SELL):
@@ -70,12 +60,8 @@ def __verify(txs):
                 continue
             pubkey = PublicKey(pubkey, raw=True)
             sig = pubkey.ecdsa_deserialize_compact(sig)
-            verified = pubkey.ecdsa_verify(keccak(msg), sig, raw=True)
-            ts += time.time() - t
-        if not verified:
-            print("not verified", msg)
-        else:
-            print("verified", i)
+            msg_hash = keccak(msg)
+            verified = pubkey.ecdsa_verify(msg_hash, sig, raw=True)
 
         res[i] = verified
     return res
@@ -86,14 +72,15 @@ def chunkify(lst, n_chunks):
         yield lst[i : i + n_chunks]
 
 
-pool = multiprocessing.Pool(processes=4)
+n_chunks = multiprocessing.cpu_count()
+pool = multiprocessing.Pool(processes=n_chunks)
 
 
 @line_profiler.profile
 def verify(txs):
-    n_chunks = multiprocessing.cpu_count()
     chunks = list(chunkify(txs, len(txs) // n_chunks + 1))
-    results = pool.map(__verify, chunks)
+    # results = pool.map(__verify, chunks)
+    results = [__verify(x) for x in chunks]
 
     i = 0
     for sublist in results:
@@ -101,7 +88,3 @@ def verify(txs):
             if not verified:
                 txs[i] = None
             i += 1
-
-
-if __name__ == "__main__":
-    print(list(chunkify([1, 2, 3, 4, 5, 6], 2)))

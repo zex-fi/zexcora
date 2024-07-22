@@ -1,21 +1,18 @@
 from typing import Optional
 import time
 import os
-import json
 from collections import deque
 from threading import Thread, Lock
+import asyncio
 
 from contextlib import asynccontextmanager
 from struct import unpack, pack
 
-import requests
-
-import pandas as pd
+from loguru import logger
 from pydantic import BaseModel
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-import asyncio
 
 from eigensdk.crypto.bls.attestation import KeyPair
 from eth_hash.auto import keccak
@@ -70,9 +67,6 @@ class JSONMessageManager:
 async def process_loop():
     index = 0
     while True:
-        # params = {"after": last, "states": ["finalized"]}
-        # response = requests.get(ZSEQ_URL, params=params)
-        # finalized_txs = response.json().get("data")
         if len(zseq_deque) == 0:
             await asyncio.sleep(0.1)
             continue
@@ -82,25 +76,23 @@ async def process_loop():
                 {"index": index + i, "tx": zseq_deque.popleft()}
                 for i in range(len(zseq_deque))
             ]
-            print("popping tx...")
         index += len(finalized_txs)
         if finalized_txs:
             sorted_numbers = sorted([t["index"] for t in finalized_txs])
-            print(
+            logger.debug(
                 f"\nreceive finalized indexes: [{sorted_numbers[0]}, ..., {sorted_numbers[-1]}]",
             )
             txs = [tx["tx"].encode("latin-1") for tx in finalized_txs]
             try:
                 zex.process(txs)
-            except Exception as e:
-                print("process loop:", e)
+            except Exception:
+                logger.exception("process loop")
         await asyncio.sleep(0.1)
 
 
 # Run the broadcaster in the background
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # asyncio.create_task(broadcaster())
     Thread(target=asyncio.run, args=(process_loop(),), daemon=True).start()
     yield
     pool.close()
@@ -145,7 +137,7 @@ async def historical_trades(
 
 @app.get("/fapi/v1/pairs")
 async def pairs():
-    return list(zex.queues.keys())
+    return list(zex.orderbooks.keys())
 
 
 @app.get("/fapi/v1/aggTrades")
@@ -205,7 +197,7 @@ def pair_orders(pair, name):
         + pair[2].encode()
         + pack(">I", int(pair[3]))
     )
-    q = zex.queues.get(pair)
+    q = zex.orderbooks.get(pair)
     if not q:
         return []
     q = q.buy_orders if name == "buy" else q.sell_orders
@@ -231,12 +223,6 @@ def user_balances(user: str) -> list[BalanceResponse]:
         for token in zex.balances
         if zex.balances[token].get(user, 0) > 0
     ]
-
-
-@app.get("/balances")
-def all_balances():
-    print(zex.balances)
-    return {}
 
 
 @app.get("/user/{user}/trades")
@@ -290,9 +276,9 @@ def user_withdrawals(user: str, chain: str, nonce: int):
     user = bytes.fromhex(user)
     withdrawals = zex.withdrawals.get(chain, {}).get(user, [])
     nonce = int(nonce)
-    assert nonce < len(
-        withdrawals
-    ), f"invalid nonce: maximum nonce is {len(withdrawals) - 1}"
+    if nonce < len(withdrawals):
+        logger.debug(f"invalid nonce: maximum nonce is {len(withdrawals) - 1}")
+        return HTTPException(400, {"error": "invalid nonce"})
 
     withdrawal = withdrawals[nonce]
     key = KeyPair.from_string(BLS_PRIVATE)
@@ -313,15 +299,8 @@ def user_withdrawals(user: str, chain: str, nonce: int):
 
 @app.post("/txs")
 def send_txs(txs: list[str]):
-    # headers = {"Content-Type": "application/json"}
-    # data = {
-    #     "transactions": [{"tx": tx} for tx in txs],
-    #     "timestamp": int(time.time()),
-    # }
-    # requests.put(ZSEQ_URL, json.dumps(data), headers=headers)
     with zseq_lock:
         zseq_deque.extend(txs)
-        print("tx added...")
     return {"success": True}
 
 

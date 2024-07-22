@@ -112,10 +112,10 @@ def withdraw(token, amount, dest, u):
 
 def get_txs(n):
     txs = [
-        deposit(deposit_usdt, pub(u1), 1, 5),
-        deposit(deposit_wbtc, pub(u1), 1, 5),
-        deposit(deposit_usdt, pub(u2), 6, 10),
-        deposit(deposit_wbtc, pub(u2), 6, 10),
+        # deposit(deposit_usdt, pub(u1), 1, 5),
+        # deposit(deposit_wbtc, pub(u1), 1, 5),
+        # deposit(deposit_usdt, pub(u2), 6, 10),
+        # deposit(deposit_wbtc, pub(u2), 6, 10),
     ]
     for i in range(n):
         txs.append(order(buy))
@@ -132,6 +132,7 @@ if __name__ == "__main__":
     txs = get_txs(1)
     txs = [tx.decode("latin-1") for tx in txs]
     i = 0
+    print(txs)
     while True:
         if i >= len(txs):
             break

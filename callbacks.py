@@ -1,4 +1,3 @@
-import asyncio
 import time
 from fastapi import WebSocket
 import pandas as pd
@@ -10,8 +9,7 @@ async def broadcast(
 ):
     try:
         await ws.send_json(message)
-    except Exception as e:
-        print(e)
+    except Exception:
         manager.subscriptions[channel].remove(ws)
         if not manager.subscriptions[channel]:
             del manager.subscriptions[channel]
