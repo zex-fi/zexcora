@@ -13,12 +13,12 @@ import pandas as pd
 import line_profiler
 from loguru import logger
 
-from models.transaction import (
+from .models.transaction import (
     DepositTransaction,
     MarketTransaction,
     WithdrawTransaction,
 )
-from verify import chunkify, verify
+from .verify import chunkify, verify
 
 
 class Operation(Enum):
@@ -72,9 +72,12 @@ class Zex(metaclass=SingletonMeta):
         self,
         kline_callback: Callable[[pd.DataFrame], None],
         depth_callback: Callable[[dict], None],
+        benchmark_mode=False,
     ):
         self.kline_callback = kline_callback
         self.depth_callback = depth_callback
+
+        self.benchmark_mode = benchmark_mode
 
         self.orderbooks: dict[str, OrderBook] = {}
         self.balances = {}
@@ -125,6 +128,8 @@ class Zex(metaclass=SingletonMeta):
             else:
                 raise ValueError(f"invalid transaction name {name}")
         for pair in modified_pairs:
+            if self.benchmark_mode:
+                break
             asyncio.create_task(self.kline_callback(self.get_kline(pair)))
             asyncio.create_task(self.depth_callback(self.get_order_book_update(pair)))
 
@@ -441,29 +446,25 @@ class OrderBook:
             del self.zex.amounts[sell_order.raw_tx]
             self.final_id += 1
 
-        current_candle_index = get_current_1m_open_time()
-        if current_candle_index in self.kline.index:
-            self.kline.loc[current_candle_index, "High"] = max(
-                sell_price, self.kline.loc[current_candle_index, "High"]
-            )
-            self.kline.loc[current_candle_index, "Low"] = min(
-                sell_price, self.kline.loc[current_candle_index, "Low"]
-            )
-            self.kline.loc[current_candle_index, "Close"] = sell_price
-            self.kline.loc[current_candle_index, "Volume"] = (
-                self.kline.loc[current_candle_index, "Volume"] + trade_amount
-            )
-            self.kline.loc[current_candle_index, "NumberOfTrades"] += 1
-        else:
-            self.kline.loc[current_candle_index] = [
-                current_candle_index + 59999,  # CloseTime
-                sell_price,  # Open
-                sell_price,  # High
-                sell_price,  # Low
-                sell_price,  # Close
-                trade_amount,  # Volume
-                1,  # NumberOfTrades
-            ]
+        # This should be delegated to another process
+        if not self.zex.benchmark_mode:
+            current_candle_index = get_current_1m_open_time()
+            if current_candle_index in self.kline.index:
+                self.kline.iat[-1, 2] = max(sell_price, self.kline.iat[-1, 2])  # High
+                self.kline.iat[-1, 3] = min(sell_price, self.kline.iat[-1, 3])  # Low
+                self.kline.iat[-1, 4] = sell_price  # Close
+                self.kline.iat[-1, 5] += trade_amount  # Volume
+                self.kline.iat[-1, 6] += 1  # NumberOfTrades
+            else:
+                self.kline.loc[current_candle_index] = [
+                    current_candle_index + 59999,  # CloseTime
+                    sell_price,  # Open
+                    sell_price,  # High
+                    sell_price,  # Low
+                    sell_price,  # Close
+                    trade_amount,  # Volume
+                    1,  # NumberOfTrades
+                ]
 
         # Amount for canceled order is set to 0
         if trade_amount == 0:
