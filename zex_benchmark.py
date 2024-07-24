@@ -39,7 +39,7 @@ def run_maker_only_test():
     zex.balances["bst:2"] = {}
     zex.balances["bst:2"][public1] = 200000000000000
     order_book = Market("bst:1", "bst:2", zex)
-    zex.orderbooks["bst:1-bst:2"] = order_book
+    zex.markets["bst:1-bst:2"] = order_book
 
     zex.trades[public1] = deque()
     zex.orders[public1] = {}
@@ -101,7 +101,7 @@ def run_taker_only_test():
     zex.balances["bst:2"] = {}
     zex.balances["bst:2"][public1] = 200000000000000000000
     order_book = Market("bst:1", "bst:2", zex)
-    zex.orderbooks["bst:1-bst:2"] = order_book
+    zex.markets["bst:1-bst:2"] = order_book
 
     zex.trades[public1] = deque()
     zex.orders[public1] = {}

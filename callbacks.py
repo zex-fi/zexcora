@@ -1,7 +1,7 @@
 import time
 from fastapi import WebSocket
 import pandas as pd
-from .connection_manager import ConnectionManager
+from connection_manager import ConnectionManager
 
 
 async def broadcast(

@@ -26,7 +26,7 @@ from models.response import (
     OrderResponse,
     TradeResponse,
 )
-from zex import Zex, Operation
+from zex import Zex, BUY
 from verify import pool
 
 # ZSEQ_HOST = os.environ.get("ZSEQ_HOST")
@@ -142,7 +142,7 @@ async def historical_trades(
 
 @app.get("/fapi/v1/pairs")
 async def pairs():
-    return list(zex.orderbooks.keys())
+    return list(zex.markets.keys())
 
 
 @app.get("/fapi/v1/aggTrades")
@@ -202,7 +202,7 @@ def pair_orders(pair, name):
         + pair[2].encode()
         + pack(">I", int(pair[3]))
     )
-    q = zex.orderbooks.get(pair)
+    q = zex.markets.get(pair)
     if not q:
         return []
     q = q.buy_orders if name == "buy" else q.sell_orders
@@ -236,13 +236,13 @@ def user_trades(user: str) -> list[TradeResponse]:
     trades = zex.trades.get(user, [])
     return [
         {
-            "name": "buy" if name == Operation.BUY else "sell",
+            "name": "buy" if name == BUY else "sell",
             "t": t,
             "amount": amount,
-            "base_chain": pair[0:3].decode("ascii"),
-            "base_token": unpack(">I", pair[3:7])[0],
-            "quote_chain": pair[7:10].decode("ascii"),
-            "quote_token": unpack(">I", pair[10:14])[0],
+            "base_chain": pair[0:3],
+            "base_token": pair[4],
+            "quote_chain": pair[5:8],
+            "quote_token": pair[9],
         }
         for t, amount, pair, name in trades
     ]
@@ -254,7 +254,7 @@ def user_orders(user: str) -> list[OrderResponse]:
     orders = zex.orders.get(user, {})
     orders = [
         {
-            "name": "buy" if o[1] == Operation.BUY.value else "sell",
+            "name": "buy" if o[1] == BUY else "sell",
             "base_chain": o[2:5].decode("ascii"),
             "base_token": unpack(">I", o[5:9])[0],
             "quote_chain": o[9:12].decode("ascii"),

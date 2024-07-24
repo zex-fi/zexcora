@@ -71,7 +71,7 @@ class Zex(metaclass=SingletonMeta):
 
         self.benchmark_mode = benchmark_mode
 
-        self.orderbooks: dict[str, Market] = {}
+        self.markets: dict[str, Market] = {}
         self.balances = {}
         self.amounts = {}
         self.trades = {}
@@ -99,9 +99,9 @@ class Zex(metaclass=SingletonMeta):
                 self.withdraw(tx)
             elif name in (BUY, SELL):
                 tx = MarketTransaction(tx)
-                if tx.pair not in self.orderbooks:
+                if tx.pair not in self.markets:
                     base, quote = tx.pair.split("-")
-                    self.orderbooks[tx.pair] = Market(base, quote, self)
+                    self.markets[tx.pair] = Market(base, quote, self)
                     if tx.base_token not in self.balances:
                         self.balances[tx.base_token] = {}
                     if tx.quote_token not in self.balances:
@@ -111,14 +111,14 @@ class Zex(metaclass=SingletonMeta):
                 #     modified_pairs.add(tx.pair)
                 #     continue
 
-                self.orderbooks[tx.pair].place(tx)
-                while self.orderbooks[tx.pair].match(tx.time):
+                self.markets[tx.pair].place(tx)
+                while self.markets[tx.pair].match(tx.time):
                     pass
                 modified_pairs.add(tx.pair)
 
             elif name == CANCEL:
                 tx = MarketTransaction(tx)
-                self.orderbooks[tx.pair].cancel(tx)
+                self.markets[tx.pair].cancel(tx)
                 modified_pairs.add(tx.pair)
             else:
                 raise ValueError(f"invalid transaction name {name}")
@@ -184,7 +184,7 @@ class Zex(metaclass=SingletonMeta):
         self.withdrawals[tx.chain][tx.public].append(tx)
 
     def get_order_book_update(self, pair: str):
-        order_book = self.orderbooks[pair].get_order_book_update()
+        order_book = self.markets[pair].get_order_book_update()
         print(order_book)
         now = int(unix_time() * 1000)
         return {
@@ -200,7 +200,7 @@ class Zex(metaclass=SingletonMeta):
         }
 
     def get_order_book(self, pair: str, limit: int):
-        if pair not in self.orderbooks:
+        if pair not in self.markets:
             now = int(unix_time() * 1000)
             return {
                 "lastUpdateId": 0,
@@ -209,9 +209,12 @@ class Zex(metaclass=SingletonMeta):
                 "bids": [],
                 "asks": [],
             }
-        with self.orderbooks[pair].order_book_lock:
-            order_book = deepcopy(self.orderbooks[pair].order_book)
-        last_update_id = self.orderbooks[pair].last_update_id
+        with self.markets[pair].order_book_lock:
+            order_book = {
+                "bids": deepcopy(self.markets[pair].bids_order_book),
+                "asks": deepcopy(self.markets[pair].asks_order_book),
+            }
+        last_update_id = self.markets[pair].last_update_id
         now = int(unix_time() * 1000)
         return {
             "lastUpdateId": last_update_id,
@@ -235,7 +238,7 @@ class Zex(metaclass=SingletonMeta):
         return [{}]
 
     def get_kline(self, pair: str) -> pd.DataFrame:
-        if pair not in self.orderbooks:
+        if pair not in self.markets:
             kline = pd.DataFrame(
                 columns=[
                     "OpenTime",
@@ -249,7 +252,7 @@ class Zex(metaclass=SingletonMeta):
                 ],
             ).set_index("OpenTime")
             return kline
-        return self.orderbooks[pair].kline
+        return self.markets[pair].kline
 
 
 def get_current_1m_open_time():
@@ -259,7 +262,7 @@ def get_current_1m_open_time():
 
 
 class Market:
-    def __init__(self, base_token, quote_token, zex: Zex):
+    def __init__(self, base_token: str, quote_token: str, zex: Zex):
         self.amount_tolerance = 1e-8
         # bid price
         self.buy_orders: list[
@@ -306,8 +309,8 @@ class Market:
             "bids": self._bids_order_book_update,
             "asks": self._asks_order_book_update,
         }
-        self.bids_order_book = {}
-        self.asks_order_book = {}
+        self._bids_order_book_update = {}
+        self._asks_order_book_update = {}
 
         data["U"] = self.first_id
         data["u"] = self.final_id
