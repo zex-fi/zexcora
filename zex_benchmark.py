@@ -3,7 +3,7 @@ import random
 import time
 from secp256k1 import PrivateKey
 from bot.bot import ZexBot
-from zex import OrderBook, Zex
+from zex import Market, Zex
 
 rng = random.Random(None)
 
@@ -33,12 +33,13 @@ def run_maker_only_test():
         depth_callback=depth_callback,
         benchmark_mode=True,
     )
-    order_book = OrderBook("bst:1", "bst:2", zex)
-    zex.orderbooks["bst:1-bst:2"] = order_book
+
     zex.balances["bst:1"] = {}
     zex.balances["bst:1"][public2] = 150000000000000
     zex.balances["bst:2"] = {}
     zex.balances["bst:2"][public1] = 200000000000000
+    order_book = Market("bst:1", "bst:2", zex)
+    zex.orderbooks["bst:1-bst:2"] = order_book
 
     zex.trades[public1] = deque()
     zex.orders[public1] = {}
@@ -95,12 +96,12 @@ def run_taker_only_test():
         benchmark_mode=True,
     )
 
-    order_book = OrderBook("bst:1", "bst:2", zex)
-    zex.orderbooks["bst:1-bst:2"] = order_book
     zex.balances["bst:1"] = {}
     zex.balances["bst:1"][public2] = 200000000000000000000
     zex.balances["bst:2"] = {}
     zex.balances["bst:2"][public1] = 200000000000000000000
+    order_book = Market("bst:1", "bst:2", zex)
+    zex.orderbooks["bst:1-bst:2"] = order_book
 
     zex.trades[public1] = deque()
     zex.orders[public1] = {}

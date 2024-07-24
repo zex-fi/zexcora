@@ -1,4 +1,3 @@
-import functools
 from struct import unpack
 from typing import Optional
 import line_profiler
@@ -11,91 +10,73 @@ class MarketTransaction:
         self.raw_tx = tx
 
     @property
-    @functools.lru_cache(maxsize=0)
     def version(self):
         return self.raw_tx[0]
 
     @property
-    @functools.lru_cache(maxsize=0)
     def operation(self):
-        return chr(self.raw_tx[1])
+        return self.raw_tx[1]
 
     @property
-    @functools.lru_cache(maxsize=0)
     def base_chain(self):
         return self.raw_tx[2:5].lower().decode()
 
     @property
-    @functools.lru_cache(maxsize=0)
     def base_token_id(self):
         return unpack(">I", self.raw_tx[5:9])[0]
 
     @property
-    @functools.lru_cache(maxsize=0)
     def quote_chain(self):
         return self.raw_tx[9:12].lower().decode()
 
     @property
-    @functools.lru_cache(maxsize=0)
     def quote_token_id(self):
         return unpack(">I", self.raw_tx[12:16])[0]
 
     @property
-    @functools.lru_cache(maxsize=0)
     def amount(self):
         return unpack(">d", self.raw_tx[16:24])[0]
 
     @property
-    @functools.lru_cache(maxsize=0)
     def price(self):
         return unpack(">d", self.raw_tx[24:32])[0]
 
     @property
-    @functools.lru_cache(maxsize=0)
     def time(self):
         return unpack(">I", self.raw_tx[32:36])[0]
 
     @property
-    @functools.lru_cache(maxsize=0)
     def nonce(self):
         return unpack(">I", self.raw_tx[36:40])[0]
 
     @property
-    @functools.lru_cache(maxsize=0)
     def public(self):
         return self.raw_tx[40:73]
 
     @property
-    @functools.lru_cache(maxsize=0)
     def signature(self):
         return self.raw_tx[73:137]
 
     @property
-    @functools.lru_cache(maxsize=0)
     def index(self):
         return unpack(">Q", self.raw_tx[137:145])[0]
 
     @property
-    @functools.lru_cache(maxsize=0)
     def pair(self):
         return f"{self.base_chain}:{self.base_token_id}-{self.quote_chain}:{self.quote_token_id}"
 
     @property
-    @functools.lru_cache(maxsize=0)
     def base_token(self):
         return f"{self.base_chain}:{self.base_token_id}"
 
     @property
-    @functools.lru_cache(maxsize=0)
     def quote_token(self):
         return f"{self.quote_chain}:{self.quote_token_id}"
 
     @property
-    @functools.lru_cache(maxsize=0)
     def order_slice(self):
         return self.raw_tx[2:41]
 
-    @functools.lru_cache(maxsize=0)
     def hex(self):
         return self.raw_tx.hex()
 

@@ -1,7 +1,5 @@
 import asyncio
-import traceback
 from copy import deepcopy
-from enum import Enum
 import heapq
 from struct import unpack
 from collections import deque
@@ -21,13 +19,7 @@ from models.transaction import (
 from verify import chunkify, verify
 
 
-class Operation(Enum):
-    DEPOSIT = 100
-    WITHDRAW = 119
-    BUY = 98
-    SELL = 115
-    CANCEL = 99
-
+DEPOSIT, WITHDRAW, BUY, SELL, CANCEL = b"dwbsc"
 
 TRADES_TTL = 1000
 
@@ -79,7 +71,7 @@ class Zex(metaclass=SingletonMeta):
 
         self.benchmark_mode = benchmark_mode
 
-        self.orderbooks: dict[str, OrderBook] = {}
+        self.orderbooks: dict[str, Market] = {}
         self.balances = {}
         self.amounts = {}
         self.trades = {}
@@ -100,28 +92,31 @@ class Zex(metaclass=SingletonMeta):
                 logger.error("invalid verion", version=v)
                 continue
 
-            if name == Operation.DEPOSIT.value:
+            if name == DEPOSIT:
                 self.deposit(tx)
-            elif name == Operation.WITHDRAW.value:
+            elif name == WITHDRAW:
                 tx = WithdrawTransaction.from_tx(tx)
                 self.withdraw(tx)
-            elif name in (Operation.BUY.value, Operation.SELL.value):
+            elif name in (BUY, SELL):
                 tx = MarketTransaction(tx)
                 if tx.pair not in self.orderbooks:
                     base, quote = tx.pair.split("-")
-                    self.orderbooks[tx.pair] = OrderBook(base, quote, self)
-
+                    self.orderbooks[tx.pair] = Market(base, quote, self)
+                    if tx.base_token not in self.balances:
+                        self.balances[tx.base_token] = {}
+                    if tx.quote_token not in self.balances:
+                        self.balances[tx.quote_token] = {}
                 # fast route check for instant match
-                if self.orderbooks[tx.pair].match_instantly(tx):
-                    modified_pairs.add(tx.pair)
-                    continue
+                # if self.orderbooks[tx.pair].match_instantly(tx):
+                #     modified_pairs.add(tx.pair)
+                #     continue
 
                 self.orderbooks[tx.pair].place(tx)
                 while self.orderbooks[tx.pair].match(tx.time):
                     pass
                 modified_pairs.add(tx.pair)
 
-            elif name == Operation.CANCEL.value:
+            elif name == CANCEL:
                 tx = MarketTransaction(tx)
                 self.orderbooks[tx.pair].cancel(tx)
                 modified_pairs.add(tx.pair)
@@ -165,7 +160,7 @@ class Zex(metaclass=SingletonMeta):
             if tx.order_slice not in order:
                 continue
             self.amounts[order] = 0
-            if ord(tx.operation) == Operation.BUY:
+            if tx.operation == BUY:
                 self.balances[tx.quote_token][tx.public] += tx.amount * tx.price
             else:
                 self.balances[tx.base_token][tx.public] += tx.amount
@@ -263,7 +258,7 @@ def get_current_1m_open_time():
     return open_time * 1000
 
 
-class OrderBook:
+class Market:
     def __init__(self, base_token, quote_token, zex: Zex):
         self.amount_tolerance = 1e-8
         # bid price
@@ -277,8 +272,12 @@ class OrderBook:
         heapq.heapify(self.buy_orders)
         heapq.heapify(self.sell_orders)
         self.order_book_lock = Lock()
-        self.order_book = {"bids": {}, "asks": {}}
-        self._order_book_update = {"bids": {}, "asks": {}}
+        self.bids_order_book = {}
+        self.asks_order_book = {}
+
+        self._bids_order_book_update = {}
+        self._asks_order_book_update = {}
+
         self.first_id = 0
         self.final_id = 0
         self.last_update_id = 0
@@ -299,10 +298,16 @@ class OrderBook:
         ).set_index("OpenTime")
 
         self.zex = zex
+        self.base_token_balances = zex.balances[base_token]
+        self.quote_token_balances = zex.balances[quote_token]
 
     def get_order_book_update(self):
-        data = self._order_book_update
-        self._order_book_update = {"bids": {}, "asks": {}}
+        data = {
+            "bids": self._bids_order_book_update,
+            "asks": self._asks_order_book_update,
+        }
+        self.bids_order_book = {}
+        self.asks_order_book = {}
 
         data["U"] = self.first_id
         data["u"] = self.final_id
@@ -318,12 +323,14 @@ class OrderBook:
     @line_profiler.profile
     def place(self, tx: MarketTransaction):
         if self.zex.nonces[tx.public] != tx.nonce:
-            logger.debug(f"invalid nonce: {self.zex.nonces[tx.public]} != {tx.nonce}")
+            logger.debug(
+                f"invalid nonce: expected: {self.zex.nonces[tx.public]} !=  got: {tx.nonce}"
+            )
             return
         self.zex.nonces[tx.public] += 1
-        if ord(tx.operation) == Operation.BUY.value:
+        if tx.operation == BUY:
             required = tx.amount * tx.price
-            balance = self.zex.balances[tx.quote_token].get(tx.public, 0)
+            balance = self.quote_token_balances.get(tx.public, 0)
             if balance < required:
                 logger.debug(
                     "balance not enough",
@@ -333,17 +340,19 @@ class OrderBook:
                 return
             heapq.heappush(self.buy_orders, (-tx.price, tx.index, tx))
             with self.order_book_lock:
-                if tx.price not in self.order_book["bids"]:
-                    self.order_book["bids"][tx.price] = tx.amount
+                amount = 0
+                if tx.price not in self.bids_order_book:
+                    amount = tx.amount
+                    self.bids_order_book[tx.price] = amount
                 else:
-                    self.order_book["bids"][tx.price] += tx.amount
-                self._order_book_update["bids"][tx.price] = self.order_book["bids"][
-                    tx.price
-                ]
-            self.zex.balances[tx.quote_token][tx.public] = balance - required
-        elif ord(tx.operation) == Operation.SELL.value:
+                    amount = self.bids_order_book[tx.price] + tx.amount
+                    self.bids_order_book[tx.price] = amount
+
+                self._bids_order_book_update[tx.price] = amount
+            self.quote_token_balances[tx.public] = balance - required
+        elif tx.operation == SELL:
             required = tx.amount
-            balance = self.zex.balances[tx.base_token].get(tx.public, 0)
+            balance = self.base_token_balances.get(tx.public, 0)
             if balance < required:
                 logger.debug(
                     "balance not enough",
@@ -353,15 +362,16 @@ class OrderBook:
                 return
             heapq.heappush(self.sell_orders, (tx.price, tx.index, tx))
             with self.order_book_lock:
-                if tx.price not in self.order_book["asks"]:
-                    self.order_book["asks"][tx.price] = tx.amount
+                amount = 0
+                if tx.price not in self.asks_order_book:
+                    amount = tx.amount
+                    self.asks_order_book[tx.price] = amount
                 else:
-                    self.order_book["asks"][tx.price] += tx.amount
+                    amount = self.asks_order_book[tx.price] + tx.amount
+                    self.asks_order_book[tx.price] = amount
 
-                self._order_book_update["asks"][tx.price] = self.order_book["asks"][
-                    tx.price
-                ]
-            self.zex.balances[tx.base_token][tx.public] = balance - required
+                self._asks_order_book_update[tx.price] = amount
+            self.base_token_balances[tx.public] = balance - required
         else:
             raise NotImplementedError(
                 f"transaction type {tx.operation} is not supported"
@@ -394,8 +404,8 @@ class OrderBook:
 
         if self.zex.amounts[buy_order.raw_tx] > trade_amount:
             with self.order_book_lock:
-                self.order_book["bids"][buy_price] -= trade_amount
-                self._order_book_update["bids"][buy_price] = self.order_book["bids"][
+                self.bids_order_book[buy_price] -= trade_amount
+                self._bids_order_book_update[buy_price] = self.bids_order_book[
                     buy_price
                 ]
             self.zex.amounts[buy_order.raw_tx] -= trade_amount
@@ -404,44 +414,42 @@ class OrderBook:
             heapq.heappop(self.buy_orders)
             with self.order_book_lock:
                 if (
-                    self.order_book["bids"][buy_price] < trade_amount
-                    or abs(self.order_book["bids"][buy_price] - trade_amount)
+                    self.bids_order_book[buy_price] < trade_amount
+                    or abs(self.bids_order_book[buy_price] - trade_amount)
                     < self.amount_tolerance
                 ):
-                    self._order_book_update["bids"][buy_price] = 0
-                    del self.order_book["bids"][buy_price]
+                    self._bids_order_book_update[buy_price] = 0
+                    del self.bids_order_book[buy_price]
                 else:
-                    self.order_book["bids"][buy_price] -= trade_amount
-                    self._order_book_update["bids"][buy_price] = self.order_book[
-                        "bids"
-                    ][buy_price]
+                    self.bids_order_book[buy_price] -= trade_amount
+                    self._bids_order_book_update[buy_price] = self.bids_order_book[
+                        buy_price
+                    ]
             del self.zex.amounts[buy_order.raw_tx]
             del self.zex.orders[buy_public][buy_order.raw_tx]
             self.final_id += 1
 
         if self.zex.amounts[sell_order.raw_tx] > trade_amount:
             with self.order_book_lock:
-                self.order_book["asks"][sell_price] -= trade_amount
-                self._order_book_update["asks"][sell_price] = self.order_book["asks"][
-                    sell_price
-                ]
+                amount = self.asks_order_book[sell_price] - trade_amount
+                self.asks_order_book[sell_price] = amount
+                self._asks_order_book_update[sell_price] = amount
             self.zex.amounts[sell_order.raw_tx] -= trade_amount
             self.final_id += 1
         else:
             heapq.heappop(self.sell_orders)
             with self.order_book_lock:
                 if (
-                    self.order_book["asks"][sell_price] < trade_amount
-                    or abs(self.order_book["asks"][sell_price] - trade_amount)
+                    self.asks_order_book[sell_price] < trade_amount
+                    or abs(self.asks_order_book[sell_price] - trade_amount)
                     < self.amount_tolerance
                 ):
-                    self._order_book_update["asks"][sell_price] = 0
-                    del self.order_book["asks"][sell_price]
+                    self._asks_order_book_update[sell_price] = 0
+                    del self.asks_order_book[sell_price]
                 else:
-                    self.order_book["asks"][sell_price] -= trade_amount
-                    self._order_book_update["asks"][sell_price] = self.order_book[
-                        "asks"
-                    ][sell_price]
+                    amount = self.asks_order_book[sell_price] - trade_amount
+                    self.asks_order_book[sell_price] = amount
+                    self._asks_order_book_update[sell_price] = amount
             del self.zex.orders[sell_public][sell_order.raw_tx]
             del self.zex.amounts[sell_order.raw_tx]
             self.final_id += 1
@@ -482,8 +490,8 @@ class OrderBook:
         # Add trades to users in-memory history
         buy_q = self.zex.trades[buy_public]
         sell_q = self.zex.trades[sell_public]
-        buy_q.append((t, trade_amount, self.pair, Operation.BUY))
-        sell_q.append((t, trade_amount, self.pair, Operation.SELL))
+        buy_q.append((t, trade_amount, self.pair, BUY))
+        sell_q.append((t, trade_amount, self.pair, SELL))
 
         # Remove trades older than TRADES_TTL from users in-memory history
         while len(buy_q) > 0 and t - buy_q[0][0] > TRADES_TTL:
