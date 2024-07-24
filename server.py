@@ -18,16 +18,16 @@ from eigensdk.crypto.bls.attestation import KeyPair
 from eth_hash.auto import keccak
 import eth_abi
 
-from .callbacks import depth_event, kline_event
-from .connection_manager import ConnectionManager
-from .models.response import (
+from callbacks import depth_event, kline_event
+from connection_manager import ConnectionManager
+from models.response import (
     BalanceResponse,
     NonceResponse,
     OrderResponse,
     TradeResponse,
 )
-from .zex import Zex, Operation
-from .verify import pool
+from zex import Zex, Operation
+from verify import pool
 
 # ZSEQ_HOST = os.environ.get("ZSEQ_HOST")
 # ZSEQ_PORT = int(os.environ.get("ZSEQ_PORT"))

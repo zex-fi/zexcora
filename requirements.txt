@@ -9,5 +9,6 @@ eth_hash
 eth-hash[pycryptodome]
 line_profiler
 loguru
+websocket-client
 
 -e git+https://github.com/zellular-xyz/eigensdk-python@main#egg=eigensdk

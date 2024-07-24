@@ -13,12 +13,12 @@ import pandas as pd
 import line_profiler
 from loguru import logger
 
-from .models.transaction import (
+from models.transaction import (
     DepositTransaction,
     MarketTransaction,
     WithdrawTransaction,
 )
-from .verify import chunkify, verify
+from verify import chunkify, verify
 
 
 class Operation(Enum):
