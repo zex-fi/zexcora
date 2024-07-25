@@ -13,7 +13,6 @@ from loguru import logger
 
 from models.transaction import (
     DepositTransaction,
-    MarketTransaction,
     WithdrawTransaction,
 )
 from verify import chunkify, verify
@@ -98,28 +97,27 @@ class Zex(metaclass=SingletonMeta):
                 tx = WithdrawTransaction.from_tx(tx)
                 self.withdraw(tx)
             elif name in (BUY, SELL):
-                tx = MarketTransaction(tx)
-                if tx.pair not in self.markets:
-                    base, quote = tx.pair.split("-")
-                    self.markets[tx.pair] = Market(base, quote, self)
-                    if tx.base_token not in self.balances:
-                        self.balances[tx.base_token] = {}
-                    if tx.quote_token not in self.balances:
-                        self.balances[tx.quote_token] = {}
+                pair = tx[2:16]
+                if pair not in self.markets:
+                    base_token, quote_token = pair[:7], pair[7:]
+                    self.markets[pair] = Market(base_token, quote_token, self)
+                    if base_token not in self.balances:
+                        self.balances[base_token] = {}
+                    if quote_token not in self.balances:
+                        self.balances[quote_token] = {}
                 # fast route check for instant match
-                # if self.orderbooks[tx.pair].match_instantly(tx):
-                #     modified_pairs.add(tx.pair)
+                # if self.orderbooks[pair].match_instantly(tx):
+                #     modified_pairs.add(pair)
                 #     continue
-
-                self.markets[tx.pair].place(tx)
-                while self.markets[tx.pair].match(tx.time):
+                t = unpack(">I", tx[32:36])[0]
+                self.markets[pair].place(tx)
+                while self.markets[pair].match(t):
                     pass
-                modified_pairs.add(tx.pair)
+                modified_pairs.add(pair)
 
             elif name == CANCEL:
-                tx = MarketTransaction(tx)
-                self.markets[tx.pair].cancel(tx)
-                modified_pairs.add(tx.pair)
+                self.markets[pair].cancel(tx)
+                modified_pairs.add(pair)
             else:
                 raise ValueError(f"invalid transaction name {name}")
         for pair in modified_pairs:
@@ -155,15 +153,20 @@ class Zex(metaclass=SingletonMeta):
                 self.orders[public] = {}
                 self.nonces[public] = 0
 
-    def cancel(self, tx: MarketTransaction):
-        for order in self.orders[tx.public]:
-            if tx.order_slice not in order:
+    def cancel(self, tx: bytes):
+        name = tx[2]
+        base_token, quote_token = tx[3:10], tx[10:17]
+        amount, price = unpack("dd", tx[17:33])
+        public = tx[41:74]
+        order_slice = tx[2:41]
+        for order in self.orders[public]:
+            if order_slice not in order:
                 continue
             self.amounts[order] = 0
-            if tx.operation == BUY:
-                self.balances[tx.quote_token][tx.public] += tx.amount * tx.price
+            if name == BUY:
+                self.balances[quote_token][public] += amount * price
             else:
-                self.balances[tx.base_token][tx.public] += tx.amount
+                self.balances[base_token][public] += amount
             break
         else:
             raise Exception("order not found")
@@ -266,11 +269,11 @@ class Market:
         self.amount_tolerance = 1e-8
         # bid price
         self.buy_orders: list[
-            tuple[float, int, MarketTransaction]
+            tuple[float, int, bytes]
         ] = []  # Max heap for buy orders, prices negated
         # ask price
         self.sell_orders: list[
-            tuple[float, int, MarketTransaction]
+            tuple[float, int, bytes]
         ] = []  # Min heap for sell orders
         heapq.heapify(self.buy_orders)
         heapq.heapify(self.sell_orders)
@@ -320,68 +323,73 @@ class Market:
         return data
 
     @line_profiler.profile
-    def match_instantly(self, tx: MarketTransaction):
+    def match_instantly(self, tx: bytes):
         return False
 
     @line_profiler.profile
-    def place(self, tx: MarketTransaction):
-        if self.zex.nonces[tx.public] != tx.nonce:
+    def place(self, tx: bytes):
+        name = tx[1]
+        base_token, quote_token = tx[2:9], tx[9:16]
+        amount, price = unpack(">dd", tx[16:32])
+        t, nonce = unpack(">II", tx[32:40])
+        public = tx[40:73]
+
+        if self.zex.nonces[public] != nonce:
             logger.debug(
-                f"invalid nonce: expected: {self.zex.nonces[tx.public]} !=  got: {tx.nonce}"
+                f"invalid nonce: expected: {self.zex.nonces[public]} !=  got: {nonce}"
             )
             return
-        self.zex.nonces[tx.public] += 1
-        if tx.operation == BUY:
-            required = tx.amount * tx.price
-            balance = self.quote_token_balances.get(tx.public, 0)
+        self.zex.nonces[public] += 1
+        index = unpack(">Q", tx[137:145])[0]
+        if name == BUY:
+            required = amount * price
+            balance = self.quote_token_balances.get(public, 0)
             if balance < required:
                 logger.debug(
                     "balance not enough",
                     current_balance=balance,
-                    base_token=tx.base_token,
+                    quote_token=quote_token,
                 )
                 return
-            heapq.heappush(self.buy_orders, (-tx.price, tx.index, tx))
+            heapq.heappush(self.buy_orders, (-price, index, tx))
             with self.order_book_lock:
-                amount = 0
-                if tx.price not in self.bids_order_book:
-                    amount = tx.amount
-                    self.bids_order_book[tx.price] = amount
+                a = 0
+                if price not in self.bids_order_book:
+                    a = amount
+                    self.bids_order_book[price] = a
                 else:
-                    amount = self.bids_order_book[tx.price] + tx.amount
-                    self.bids_order_book[tx.price] = amount
+                    a = self.bids_order_book[price] + amount
+                    self.bids_order_book[price] = a
 
-                self._bids_order_book_update[tx.price] = amount
-            self.quote_token_balances[tx.public] = balance - required
-        elif tx.operation == SELL:
-            required = tx.amount
-            balance = self.base_token_balances.get(tx.public, 0)
+                self._bids_order_book_update[price] = a
+            self.quote_token_balances[public] = balance - required
+        elif name == SELL:
+            required = amount
+            balance = self.base_token_balances.get(public, 0)
             if balance < required:
                 logger.debug(
                     "balance not enough",
                     current_balance=balance,
-                    base_token=tx.base_token,
+                    base_token=base_token,
                 )
                 return
-            heapq.heappush(self.sell_orders, (tx.price, tx.index, tx))
+            heapq.heappush(self.sell_orders, (price, index, tx))
             with self.order_book_lock:
-                amount = 0
-                if tx.price not in self.asks_order_book:
-                    amount = tx.amount
-                    self.asks_order_book[tx.price] = amount
+                a = 0
+                if price not in self.asks_order_book:
+                    a = amount
+                    self.asks_order_book[price] = a
                 else:
-                    amount = self.asks_order_book[tx.price] + tx.amount
-                    self.asks_order_book[tx.price] = amount
+                    a = self.asks_order_book[price] + amount
+                    self.asks_order_book[price] = a
 
-                self._asks_order_book_update[tx.price] = amount
-            self.base_token_balances[tx.public] = balance - required
+                self._asks_order_book_update[price] = a
+            self.base_token_balances[public] = balance - required
         else:
-            raise NotImplementedError(
-                f"transaction type {tx.operation} is not supported"
-            )
+            raise NotImplementedError(f"transaction type {name} is not supported")
         self.final_id += 1
-        self.zex.amounts[tx.raw_tx] = tx.amount
-        self.zex.orders[tx.public][tx.raw_tx] = True
+        self.zex.amounts[tx] = amount
+        self.zex.orders[public][tx] = True
 
     @line_profiler.profile
     def match(self, t):
@@ -397,21 +405,19 @@ class Market:
             return False
 
         # Determine the amount to trade
-        trade_amount = min(
-            self.zex.amounts[buy_order.raw_tx], self.zex.amounts[sell_order.raw_tx]
-        )
+        trade_amount = min(self.zex.amounts[buy_order], self.zex.amounts[sell_order])
 
         # Update orders
-        buy_public = buy_order.public
-        sell_public = sell_order.public
+        buy_public = buy_order[40:73]
+        sell_public = sell_order[40:73]
 
-        if self.zex.amounts[buy_order.raw_tx] > trade_amount:
+        if self.zex.amounts[buy_order] > trade_amount:
             with self.order_book_lock:
                 self.bids_order_book[buy_price] -= trade_amount
                 self._bids_order_book_update[buy_price] = self.bids_order_book[
                     buy_price
                 ]
-            self.zex.amounts[buy_order.raw_tx] -= trade_amount
+            self.zex.amounts[buy_order] -= trade_amount
             self.final_id += 1
         else:
             heapq.heappop(self.buy_orders)
@@ -428,16 +434,16 @@ class Market:
                     self._bids_order_book_update[buy_price] = self.bids_order_book[
                         buy_price
                     ]
-            del self.zex.amounts[buy_order.raw_tx]
-            del self.zex.orders[buy_public][buy_order.raw_tx]
+            del self.zex.amounts[buy_order]
+            del self.zex.orders[buy_public][buy_order]
             self.final_id += 1
 
-        if self.zex.amounts[sell_order.raw_tx] > trade_amount:
+        if self.zex.amounts[sell_order] > trade_amount:
             with self.order_book_lock:
                 amount = self.asks_order_book[sell_price] - trade_amount
                 self.asks_order_book[sell_price] = amount
                 self._asks_order_book_update[sell_price] = amount
-            self.zex.amounts[sell_order.raw_tx] -= trade_amount
+            self.zex.amounts[sell_order] -= trade_amount
             self.final_id += 1
         else:
             heapq.heappop(self.sell_orders)
@@ -453,8 +459,8 @@ class Market:
                     amount = self.asks_order_book[sell_price] - trade_amount
                     self.asks_order_book[sell_price] = amount
                     self._asks_order_book_update[sell_price] = amount
-            del self.zex.orders[sell_public][sell_order.raw_tx]
-            del self.zex.amounts[sell_order.raw_tx]
+            del self.zex.orders[sell_public][sell_order]
+            del self.zex.amounts[sell_order]
             self.final_id += 1
 
         # This should be delegated to another process
