@@ -16,13 +16,13 @@ async def broadcast(
 
 
 def kline_event(manager: ConnectionManager):
-    async def f(kline: pd.DataFrame):
+    async def f(kline_symbol: str, kline: pd.DataFrame):
         if len(kline) == 0:
             return
         subs = manager.subscriptions.copy()
         for channel, clients in subs.items():
             symbol, details = channel.lower().split("@")
-            if "kline" not in details:
+            if "kline" not in details or symbol != kline_symbol:
                 continue
 
             now = int(time.time() * 1000)
@@ -65,11 +65,11 @@ def kline_event(manager: ConnectionManager):
 
 
 def depth_event(manager: ConnectionManager):
-    async def f(depth: dict):
+    async def f(depth_symbol: str, depth: dict):
         subs = manager.subscriptions.copy()
         for channel, clients in subs.items():
             symbol, details = channel.lower().split("@")
-            if "depth" not in details:
+            if "depth" not in details or symbol != depth_symbol:
                 continue
 
             # Copy to avoid modification during iteration

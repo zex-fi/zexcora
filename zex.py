@@ -16,6 +16,7 @@ from models.transaction import (
     WithdrawTransaction,
 )
 from verify import chunkify, verify
+import tx_utils
 
 
 DEPOSIT, WITHDRAW, BUY, SELL, CANCEL = b"dwbsc"
@@ -61,8 +62,8 @@ class SingletonMeta(type):
 class Zex(metaclass=SingletonMeta):
     def __init__(
         self,
-        kline_callback: Callable[[pd.DataFrame], None],
-        depth_callback: Callable[[dict], None],
+        kline_callback: Callable[[str, pd.DataFrame], None],
+        depth_callback: Callable[[str, dict], None],
         benchmark_mode=False,
     ):
         self.kline_callback = kline_callback
@@ -97,9 +98,10 @@ class Zex(metaclass=SingletonMeta):
                 tx = WithdrawTransaction.from_tx(tx)
                 self.withdraw(tx)
             elif name in (BUY, SELL):
-                pair = tx[2:16]
+                pair = tx_utils.pair(tx)
                 if pair not in self.markets:
-                    base_token, quote_token = pair[:7], pair[7:]
+                    base_token = tx_utils.base_token(tx)
+                    quote_token = tx_utils.quote_token(tx)
                     self.markets[pair] = Market(base_token, quote_token, self)
                     if base_token not in self.balances:
                         self.balances[base_token] = {}
@@ -109,7 +111,7 @@ class Zex(metaclass=SingletonMeta):
                 # if self.orderbooks[pair].match_instantly(tx):
                 #     modified_pairs.add(pair)
                 #     continue
-                t = unpack(">I", tx[32:36])[0]
+                t = tx_utils.time(tx)
                 self.markets[pair].place(tx)
                 while self.markets[pair].match(t):
                     pass
@@ -123,11 +125,13 @@ class Zex(metaclass=SingletonMeta):
         for pair in modified_pairs:
             if self.benchmark_mode:
                 break
-            asyncio.create_task(self.kline_callback(self.get_kline(pair)))
-            asyncio.create_task(self.depth_callback(self.get_order_book_update(pair)))
+            asyncio.create_task(self.kline_callback(pair, self.get_kline(pair)))
+            asyncio.create_task(
+                self.depth_callback(pair, self.get_order_book_update(pair))
+            )
 
     def deposit(self, tx: bytes):
-        chain = tx[2:5].decode()
+        chain = tx_utils.base_chain(tx)
         from_block, to_block, count = unpack(">QQH", tx[5:23])
         if self.deposited_blocks[chain] != from_block - 1:
             logger.error(
@@ -154,16 +158,16 @@ class Zex(metaclass=SingletonMeta):
                 self.nonces[public] = 0
 
     def cancel(self, tx: bytes):
-        name = tx[2]
-        base_token, quote_token = tx[3:10], tx[10:17]
-        amount, price = unpack("dd", tx[17:33])
-        public = tx[41:74]
-        order_slice = tx[2:41]
+        operation = tx_utils.operation(tx)
+        base_token, quote_token = tx_utils.base_token(tx), tx_utils.quote_token(tx)
+        amount, price = tx_utils.amount(tx), tx_utils.price(tx)
+        public = tx_utils.public(tx)
+        order_slice = tx_utils.order_slice(tx)
         for order in self.orders[public]:
             if order_slice not in order:
                 continue
             self.amounts[order] = 0
-            if name == BUY:
+            if operation == BUY:
                 self.balances[quote_token][public] += amount * price
             else:
                 self.balances[base_token][public] += amount
@@ -187,19 +191,23 @@ class Zex(metaclass=SingletonMeta):
         self.withdrawals[tx.chain][tx.public].append(tx)
 
     def get_order_book_update(self, pair: str):
-        order_book = self.markets[pair].get_order_book_update()
-        print(order_book)
+        order_book_update = self.markets[pair].get_order_book_update()
+        print(order_book_update)
         now = int(unix_time() * 1000)
         return {
             "e": "depthUpdate",  # Event type
             "E": now,  # Event time
             "T": now,  # Transaction time
             "s": pair.upper(),
-            "U": order_book["U"],
-            "u": order_book["u"],
-            "pu": order_book["pu"],
-            "b": [[p, q] for p, q in order_book["bids"].items()],  # Bids to be updated
-            "a": [[p, q] for p, q in order_book["asks"].items()],  # Asks to be updated
+            "U": order_book_update["U"],
+            "u": order_book_update["u"],
+            "pu": order_book_update["pu"],
+            "b": [
+                [p, q] for p, q in order_book_update["bids"].items()
+            ],  # Bids to be updated
+            "a": [
+                [p, q] for p, q in order_book_update["asks"].items()
+            ],  # Asks to be updated
         }
 
     def get_order_book(self, pair: str, limit: int):
@@ -328,11 +336,10 @@ class Market:
 
     @line_profiler.profile
     def place(self, tx: bytes):
-        name = tx[1]
-        base_token, quote_token = tx[2:9], tx[9:16]
-        amount, price = unpack(">dd", tx[16:32])
-        t, nonce = unpack(">II", tx[32:40])
-        public = tx[40:73]
+        name = tx_utils.operation(tx)
+        amount, price = tx_utils.amount(tx), tx_utils.price(tx)
+        nonce = tx_utils.nonce(tx)
+        public = tx_utils.public(tx)
 
         if self.zex.nonces[public] != nonce:
             logger.debug(
@@ -340,7 +347,7 @@ class Market:
             )
             return
         self.zex.nonces[public] += 1
-        index = unpack(">Q", tx[137:145])[0]
+        index = tx_utils.index(tx)
         if name == BUY:
             required = amount * price
             balance = self.quote_token_balances.get(public, 0)
@@ -348,7 +355,7 @@ class Market:
                 logger.debug(
                     "balance not enough",
                     current_balance=balance,
-                    quote_token=quote_token,
+                    quote_token=tx_utils.quote_token(tx),
                 )
                 return
             heapq.heappush(self.buy_orders, (-price, index, tx))
@@ -370,7 +377,7 @@ class Market:
                 logger.debug(
                     "balance not enough",
                     current_balance=balance,
-                    base_token=base_token,
+                    base_token=tx_utils.base_token(tx),
                 )
                 return
             heapq.heappush(self.sell_orders, (price, index, tx))
@@ -408,8 +415,8 @@ class Market:
         trade_amount = min(self.zex.amounts[buy_order], self.zex.amounts[sell_order])
 
         # Update orders
-        buy_public = buy_order[40:73]
-        sell_public = sell_order[40:73]
+        buy_public = tx_utils.public(buy_order)
+        sell_public = tx_utils.public(sell_order)
 
         if self.zex.amounts[buy_order] > trade_amount:
             with self.order_book_lock:
