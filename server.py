@@ -27,7 +27,6 @@ from models.response import (
     TradeResponse,
 )
 from zex import Zex, BUY
-from verify import pool
 
 # ZSEQ_HOST = os.environ.get("ZSEQ_HOST")
 # ZSEQ_PORT = int(os.environ.get("ZSEQ_PORT"))
@@ -100,8 +99,6 @@ async def process_loop():
 async def lifespan(app: FastAPI):
     Thread(target=asyncio.run, args=(process_loop(),), daemon=True).start()
     yield
-    pool.close()
-    pool.join()
 
 
 app = FastAPI(lifespan=lifespan, root_path="/api")

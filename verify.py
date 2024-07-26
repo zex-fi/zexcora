@@ -72,14 +72,12 @@ def chunkify(lst, n_chunks):
         yield lst[i : i + n_chunks]
 
 
-n_chunks = multiprocessing.cpu_count()
-pool = multiprocessing.Pool(processes=n_chunks)
-
-
 @line_profiler.profile
 def verify(txs):
+    n_chunks = multiprocessing.cpu_count()
     chunks = list(chunkify(txs, len(txs) // n_chunks + 1))
-    results = pool.map(__verify, chunks)
+    with multiprocessing.Pool(processes=n_chunks) as pool:
+        results = pool.map(__verify, chunks)
     # results = [__verify(x) for x in chunks]
 
     i = 0
