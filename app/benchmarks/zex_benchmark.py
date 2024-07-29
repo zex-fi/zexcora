@@ -30,12 +30,12 @@ def initialize() -> tuple[Zex, ZexBot, ZexBot]:
 
     zex.benchmark_mode = True
 
-    zex.balances["bst:1"] = {}
-    zex.balances["bst:1"][public2] = 150000000000000
-    zex.balances["bst:2"] = {}
-    zex.balances["bst:2"][public1] = 200000000000000
-    order_book = Market("bst:1", "bst:2", zex)
-    zex.markets["bst:1-bst:2"] = order_book
+    zex.balances["BST:1"] = {}
+    zex.balances["BST:1"][public2] = 150000000000000
+    zex.balances["BST:2"] = {}
+    zex.balances["BST:2"][public1] = 200000000000000
+    order_book = Market("BST:1", "BST:2", zex)
+    zex.markets["BST:1-BST:2"] = order_book
 
     zex.trades[public1] = deque()
     zex.orders[public1] = {}
@@ -45,8 +45,8 @@ def initialize() -> tuple[Zex, ZexBot, ZexBot]:
     zex.orders[public2] = {}
     zex.nonces[public2] = 0
 
-    buyer_bot = ZexBot(u1_private, "bst", 2, "bst:1-bst:2", "buy", 1)
-    seller_bot = ZexBot(u2_private, "bst", 1, "bst:1-bst:2", "sell", 2)
+    buyer_bot = ZexBot(u1_private, "BST", 2, "BST:1-BST:2", "buy", 1)
+    seller_bot = ZexBot(u2_private, "BST", 1, "BST:1-BST:2", "sell", 2)
 
     return zex, buyer_bot, seller_bot
 
@@ -170,8 +170,8 @@ def test_taker_only_random_volume():
 
 
 if __name__ == "__main__":
-    test_maker_only()
-    print("------------------------------")
+    # test_maker_only()
+    # print("------------------------------")
     test_taker_only_half_empty_order_book()
-    print("------------------------------")
-    test_taker_only_random_volume()
+    # print("------------------------------")
+    # test_taker_only_random_volume()
