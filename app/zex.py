@@ -1,5 +1,6 @@
 import asyncio
 import heapq
+import os
 from collections import defaultdict, deque
 from collections.abc import Callable
 from copy import deepcopy
@@ -73,9 +74,31 @@ class Zex(metaclass=SingletonMeta):
         self.trades = {}
         self.orders = {}
         self.withdrawals = {}
-        self.deposited_blocks = {"POL": 0, "ETH": 0, "BST": 42051703}
+        self.deposited_blocks = {
+            "BST": 42665675,
+            "SEPOLIA": 6431127,
+            "HOLESKY": 2061351,
+        }
         self.nonces = {}
         self.pair_lookup = {}
+
+        test_mode = os.getenv("TEST_MODE")
+        if test_mode:
+            client_pub = b"\x02 \xfa;\x9b\xb1\xa9\xc7\x9a$\xe2>\x92\xce\x83\xea\xa2\xb8\xd5\x8b\x00r\x8fifG\xa5\x808\x9aFZ\x17"
+            bot1_pub = b"\x02\x08v\x02\xe7\x1a\x82wzz\x9c#Kf\x8a\x1d\xc9B\xc9\xa2\x9b\xf3\x1c\x93\x11T\xeb3\x1c!\xb6\xf6\xfd"
+            bot2_pub = b"\x03\x8c\xb5\xa2\x9c \xc2]\xb6Gb\x83\x13\xa9\n\xc3\xe51\x86\xcc&\x8f\xff\x91\xb0\xe0:*+\x18\xba\xa5P"
+            self.balances["BST:1"] = {
+                client_pub: 1_000_000_000,
+                bot2_pub: 2_500_000_000,
+            }
+            self.balances["BST:2"] = {
+                client_pub: 1_000_000_000,
+                bot1_pub: 2_500_000_000,
+            }
+            for public in [client_pub, bot1_pub, bot2_pub]:
+                self.trades[public] = deque()
+                self.orders[public] = {}
+                self.nonces[public] = 0
 
     @line_profiler.profile
     def process(self, txs: list[bytes]):
@@ -140,8 +163,8 @@ class Zex(metaclass=SingletonMeta):
         # deposits = [tx[i : i + chunk_size] for i in range(0, len(tx), chunk_size)]
         deposits = list(chunkify(tx[23 : 23 + 49 * count], 49))
         for chunk in deposits:
-            token = f"{chain}:{unpack('>I', chunk[:4])[0]}"
-            amount = unpack(">d", chunk[4:16])
+            token_index, amount, t = unpack(">IdI", chunk[:16])
+            token = f"{chain}:{token_index}"
             public = chunk[16:49]
             if token not in self.balances:
                 self.balances[token] = {}
@@ -544,7 +567,7 @@ class Market:
 
     def _update_kline(self, price: float, trade_amount: float):
         current_candle_index = get_current_1m_open_time()
-        if current_candle_index == self.kline.index[-1]:
+        if len(self.kline.index) != 0 and current_candle_index == self.kline.index[-1]:
             self.kline.iat[-1, 2] = max(price, self.kline.iat[-1, 2])  # High
             self.kline.iat[-1, 3] = min(price, self.kline.iat[-1, 3])  # Low
             self.kline.iat[-1, 4] = price  # Close

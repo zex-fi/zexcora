@@ -15,16 +15,12 @@ DEPOSIT, WITHDRAW, BUY, SELL, CANCEL = b"dwbsc"
 
 version = pack(">B", 1)
 
-monitor_private = "cd7d94cd90d25d8722087a85e51ce3e5d8d06d98cb9f1c02e93f646c90af0193"
-
-monitor = PrivateKey(bytes(bytearray.fromhex(monitor_private)), raw=True)
 ip = os.getenv("HOST")
 port = int(os.getenv("PORT") or 8000)
 
 
 class ZexBot:
     send_tx_lock = Lock()
-    last_block_range = 42051704
 
     def __init__(
         self,
@@ -85,7 +81,7 @@ class ZexBot:
         return on_open
 
     def on_messsage_wrapper(self):
-        def on_message(ws, msg):
+        def on_message(_, msg):
             print("received message")
             data = json.loads(msg)
             if "id" in data:
@@ -113,25 +109,6 @@ class ZexBot:
             #     self.close_price = float(data["data"]["k"]["c"])
 
         return on_message
-
-    def deposit(self, amount: int, chain: bytes):
-        t = pack(">I", int(time.time()))
-
-        range_start = ZexBot.last_block_range
-        range_end = ZexBot.last_block_range
-        ZexBot.last_block_range = range_end + 1
-
-        block_range = pack(">QQ", range_start, range_end)
-
-        count = 2
-        tx = pack(">I", self.deposit_token_id) + pack(">d", amount)
-        chunk = (tx + t + self.pubkey) * count
-        tx = version + pack(">B", DEPOSIT) + chain + block_range + pack(">H", count)
-        tx += chunk
-        tx += monitor.schnorr_sign(tx, bip340tag="zex")
-        tx += pack(">Q", self.counter)
-        self.counter += 1
-        return tx
 
     def create_order(
         self,

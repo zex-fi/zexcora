@@ -3,7 +3,7 @@ import time
 from collections import deque
 from threading import Lock
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from loguru import logger
 
 from app import zex
@@ -22,6 +22,13 @@ async def ping():
 @router.get("/time")
 async def server_time():
     return {"serverTime": int(time.time() * 1000)}
+
+
+@router.get("/{chain}/block/latest")
+def get_latest_deposited_block(chain: str):
+    if chain not in zex.deposited_blocks:
+        raise HTTPException(404, {"error": "chain not found"})
+    return {"block": zex.deposited_blocks[chain]}
 
 
 @router.post("/txs")

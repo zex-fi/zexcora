@@ -1,40 +1,42 @@
-import time
+import asyncio
+import signal
 from struct import pack
 
 import requests
+import yaml
 from secp256k1 import PrivateKey
 from web3 import Web3
+from web3.contract.contract import Contract
 from web3.middleware import geth_poa_middleware
 
-# Configuration
-NODE_URL = "https://bsc-testnet-rpc.publicnode.com"
-CONTRACT_ADDRESS = "0xEca9036cFbfD61C952126F233682f9A6f97E4DBD"
-CONTRACT_ABI = '[{"inputs":[{"internalType":"address","name":"_verifier","type":"address"},{"internalType":"uint256","name":"_pubKeyX","type":"uint256"},{"internalType":"uint8","name":"_pubKeyYParity","type":"uint8"}],"stateMutability":"nonpayable","type":"constructor"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"uint256","name":"tokenIndex","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"amount","type":"uint256"},{"indexed":true,"internalType":"uint256","name":"pubKeyX","type":"uint256"},{"indexed":true,"internalType":"uint8","name":"pubKeyYParity","type":"uint8"}],"name":"Deposit","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"previousOwner","type":"address"},{"indexed":true,"internalType":"address","name":"newOwner","type":"address"}],"name":"OwnershipTransferred","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"uint256","name":"pubKeyX","type":"uint256"},{"indexed":true,"internalType":"uint8","name":"pubKeyYParity","type":"uint8"}],"name":"PublicKeySet","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"token","type":"address"},{"indexed":true,"internalType":"address","name":"to","type":"address"},{"indexed":false,"internalType":"uint256","name":"amount","type":"uint256"}],"name":"Withdrawal","type":"event"},{"inputs":[{"internalType":"address","name":"token","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"},{"internalType":"uint256","name":"_publicKeyX","type":"uint256"},{"internalType":"uint8","name":"_pubKeyYParity","type":"uint8"}],"name":"deposit","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"nonces","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"owner","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"pubKeyX","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"pubKeyYParity","outputs":[{"internalType":"uint8","name":"","type":"uint8"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"renounceOwnership","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"_pubKeyX","type":"uint256"},{"internalType":"uint8","name":"_pubKeyYParity","type":"uint8"}],"name":"setPublicKey","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"_verifier","type":"address"}],"name":"setVerifier","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"newOwner","type":"address"}],"name":"transferOwnership","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"verifier","outputs":[{"internalType":"contract ISchnorrVerifier","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"tokenIndex","type":"uint256"},{"internalType":"uint256","name":"amount","type":"uint256"},{"internalType":"address","name":"dest","type":"address"},{"internalType":"uint256","name":"nonce","type":"uint256"},{"internalType":"uint256","name":"signature","type":"uint256"},{"internalType":"address","name":"nonceTimesGeneratorAddress","type":"address"}],"name":"withdraw","outputs":[],"stateMutability":"nonpayable","type":"function"}]'
-BLOCKS_CONFIRMATION = 3
-BLOCK_DURATION = 5
-
-# Initialize Web3
-web3 = Web3(Web3.HTTPProvider(NODE_URL))
-web3.middleware_onion.inject(geth_poa_middleware, layer=0)
-contract = web3.eth.contract(address=CONTRACT_ADDRESS, abi=CONTRACT_ABI)
+IS_RUNNING = True
 
 
-def get_deposits(block):
+# Function to initialize Web3 instance for each network
+def initialize_web3(network) -> tuple[Web3, Contract]:
+    web3 = Web3(Web3.WebsocketProvider(network["node_url"]))
+    web3.middleware_onion.inject(geth_poa_middleware, layer=0)
+    contract = web3.eth.contract(
+        address=network["contract_address"], abi=network["contract_abi"]
+    )
+    return web3, contract
+
+
+# Function to get deposits
+def get_deposits(web3: Web3, contract: Contract, block, block_confirmation):
     latest_block = web3.eth.block_number
-    assert block <= latest_block - BLOCKS_CONFIRMATION, "not confirmed yet"
-    events = contract.events.Deposit.create_filter(
-        fromBlock=block, toBlock=block
-    ).get_all_entries()
-    return [dict(event["args"]) for event in events]
+    assert block <= latest_block - block_confirmation, "not confirmed yet"
+    events = contract.events.Deposit.get_logs(
+        fromBlock=block, toBlock=latest_block - block_confirmation
+    )
+    return latest_block - block_confirmation, [dict(event["args"]) for event in events]
 
 
-monitor_private = "cd7d94cd90d25d8722087a85e51ce3e5d8d06d98cb9f1c02e93f646c90af0193"
-monitor = PrivateKey(bytes(bytearray.fromhex(monitor_private)), raw=True)
-
-
-def create_tx(deposits, from_block, to_block, timestamp):
+def create_tx(
+    deposits, chain: str, from_block, to_block, timestamp, monitor: PrivateKey
+):
     version = pack(">B", 1)
-    chain = b"bst"
+    chain = chain.encode()
     block_range = pack(">QQ", from_block, to_block)
     tx = version + b"d" + chain + block_range + pack(">H", len(deposits))
     for deposit in deposits:
@@ -50,30 +52,84 @@ def create_tx(deposits, from_block, to_block, timestamp):
     return tx
 
 
-def main():
-    # processed_block = web3.eth.block_number - BLOCKS_CONFIRMATION # should be queried from zex
-    # print(processed_block)
-    processed_block = 42052370
-    sent_block = 42051703
+async def run_monitor(network: dict, api_url: str, monitor: PrivateKey):
+    web3, contract = initialize_web3(network)
+    blocks_confirmation = network["blocks_confirmation"]
+    block_duration = network["block_duration"]
+    chain = network["chain"]
+    sent_block = requests.get(f"{api_url}/{chain}/block/latest").json()["block"]
+    processed_block = network["processed_block"]
+    if sent_block > processed_block:
+        network["processed_block"] = sent_block
+        processed_block = sent_block
 
-    while True:
+    while IS_RUNNING:
         latest_block = web3.eth.block_number
-        if processed_block >= latest_block - BLOCKS_CONFIRMATION:
-            time.sleep(BLOCK_DURATION)
+        if processed_block >= latest_block - blocks_confirmation:
+            await asyncio.sleep(block_duration)
             continue
 
-        processed_block += 1
-        deposits = get_deposits(processed_block)
+        to_block, deposits = get_deposits(
+            web3, contract, processed_block, blocks_confirmation
+        )
+        processed_block = to_block
         if len(deposits) == 0:
-            print("no event", processed_block)
+            print(f"no event from:{sent_block}, to: {processed_block}")
             continue
 
         block = web3.eth.get_block(processed_block)
-        tx = create_tx(deposits, sent_block + 1, processed_block, block["timestamp"])
-        requests.post("http://localhost:8000/api/txs", json=[tx.decode("latin-1")])
+        tx = create_tx(
+            deposits,
+            chain,
+            sent_block + 1,
+            processed_block,
+            block["timestamp"],
+            monitor,
+        )
+        requests.post(f"{api_url}/txs", json=[tx.decode("latin-1")])
         # to check if request is applied, query latest processed block from zex
+        sent_block = requests.get(f"{api_url}/{chain}/block/latest").json()["block"]
+
         sent_block = processed_block
+        network["processed_block"] = sent_block
+
+    return network
+
+
+async def main():
+    # processed_block = web3.eth.block_number - BLOCKS_CONFIRMATION # should be queried from zex
+    # print(processed_block)
+    # Set up signal handler
+    def signal_handler():
+        global IS_RUNNING
+        IS_RUNNING = False
+        print("\nInterrupt received. Stopping tasks...")
+
+    loop = asyncio.get_running_loop()
+    loop.add_signal_handler(signal.SIGINT, signal_handler)
+
+    with open("config.yaml") as file:
+        config = yaml.safe_load(file)
+
+    networks = config["networks"]
+    api_url = config["api_url"]
+    monitor_private = config["monitor_private"]
+    monitor = PrivateKey(bytes(bytearray.fromhex(monitor_private)), raw=True)
+
+    tasks = []
+    for network in networks:
+        t = asyncio.create_task(run_monitor(network, api_url, monitor))
+        tasks.append(t)
+
+    try:
+        # Wait for all tasks to complete or until interrupted
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        config["networks"] = results
+        with open("config.yaml", "w") as file:
+            yaml.safe_dump(config, file)
+    except asyncio.CancelledError:
+        print("Tasks were cancelled")
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
