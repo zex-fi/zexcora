@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app import zex
-from app.models.response import ExchangeInfoResponse, Symbol
+from app.models.response import Asset, ExchangeInfoResponse, Symbol
 
 router = APIRouter()
 
@@ -28,13 +28,21 @@ async def exhange_info():
         symbols=[
             Symbol(
                 symbol=name,
+                baseAsset=Asset(
+                    chain=market.base_token[:3], id=int(market.base_token[4:])
+                ),
+                quoteAsset=Asset(
+                    chain=market.quote_token[:3], id=int(market.quote_token[4:])
+                ),
                 lastPrice=market.get_last_price(),
-                volume24h=market.get_veolume_24h(),
+                volume24h=market.get_volume_24h(),
                 priceChange24h=market.get_price_change_24h(),
             )
             for name, market in zex.markets.items()
         ],
     )
+    if zex.test_mode:
+        resp.symbols = resp.symbols * 10
     return resp
 
 

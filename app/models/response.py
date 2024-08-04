@@ -37,8 +37,15 @@ class NonceResponse(BaseModel):
     nonce: int
 
 
+class Asset(BaseModel):
+    chain: str
+    id: int
+
+
 class Symbol(BaseModel):
     symbol: str
+    baseAsset: Asset
+    quoteAsset: Asset
     lastPrice: float
     volume24h: float
     priceChange24h: float
