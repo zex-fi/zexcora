@@ -416,6 +416,16 @@ class Market:
             )
         return self.kline["Close"].iloc[-1] - self.kline["Open"].iloc[0]
 
+    def get_volume_24h(self):
+        # Calculate the total time span of our data
+        total_span = self.kline.index[-1] - self.kline.index[0]
+
+        ms_in_24h = 24 * 60 * 60 * 1000
+        if total_span >= ms_in_24h:
+            prev_24h_index = 24 * 60 * 60
+            return self.kline["Volume"].iloc[-prev_24h_index:].sum()
+        return self.kline["Volume"].sum()
+
     def _parse_transaction(self, tx: bytes):
         operation, amount, price, nonce, public, index = unpack(
             ">xB14xdd4xI33s64xQ", tx

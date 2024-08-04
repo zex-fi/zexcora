@@ -29,7 +29,7 @@ async def exhange_info():
             Symbol(
                 symbol=name,
                 lastPrice=market.get_last_price(),
-                volume24h=0,
+                volume24h=market.get_veolume_24h(),
                 priceChange24h=market.get_price_change_24h(),
             )
             for name, market in zex.markets.items()
