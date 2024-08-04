@@ -31,11 +31,15 @@ class JSONMessageManager:
         match request.method.upper():
             case "SUBSCRIBE":
                 for channel in request.params:
-                    manager.subscribe(websocket, channel.lower())
+                    parts = channel.split("@")
+                    parts[0] = parts[0].upper()
+                    manager.subscribe(websocket, "@".join(parts))
                 return StreamResponse(id=request.id, result=None)
             case "UNSUBSCRIBE":
                 for channel in request.params:
-                    manager.unsubscribe(websocket, channel.lower())
+                    parts = channel.split("@")
+                    parts[0] = parts[0].upper()
+                    manager.unsubscribe(websocket, "@".join(parts))
                 return StreamResponse(id=request.id, result=None)
 
 

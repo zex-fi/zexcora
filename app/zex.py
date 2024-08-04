@@ -76,8 +76,8 @@ class Zex(metaclass=SingletonMeta):
         self.withdrawals = {}
         self.deposited_blocks = {
             "BST": 42665675,
-            "SEPOLIA": 6431127,
-            "HOLESKY": 2061351,
+            "SEP": 6431079,
+            "HOL": 2061292,
         }
         self.nonces = {}
         self.pair_lookup = {}
@@ -400,6 +400,21 @@ class Market:
             self._update_kline(sell_price, trade_amount)
 
         return True
+
+    def get_last_price(self):
+        return self.kline["Close"].iloc[-1]
+
+    def get_price_change_24h(self):
+        # Calculate the total time span of our data
+        total_span = self.kline.index[-1] - self.kline.index[0]
+
+        ms_in_24h = 24 * 60 * 60 * 1000
+        if total_span >= ms_in_24h:
+            prev_24h_index = 24 * 60 * 60
+            return (
+                self.kline["Close"].iloc[-1] - self.kline["Open"].iloc[-prev_24h_index]
+            )
+        return self.kline["Close"].iloc[-1] - self.kline["Open"].iloc[0]
 
     def _parse_transaction(self, tx: bytes):
         operation, amount, price, nonce, public, index = unpack(

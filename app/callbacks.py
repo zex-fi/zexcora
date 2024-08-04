@@ -23,22 +23,23 @@ def kline_event(manager: ConnectionManager):
             return
         subs = manager.subscriptions.copy()
         for channel, clients in subs.items():
-            symbol, details = channel.lower().split("@")
+            parts = channel.split("@")
+            symbol, details = parts[0], parts[1]
             if "kline" not in details or symbol != kline_symbol:
                 continue
 
             now = int(time.time() * 1000)
             last_candle = kline.iloc[len(kline) - 1]
             message = {
-                "stream": channel.lower(),
+                "stream": channel,
                 "data": {
                     "e": "kline",  # Event type
                     "E": int(time.time() * 1000),  # Event time
-                    "s": symbol.upper(),  # Symbol
+                    "s": symbol,  # Symbol
                     "k": {
                         "t": int(last_candle.name),  # Kline start time
                         "T": last_candle["CloseTime"],  # Kline close time
-                        "s": symbol.upper(),  # Symbol
+                        "s": symbol,  # Symbol
                         "i": "1m",  # Interval
                         "f": 100,  # First trade ID
                         "L": 200,  # Last trade ID
@@ -64,7 +65,7 @@ def kline_event(manager: ConnectionManager):
                 if ws not in manager.active_connections:
                     manager.disconnect()
 
-                await broadcast(manager, ws, channel.lower(), message)
+                await broadcast(manager, ws, channel, message)
 
     return f
 
@@ -73,7 +74,8 @@ def depth_event(manager: ConnectionManager):
     async def f(depth_symbol: str, depth: dict):
         subs = manager.subscriptions.copy()
         for channel, clients in subs.items():
-            symbol, details = channel.lower().split("@")
+            parts = channel.split("@")
+            symbol, details = parts[0], parts[1]
             if "depth" not in details or symbol != depth_symbol:
                 continue
 
@@ -85,8 +87,8 @@ def depth_event(manager: ConnectionManager):
                 await broadcast(
                     manager,
                     ws,
-                    channel.lower(),
-                    {"stream": channel.lower(), "data": depth},
+                    channel,
+                    {"stream": channel, "data": depth},
                 )
 
     return f

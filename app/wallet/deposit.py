@@ -11,6 +11,24 @@ from web3.middleware import geth_poa_middleware
 
 IS_RUNNING = True
 
+TOKENS = {
+    "BST": {
+        3: 1e6,
+        4: 1e6,
+        5: 1e8,
+    },
+    "SEP": {
+        1: 1e6,
+        2: 1e6,
+        3: 1e8,
+    },
+    "HOL": {
+        1: 1e6,
+        2: 1e6,
+        3: 1e8,
+    },
+}
+
 
 # Function to initialize Web3 instance for each network
 def initialize_web3(network) -> tuple[Web3, Contract]:
@@ -36,15 +54,19 @@ def create_tx(
     deposits, chain: str, from_block, to_block, timestamp, monitor: PrivateKey
 ):
     version = pack(">B", 1)
-    chain = chain.encode()
+    chain: bytes = chain.encode()
     block_range = pack(">QQ", from_block, to_block)
     tx = version + b"d" + chain + block_range + pack(">H", len(deposits))
     for deposit in deposits:
         prefix = "02" if deposit["pubKeyYParity"] == 0 else "03"
         pubKeyX = f"{deposit['pubKeyX']:#0{32}x}"[2:]
         public = bytes.fromhex(prefix + pubKeyX)
-        print(deposit["tokenIndex"], deposit["amount"] / 1e18, timestamp, "t")
-        tx += pack(">IdI", deposit["tokenIndex"], deposit["amount"] / 1e18, timestamp)
+        token_id = deposit["tokenIndex"]
+        amount = deposit["amount"] / TOKENS[chain.decode()].get(token_id, 1e18)
+
+        print(token_id, amount, timestamp, "t")
+
+        tx += pack(">IdI", token_id, amount, timestamp)
         tx += public
     tx += monitor.schnorr_sign(tx, bip340tag="zex")
     counter = 0

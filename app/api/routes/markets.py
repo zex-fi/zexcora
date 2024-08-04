@@ -1,13 +1,14 @@
 from fastapi import APIRouter
 
 from app import zex
+from app.models.response import ExchangeInfoResponse, Symbol
 
 router = APIRouter()
 
 
 @router.get("/depth")
 async def depth(symbol: str, limit: int = 500):
-    return zex.get_order_book(symbol, limit)
+    return zex.get_order_book(symbol.upper(), limit)
 
 
 @router.get("/trades")
@@ -18,6 +19,23 @@ async def trades(symbol: str, limit: int = 500):
 @router.get("/historicalTrades")
 async def historical_trades(symbol: str, limit: int = 500, fromId: int | None = None):
     raise NotImplementedError()
+
+
+@router.get("/exchangeInfo")
+async def exhange_info():
+    resp = ExchangeInfoResponse(
+        timezone="UTC",
+        symbols=[
+            Symbol(
+                symbol=name,
+                lastPrice=market.get_last_price(),
+                volume24h=0,
+                priceChange24h=market.get_price_change_24h(),
+            )
+            for name, market in zex.markets.items()
+        ],
+    )
+    return resp
 
 
 @router.get("/pairs")
@@ -44,7 +62,7 @@ async def klines(
     endTime: int | None = None,
     limit: int = 500,
 ):
-    base_klines = zex.get_kline(symbol.lower())
+    base_klines = zex.get_kline(symbol.upper())
     if len(base_klines) == 0:
         return []
     if not startTime:

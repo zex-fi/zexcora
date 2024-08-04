@@ -35,3 +35,15 @@ class OrderResponse(BaseModel):
 
 class NonceResponse(BaseModel):
     nonce: int
+
+
+class Symbol(BaseModel):
+    symbol: str
+    lastPrice: float
+    volume24h: float
+    priceChange24h: float
+
+
+class ExchangeInfoResponse(BaseModel):
+    timezone: str
+    symbols: list[Symbol]
