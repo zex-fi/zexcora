@@ -49,6 +49,8 @@ class Symbol(BaseModel):
     lastPrice: float
     volume24h: float
     priceChange24h: float
+    high24h: float
+    low24h: float
 
 
 class ExchangeInfoResponse(BaseModel):

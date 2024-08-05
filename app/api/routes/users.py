@@ -37,43 +37,45 @@ def user_balances(user: str) -> list[BalanceResponse]:
 def user_trades(user: str) -> list[TradeResponse]:
     user = bytes.fromhex(user)
     trades = zex.trades.get(user, [])
-    return [
-        {
+    resp = []
+    for time, amount, pair, name, tx in trades:
+        base_asset, quote_asset = pair.split("-")
+        trade = {
             "name": "buy" if name == BUY else "sell",
-            "t": t,
-            "base_chain": pair[0:3],
-            "base_token": pair[4],
-            "quote_chain": pair[5:8],
-            "quote_token": pair[9],
+            "t": time,
+            "base_chain": base_asset[:3],
+            "base_token": int(base_asset[4:]),
+            "quote_chain": quote_asset[:3],
+            "quote_token": int(quote_asset[4:]),
             "amount": amount,
             "price": unpack(">d", tx[24:32])[0],
             "nonce": unpack(">I", tx[36:40])[0],
             "index": unpack(">Q", tx[137:145])[0],
         }
-        for t, amount, pair, name, tx in trades
-    ]
+        resp.append(trade)
+    return resp
 
 
 @router.get("/user/{user}/orders")
 def user_orders(user: str) -> list[OrderResponse]:
     user = bytes.fromhex(user)
     orders = zex.orders.get(user, {})
-    orders = [
-        {
-            "name": "buy" if o[1] == BUY else "sell",
-            "base_chain": o[2:5].decode("ascii"),
-            "base_token": unpack(">I", o[5:9])[0],
-            "quote_chain": o[9:12].decode("ascii"),
-            "quote_token": unpack(">I", o[12:16])[0],
-            "amount": unpack(">d", o[16:24])[0],
-            "price": unpack(">d", o[24:32])[0],
-            "t": unpack(">I", o[32:36])[0],
-            "nonce": unpack(">I", o[36:40])[0],
-            "index": unpack(">Q", o[137:145])[0],
+    resp = []
+    for order in orders:
+        o = {
+            "name": "buy" if order[1] == BUY else "sell",
+            "base_chain": order[2:5].decode("ascii"),
+            "base_token": unpack(">I", order[5:9])[0],
+            "quote_chain": order[9:12].decode("ascii"),
+            "quote_token": unpack(">I", order[12:16])[0],
+            "amount": unpack(">d", order[16:24])[0],
+            "price": unpack(">d", order[24:32])[0],
+            "t": unpack(">I", order[32:36])[0],
+            "nonce": unpack(">I", order[36:40])[0],
+            "index": unpack(">Q", order[137:145])[0],
         }
-        for o in orders
-    ]
-    return orders
+        resp.append(o)
+    return resp
 
 
 @router.get("/user/{user}/nonce")

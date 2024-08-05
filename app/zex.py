@@ -176,24 +176,6 @@ class Zex(metaclass=SingletonMeta):
                 self.orders[public] = {}
                 self.nonces[public] = 0
 
-    def cancel(self, tx: bytes):
-        operation = tx[2]
-        base_token, quote_token = tx[3:10], tx[10:17]
-        amount, price = unpack("dd", tx[17:33])
-        public = tx[41:74]
-        order_slice = tx[2:41]
-        for order in self.orders[public]:
-            if order_slice not in order:
-                continue
-            self.amounts[order] = 0
-            if operation == BUY:
-                self.balances[quote_token][public] += amount * price
-            else:
-                self.balances[base_token][public] += amount
-            break
-        else:
-            raise Exception("order not found")
-
     def withdraw(self, tx: WithdrawTransaction):
         if self.nonces[tx.public] != tx.nonce:
             logger.debug(f"invalid nonce: {self.nonces[tx.public]} != {tx.nonce}")
@@ -366,6 +348,23 @@ class Market:
         self.zex.amounts[tx] = amount
         self.zex.orders[public][tx] = True
 
+    def cancel(self, tx: bytes):
+        operation = tx[2]
+        amount, price = unpack(">dd", tx[17:33])
+        public = tx[41:74]
+        order_slice = tx[2:41]
+        for order in self.zex.orders[public]:
+            if order_slice not in order:
+                continue
+            self.zex.amounts[order] = 0
+            if operation == BUY:
+                self.quote_token_balances[public] += amount * price
+            else:
+                self.base_token_balances[public] += amount
+            break
+        else:
+            raise Exception("order not found")
+
     def match(self, t: int) -> bool:
         if not self.buy_orders or not self.sell_orders:
             return False
@@ -425,6 +424,26 @@ class Market:
             prev_24h_index = 24 * 60 * 60
             return self.kline["Volume"].iloc[-prev_24h_index:].sum()
         return self.kline["Volume"].sum()
+
+    def get_high_24h(self):
+        # Calculate the total time span of our data
+        total_span = self.kline.index[-1] - self.kline.index[0]
+
+        ms_in_24h = 24 * 60 * 60 * 1000
+        if total_span >= ms_in_24h:
+            prev_24h_index = 24 * 60 * 60
+            return self.kline["High"].iloc[-prev_24h_index:].max()
+        return self.kline["High"].max()
+
+    def get_low_24h(self):
+        # Calculate the total time span of our data
+        total_span = self.kline.index[-1] - self.kline.index[0]
+
+        ms_in_24h = 24 * 60 * 60 * 1000
+        if total_span >= ms_in_24h:
+            prev_24h_index = 24 * 60 * 60
+            return self.kline["Low"].iloc[-prev_24h_index:].min()
+        return self.kline["Low"].min()
 
     def _parse_transaction(self, tx: bytes):
         operation, amount, price, nonce, public, index = unpack(

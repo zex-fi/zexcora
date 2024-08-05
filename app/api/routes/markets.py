@@ -37,6 +37,8 @@ async def exhange_info():
                 lastPrice=market.get_last_price(),
                 volume24h=market.get_volume_24h(),
                 priceChange24h=market.get_price_change_24h(),
+                high24h=market.get_high_24h(),
+                low24h=market.get_low_24h(),
             )
             for name, market in zex.markets.items()
         ],
