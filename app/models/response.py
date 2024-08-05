@@ -17,7 +17,6 @@ class TradeResponse(BaseModel):
     amount: float
     price: float
     nonce: float
-    index: int
 
 
 class OrderResponse(BaseModel):

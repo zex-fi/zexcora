@@ -37,9 +37,10 @@ def user_balances(user: str) -> list[BalanceResponse]:
 def user_trades(user: str) -> list[TradeResponse]:
     user = bytes.fromhex(user)
     trades = zex.trades.get(user, [])
-    resp = []
+    resp = {}
     for time, amount, pair, name, tx in trades:
         base_asset, quote_asset = pair.split("-")
+        price, nonce = unpack(">d4xI", tx[24:40])
         trade = {
             "name": "buy" if name == BUY else "sell",
             "t": time,
@@ -48,12 +49,14 @@ def user_trades(user: str) -> list[TradeResponse]:
             "quote_chain": quote_asset[:3],
             "quote_token": int(quote_asset[4:]),
             "amount": amount,
-            "price": unpack(">d", tx[24:32])[0],
-            "nonce": unpack(">I", tx[36:40])[0],
-            "index": unpack(">Q", tx[137:145])[0],
+            "price": price,
+            "nonce": nonce,
         }
-        resp.append(trade)
-    return resp
+        if nonce in resp:
+            resp[nonce]["amount"] += amount
+        else:
+            resp[nonce] = trade
+    return [value for _, value in sorted(resp.items(), key=lambda x: x[0])]
 
 
 @router.get("/user/{user}/orders")
