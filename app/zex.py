@@ -75,7 +75,7 @@ class Zex(metaclass=SingletonMeta):
         self.orders = {}
         self.withdrawals = {}
         self.deposited_blocks = {
-            "BST": 42665675,
+            "BST": 42723804,
             "SEP": 6431079,
             "HOL": 2061292,
         }
@@ -130,7 +130,7 @@ class Zex(metaclass=SingletonMeta):
                 # if self.orderbooks[pair].match_instantly(tx):
                 #     modified_pairs.add(pair)
                 #     continue
-                t = unpack("I", tx[32:36])[0]
+                t = unpack(">I", tx[32:36])[0]
                 self.markets[pair].place(tx)
                 while self.markets[pair].match(t):
                     pass
@@ -401,6 +401,8 @@ class Market:
         return True
 
     def get_last_price(self):
+        if len(self.kline) == 0:
+            return 0
         return self.kline["Close"].iloc[-1]
 
     def get_price_change_24h(self):
@@ -454,7 +456,9 @@ class Market:
     def _validate_nonce(self, public: bytes, nonce: int) -> bool:
         if self.zex.nonces[public] != nonce:
             logger.debug(
-                f"Invalid nonce: expected {self.zex.nonces[public]}, got {nonce}"
+                "Invalid nonce: expected {expected_nonce}, got {nonce}",
+                expected_nonce=self.zex.nonces[public],
+                nonce=nonce,
             )
             return False
         self.zex.nonces[public] += 1
@@ -467,7 +471,7 @@ class Market:
         balance = self.quote_token_balances.get(public, 0)
         if balance < required:
             logger.debug(
-                "Insufficient balance",
+                "Insufficient balance, current balance: {current_balance}, quote token: {quote_token}",
                 current_balance=balance,
                 quote_token=self.quote_token,
             )
@@ -486,7 +490,7 @@ class Market:
         balance = self.base_token_balances.get(public, 0)
         if balance < amount:
             logger.debug(
-                "Insufficient balance",
+                "Insufficient balance, current balance: {current_balance}, base token: {base_token}",
                 current_balance=balance,
                 base_token=self.base_token,
             )

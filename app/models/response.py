@@ -16,7 +16,7 @@ class TradeResponse(BaseModel):
     quote_token: int
     amount: float
     price: float
-    nonce: float
+    nonce: int
 
 
 class OrderResponse(BaseModel):
@@ -29,7 +29,6 @@ class OrderResponse(BaseModel):
     price: float
     t: int
     nonce: int
-    index: int
 
 
 class NonceResponse(BaseModel):
