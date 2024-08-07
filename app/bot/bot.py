@@ -100,7 +100,9 @@ class ZexBot:
                 + pack(">d", price)
             )
         if verbose:
-            print(f"maker: {maker}, side: {self.side}, price: {price}, vol: {volume}")
+            print(
+                f"pair: {self.pair}, maker: {maker}, side: {self.side}, price: {price}, vol: {volume}"
+            )
         tx = version + tx
         name = tx[1]
         t = int(time.time())

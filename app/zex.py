@@ -270,12 +270,12 @@ class Zex(metaclass=SingletonMeta):
         return self.markets[pair].kline
 
     def _get_tx_pair(self, tx: bytes):
-        if tx[5:16] in self.pair_lookup:
-            return self.pair_lookup[tx[5:16]]
+        if tx[2:16] in self.pair_lookup:
+            return self.pair_lookup[tx[2:16]]
         base_token = f"{tx[2:5].upper().decode()}:{unpack('>I', tx[5:9])[0]}"
         quote_token = f"{tx[9:12].upper().decode()}:{unpack('>I', tx[12:16])[0]}"
         pair = f"{base_token}-{quote_token}"
-        self.pair_lookup[tx[5:16]] = (base_token, quote_token, pair)
+        self.pair_lookup[tx[2:16]] = (base_token, quote_token, pair)
         return base_token, quote_token, pair
 
 
@@ -437,8 +437,11 @@ class Market:
             prev_24h_index = 24 * 60 * 60
             open_price = self.kline["Open"].iloc[-prev_24h_index]
             close_price = self.kline["Close"].iloc[-1]
-            return (close_price - open_price) / open_price
-        return self.kline["Close"].iloc[-1] - self.kline["Open"].iloc[0]
+            return ((close_price - open_price) / open_price) * 100
+
+        close_price = self.kline["Close"].iloc[-1]
+        open_price = self.kline["Open"].iloc[0]
+        return ((close_price - open_price) / open_price) * 100
 
     def get_price_change_7D_percent(self):
         if len(self.kline) == 0:

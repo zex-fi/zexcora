@@ -26,6 +26,9 @@ if __name__ == "__main__":
                 ("SEP", [1, 2, 3, 4]),
             ]:
                 for base_token_id in token_ids:
+                    print(
+                        f"{base_chain}:{base_token_id}-{quote_chain}:{quote_token_id}"
+                    )
                     buyer_bot = ZexBot(
                         u1_private,
                         f"{base_chain}:{base_token_id}-{quote_chain}:{quote_token_id}",
