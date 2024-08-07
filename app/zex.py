@@ -87,14 +87,15 @@ class Zex(metaclass=SingletonMeta):
             client_pub = b"\x02 \xfa;\x9b\xb1\xa9\xc7\x9a$\xe2>\x92\xce\x83\xea\xa2\xb8\xd5\x8b\x00r\x8fifG\xa5\x808\x9aFZ\x17"
             bot1_pub = b"\x02\x08v\x02\xe7\x1a\x82wzz\x9c#Kf\x8a\x1d\xc9B\xc9\xa2\x9b\xf3\x1c\x93\x11T\xeb3\x1c!\xb6\xf6\xfd"
             bot2_pub = b"\x03\x8c\xb5\xa2\x9c \xc2]\xb6Gb\x83\x13\xa9\n\xc3\xe51\x86\xcc&\x8f\xff\x91\xb0\xe0:*+\x18\xba\xa5P"
-            self.balances["BST:1"] = {
-                client_pub: 1_000_000_000,
-                bot2_pub: 2_500_000_000,
-            }
-            self.balances["BST:2"] = {
-                client_pub: 1_000_000_000,
-                bot1_pub: 2_500_000_000,
-            }
+            for chain in ["BST", "SEP", "HOL"]:
+                for token_id in [1, 2, 3, 4, 5]:
+                    self.balances[f"{chain}:{token_id}"] = {
+                        bot1_pub: 1_000_000,
+                        bot2_pub: 2_000_000,
+                    }
+            for chain in ["HOL"]:
+                for token_id in [1, 2, 3, 4]:
+                    self.balances[f"{chain}:{token_id}"][client_pub] = 1_000
             for public in [client_pub, bot1_pub, bot2_pub]:
                 self.trades[public] = deque()
                 self.orders[public] = {}
@@ -131,7 +132,9 @@ class Zex(metaclass=SingletonMeta):
                 #     modified_pairs.add(pair)
                 #     continue
                 t = unpack(">I", tx[32:36])[0]
-                self.markets[pair].place(tx)
+                ok = self.markets[pair].place(tx)
+                if not ok:
+                    continue
                 while self.markets[pair].match(t):
                     pass
                 modified_pairs.add(pair)
@@ -331,22 +334,26 @@ class Market:
             self.last_update_id = self.final_id
         return data
 
-    def place(self, tx: bytes):
+    def place(self, tx: bytes) -> bool:
         operation, amount, price, nonce, public, index = self._parse_transaction(tx)
 
         if not self._validate_nonce(public, nonce):
             return
 
         if operation == BUY:
-            self._place_buy_order(public, amount, price, index, tx)
+            ok = self._place_buy_order(public, amount, price, index, tx)
         elif operation == SELL:
-            self._place_sell_order(public, amount, price, index, tx)
+            ok = self._place_sell_order(public, amount, price, index, tx)
         else:
             raise ValueError(f"Unsupported transaction type: {operation}")
+
+        if not ok:
+            return False
 
         self.final_id += 1
         self.zex.amounts[tx] = amount
         self.zex.orders[public][tx] = True
+        return True
 
     def cancel(self, tx: bytes):
         operation = tx[2]
@@ -406,6 +413,8 @@ class Market:
         return self.kline["Close"].iloc[-1]
 
     def get_price_change_24h(self):
+        if len(self.kline) == 0:
+            return 0
         # Calculate the total time span of our data
         total_span = self.kline.index[-1] - self.kline.index[0]
 
@@ -417,7 +426,37 @@ class Market:
             )
         return self.kline["Close"].iloc[-1] - self.kline["Open"].iloc[0]
 
+    def get_price_change_24h_percent(self):
+        if len(self.kline) == 0:
+            return 0
+        # Calculate the total time span of our data
+        total_span = self.kline.index[-1] - self.kline.index[0]
+
+        ms_in_24h = 24 * 60 * 60 * 1000
+        if total_span >= ms_in_24h:
+            prev_24h_index = 24 * 60 * 60
+            open_price = self.kline["Open"].iloc[-prev_24h_index]
+            close_price = self.kline["Close"].iloc[-1]
+            return (close_price - open_price) / open_price
+        return self.kline["Close"].iloc[-1] - self.kline["Open"].iloc[0]
+
+    def get_price_change_7D_percent(self):
+        if len(self.kline) == 0:
+            return 0
+        # Calculate the total time span of our data
+        total_span = self.kline.index[-1] - self.kline.index[0]
+
+        ms_in_7D = 7 * 24 * 60 * 60 * 1000
+        if total_span >= ms_in_7D:
+            prev_7D_index = 7 * 24 * 60 * 60
+            open_price = self.kline["Open"].iloc[-prev_7D_index]
+            close_price = self.kline["Close"].iloc[-1]
+            return (close_price - open_price) / open_price
+        return self.kline["Close"].iloc[-1] - self.kline["Open"].iloc[0]
+
     def get_volume_24h(self):
+        if len(self.kline) == 0:
+            return 0
         # Calculate the total time span of our data
         total_span = self.kline.index[-1] - self.kline.index[0]
 
@@ -428,6 +467,8 @@ class Market:
         return self.kline["Volume"].sum()
 
     def get_high_24h(self):
+        if len(self.kline) == 0:
+            return 0
         # Calculate the total time span of our data
         total_span = self.kline.index[-1] - self.kline.index[0]
 
@@ -438,6 +479,8 @@ class Market:
         return self.kline["High"].max()
 
     def get_low_24h(self):
+        if len(self.kline) == 0:
+            return 0
         # Calculate the total time span of our data
         total_span = self.kline.index[-1] - self.kline.index[0]
 
@@ -466,7 +509,7 @@ class Market:
 
     def _place_buy_order(
         self, public: bytes, amount: float, price: float, index: int, tx: bytes
-    ):
+    ) -> bool:
         required = amount * price
         balance = self.quote_token_balances.get(public, 0)
         if balance < required:
@@ -475,7 +518,7 @@ class Market:
                 current_balance=balance,
                 quote_token=self.quote_token,
             )
-            return
+            return False
 
         heapq.heappush(self.buy_orders, (-price, index, tx))
         with self.order_book_lock:
@@ -483,10 +526,11 @@ class Market:
             self._order_book_updates["bids"][price] = self.bids_order_book[price]
 
         self.quote_token_balances[public] = balance - required
+        return True
 
     def _place_sell_order(
         self, public: bytes, amount: float, price: float, index: int, tx: bytes
-    ):
+    ) -> bool:
         balance = self.base_token_balances.get(public, 0)
         if balance < amount:
             logger.debug(
@@ -494,7 +538,7 @@ class Market:
                 current_balance=balance,
                 base_token=self.base_token,
             )
-            return
+            return False
 
         heapq.heappush(self.sell_orders, (price, index, tx))
         with self.order_book_lock:
@@ -502,6 +546,7 @@ class Market:
             self._order_book_updates["asks"][price] = self.asks_order_book[price]
 
         self.base_token_balances[public] = balance - amount
+        return True
 
     def _update_orders(
         self,

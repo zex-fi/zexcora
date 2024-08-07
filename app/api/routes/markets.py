@@ -36,15 +36,14 @@ async def exhange_info():
                 ),
                 lastPrice=market.get_last_price(),
                 volume24h=market.get_volume_24h(),
-                priceChange24h=market.get_price_change_24h(),
+                priceChange24h=market.get_price_change_24h_percent(),
                 high24h=market.get_high_24h(),
                 low24h=market.get_low_24h(),
+                priceChange7D=market.get_price_change_7D_percent(),
             )
             for name, market in zex.markets.items()
         ],
     )
-    if zex.test_mode:
-        resp.symbols = resp.symbols * 10
     return resp
 
 

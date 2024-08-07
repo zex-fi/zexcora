@@ -49,6 +49,7 @@ class Symbol(BaseModel):
     priceChange24h: float
     high24h: float
     low24h: float
+    priceChange7D: float
 
 
 class ExchangeInfoResponse(BaseModel):
