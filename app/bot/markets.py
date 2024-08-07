@@ -8,7 +8,7 @@ BEST_BIDS = {
     "BST": {
         1: {  # ALICE
             "HOL": {
-                1: (10, 100),  # (price, volume)
+                1: (9.5, 100),  # (price, volume)
                 2: (10.1, 90),  # (price, volume)
                 3: (0.0001, 1),  # (price, volume)
             },
@@ -85,7 +85,7 @@ BEST_ASKS = {
     "BST": {
         1: {  # ALICE
             "HOL": {
-                1: (10, 100),  # (price, volume)
+                1: (10.5, 100),  # (price, volume)
                 2: (10.1, 90),  # (price, volume)
                 3: (0.0001, 1),  # (price, volume)
             },

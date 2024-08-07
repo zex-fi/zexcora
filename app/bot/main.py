@@ -3,7 +3,7 @@ from struct import pack
 from threading import Lock, Thread
 
 from app.bot import ZexBot
-from app.bot.markets import QUOTES, BASES, BEST_BIDS, BEST_ASKS
+from app.bot.markets import BASES, BEST_ASKS, BEST_BIDS, QUOTES
 
 DEPOSIT, WITHDRAW, BUY, SELL, CANCEL = b"dwbsc"
 
@@ -16,7 +16,7 @@ ip = os.getenv("HOST")
 port = int(os.getenv("PORT"))
 
 
-if __name__ == "__main__":
+def start_threads() -> list[Thread]:
     threads: list[Thread] = []
     bot1_lock = Lock()
     bot2_lock = Lock()
@@ -25,6 +25,9 @@ if __name__ == "__main__":
         for quote_token_id in quote_token_ids:
             for base_chain, base_token_ids in BASES.items():
                 for base_token_id in base_token_ids:
+                    print(
+                        f"{base_chain}:{base_token_id}-{quote_chain}:{quote_token_id}"
+                    )
                     buyer_bot = ZexBot(
                         private_key=(private_seed_int + idx).to_bytes(32, "big"),
                         pair=f"{base_chain}:{base_token_id}-{quote_chain}:{quote_token_id}",
@@ -57,5 +60,10 @@ if __name__ == "__main__":
                     t2.start()
                     threads.extend([t1, t2])
                     idx += 2
+    return threads
+
+
+if __name__ == "__main__":
+    threads = start_threads()
     for t in threads:
         t.join()
