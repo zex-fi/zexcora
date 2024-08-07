@@ -22,13 +22,15 @@ port = int(os.getenv("PORT") or 8000)
 class ZexBot:
     def __init__(
         self,
-        private_key: str,
+        private_key: bytes,
         pair: str,
         side: str,
+        best_bid: tuple[float, float],
+        best_ask: tuple[float, float],
         lock: Lock,
         seed: int | None = 1,
     ) -> None:
-        self.privkey = PrivateKey(bytes(bytearray.fromhex(private_key)), raw=True)
+        self.privkey = PrivateKey(private_key, raw=True)
         self.pair = pair
         self.side = side
         self.send_tx_lock = lock
@@ -40,10 +42,12 @@ class ZexBot:
         self.orders = set()
         self.websocket: WebSocketApp = None
 
-        self.bids = {1950.0: 10}
-        self.best_bid = (1950.0, 10)
-        self.asks = {2050.0: 11}
-        self.best_ask = (2050.0, 11)
+        # self.best_bid = (1950.0, 10)
+        self.best_bid = best_bid
+        self.bids = {best_bid[0]: best_bid[1]}
+
+        self.best_ask = best_ask
+        self.asks = {best_ask[0]: best_ask[1]}
 
     def on_messsage_wrapper(self):
         def on_message(_, msg):
@@ -63,9 +67,9 @@ class ZexBot:
                             del self.asks[price]
                     else:
                         self.asks[price] = qty
-                best_bid_price = sorted(self.bids.keys())[-1]
+                best_bid_price = max(self.bids.keys())
                 self.best_bid = (best_bid_price, self.bids[best_bid_price])
-                best_ask_price = sorted(self.asks.keys())[0]
+                best_ask_price = min(self.asks.keys())
                 self.best_ask = (best_ask_price, self.asks[best_ask_price])
                 print("self.best_bid", self.best_bid)
                 print("self.best_ask", self.best_ask)
@@ -133,7 +137,7 @@ class ZexBot:
         )
         Thread(target=self.websocket.run_forever, kwargs={"reconnect": 5}).start()
         while True:
-            time.sleep(5)
+            time.sleep(1)
             maker = self.rng.choices([True, False], [0.25, 0.75])[0]
             price = 0
             if maker:
@@ -155,11 +159,10 @@ class ZexBot:
             while volume < 0.0001:
                 volume = round(self.rng.random() * 0.02, 4)
 
+            resp = requests.get(
+                f"http://{ip}:{port}/api/v1/user/{self.pubkey.hex()}/nonce"
+            )
+            self.nonce = resp.json()["nonce"]
             with self.send_tx_lock:
-                resp = requests.get(
-                    f"http://{ip}:{port}/api/v1/user/{self.pubkey.hex()}/nonce"
-                )
-                self.nonce = resp.json()["nonce"]
                 tx = self.create_order(price, volume, maker=maker).decode("latin-1")
                 requests.post(f"http://{ip}:{port}/api/v1/txs", json=[tx])
-                time.sleep(0.1)

@@ -84,22 +84,34 @@ class Zex(metaclass=SingletonMeta):
 
         self.test_mode = os.getenv("TEST_MODE")
         if self.test_mode:
-            client_pub = b"\x02 \xfa;\x9b\xb1\xa9\xc7\x9a$\xe2>\x92\xce\x83\xea\xa2\xb8\xd5\x8b\x00r\x8fifG\xa5\x808\x9aFZ\x17"
-            bot1_pub = b"\x02\x08v\x02\xe7\x1a\x82wzz\x9c#Kf\x8a\x1d\xc9B\xc9\xa2\x9b\xf3\x1c\x93\x11T\xeb3\x1c!\xb6\xf6\xfd"
-            bot2_pub = b"\x03\x8c\xb5\xa2\x9c \xc2]\xb6Gb\x83\x13\xa9\n\xc3\xe51\x86\xcc&\x8f\xff\x91\xb0\xe0:*+\x18\xba\xa5P"
-            for chain in ["BST", "SEP", "HOL"]:
-                for token_id in [1, 2, 3, 4, 5]:
-                    self.balances[f"{chain}:{token_id}"] = {
-                        bot1_pub: 1_000_000,
-                        bot2_pub: 2_000_000,
-                    }
-            for chain in ["HOL"]:
-                for token_id in [1, 2, 3, 4]:
-                    self.balances[f"{chain}:{token_id}"][client_pub] = 1_000
-            for public in [client_pub, bot1_pub, bot2_pub]:
-                self.trades[public] = deque()
-                self.orders[public] = {}
-                self.nonces[public] = 0
+            from secp256k1 import PrivateKey
+
+            private_seed = (
+                "31a84594060e103f5a63eb742bd46cf5f5900d8406e2726dedfc61c7cf43ebac"
+            )
+            private_seed_int = int.from_bytes(
+                bytearray.fromhex(private_seed), byteorder="big"
+            )
+
+            TOKENS = {
+                "HOL": [1, 2, 3],
+                "BST": [1, 2, 3, 4, 5, 6],
+                "SEP": [1, 2, 3, 4],
+            }
+
+            for i in range(100):
+                bot_private_key = (private_seed_int + i).to_bytes(32, "big")
+                bot_priv = PrivateKey(bot_private_key, raw=True)
+                bot_pub = bot_priv.pubkey.serialize()
+                self.trades[bot_pub] = deque()
+                self.orders[bot_pub] = {}
+                self.nonces[bot_pub] = 0
+
+                for chain, token_ids in TOKENS.items():
+                    for token_id in token_ids:
+                        if f"{chain}:{token_id}" not in self.balances:
+                            self.balances[f"{chain}:{token_id}"] = {}
+                        self.balances[f"{chain}:{token_id}"][bot_pub] = 2_000_000 + i
 
     @line_profiler.profile
     def process(self, txs: list[bytes]):
@@ -196,7 +208,6 @@ class Zex(metaclass=SingletonMeta):
 
     def get_order_book_update(self, pair: str):
         order_book_update = self.markets[pair].get_order_book_update()
-        print(order_book_update)
         now = int(unix_time() * 1000)
         return {
             "e": "depthUpdate",  # Event type
@@ -437,10 +448,14 @@ class Market:
             prev_24h_index = 24 * 60 * 60
             open_price = self.kline["Open"].iloc[-prev_24h_index]
             close_price = self.kline["Close"].iloc[-1]
+            if open_price == 0:
+                return 0
             return ((close_price - open_price) / open_price) * 100
 
         close_price = self.kline["Close"].iloc[-1]
         open_price = self.kline["Open"].iloc[0]
+        if open_price == 0:
+            return 0
         return ((close_price - open_price) / open_price) * 100
 
     def get_price_change_7D_percent(self):

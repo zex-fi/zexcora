@@ -3,13 +3,15 @@ from struct import pack
 from threading import Lock, Thread
 
 from app.bot import ZexBot
+from app.bot.markets import QUOTES, BASES, BEST_BIDS, BEST_ASKS
 
 DEPOSIT, WITHDRAW, BUY, SELL, CANCEL = b"dwbsc"
 
 version = pack(">B", 1)
 
-u1_private = "31a84594060e103f5a63eb742bd46cf5f5900d8406e2726dedfc61c7cf43ebad"
-u2_private = "31a84594060e103f5a63eb742bd46cf5f5900d8406e2726dedfc61c7cf43ebac"
+private_seed = "31a84594060e103f5a63eb742bd46cf5f5900d8406e2726dedfc61c7cf43ebac"
+private_seed_int = int.from_bytes(bytearray.fromhex(private_seed), byteorder="big")
+
 ip = os.getenv("HOST")
 port = int(os.getenv("PORT"))
 
@@ -19,29 +21,35 @@ if __name__ == "__main__":
     bot1_lock = Lock()
     bot2_lock = Lock()
     idx = 0
-    for quote_chain in ["HOL"]:
-        for quote_token_id in [1, 2, 3, 4]:
-            for base_chain, token_ids in [
-                ("BST", [1, 2, 3, 4, 5, 6]),
-                ("SEP", [1, 2, 3, 4]),
-            ]:
-                for base_token_id in token_ids:
-                    print(
-                        f"{base_chain}:{base_token_id}-{quote_chain}:{quote_token_id}"
-                    )
+    for quote_chain, quote_token_ids in QUOTES.items():
+        for quote_token_id in quote_token_ids:
+            for base_chain, base_token_ids in BASES.items():
+                for base_token_id in base_token_ids:
                     buyer_bot = ZexBot(
-                        u1_private,
-                        f"{base_chain}:{base_token_id}-{quote_chain}:{quote_token_id}",
-                        "buy",
-                        bot1_lock,
-                        idx,
+                        private_key=(private_seed_int + idx).to_bytes(32, "big"),
+                        pair=f"{base_chain}:{base_token_id}-{quote_chain}:{quote_token_id}",
+                        side="buy",
+                        best_bid=BEST_BIDS[base_chain][base_token_id][quote_chain][
+                            quote_token_id
+                        ],
+                        best_ask=BEST_ASKS[base_chain][base_token_id][quote_chain][
+                            quote_token_id
+                        ],
+                        lock=bot1_lock,
+                        seed=idx,
                     )
                     seller_bot = ZexBot(
-                        u2_private,
-                        f"{base_chain}:{base_token_id}-{quote_chain}:{quote_token_id}",
-                        "sell",
-                        bot2_lock,
-                        idx + 1,
+                        private_key=(private_seed_int + idx + 1).to_bytes(32, "big"),
+                        pair=f"{base_chain}:{base_token_id}-{quote_chain}:{quote_token_id}",
+                        side="sell",
+                        best_bid=BEST_BIDS[base_chain][base_token_id][quote_chain][
+                            quote_token_id
+                        ],
+                        best_ask=BEST_ASKS[base_chain][base_token_id][quote_chain][
+                            quote_token_id
+                        ],
+                        lock=bot2_lock,
+                        seed=idx + 1,
                     )
                     t1 = Thread(target=buyer_bot.run)
                     t2 = Thread(target=seller_bot.run)

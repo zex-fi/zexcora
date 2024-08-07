@@ -41,13 +41,23 @@ def initialize_web3(network) -> tuple[Web3, Contract]:
 
 
 # Function to get deposits
-def get_deposits(web3: Web3, contract: Contract, block, block_confirmation):
+async def get_deposits(web3: Web3, contract: Contract, block, block_confirmation):
     latest_block = web3.eth.block_number
     if block > latest_block - block_confirmation:
         return block, []
-    events = contract.events.Deposit.get_logs(
-        fromBlock=block, toBlock=latest_block - block_confirmation
-    )
+    failed = True
+    while failed and IS_RUNNING:
+        try:
+            events = contract.events.Deposit.get_logs(
+                fromBlock=block, toBlock=latest_block - block_confirmation
+            )
+            failed = False
+        except Exception as e:
+            print(e)
+            await asyncio.sleep(5)
+            continue
+    if failed:
+        return block, []
     return latest_block - block_confirmation, [dict(event["args"]) for event in events]
 
 
@@ -92,7 +102,7 @@ async def run_monitor(network: dict, api_url: str, monitor: PrivateKey):
             await asyncio.sleep(block_duration)
             continue
 
-        to_block, deposits = get_deposits(
+        to_block, deposits = await get_deposits(
             web3, contract, processed_block, blocks_confirmation
         )
         processed_block = to_block
