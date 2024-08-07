@@ -21,10 +21,11 @@ if __name__ == "__main__":
     idx = 0
     for quote_chain in ["HOL"]:
         for quote_token_id in [1, 2, 3, 4]:
-            for base_chain in ["BST", "SEP", "HOL"]:
-                for base_token_id in [1, 2, 3, 4, 5]:
-                    if base_chain == "HOL" and quote_token_id == base_token_id:
-                        continue
+            for base_chain, token_ids in [
+                ("BST", [1, 2, 3, 4, 5, 6]),
+                ("SEP", [1, 2, 3, 4]),
+            ]:
+                for base_token_id in token_ids:
                     buyer_bot = ZexBot(
                         u1_private,
                         f"{base_chain}:{base_token_id}-{quote_chain}:{quote_token_id}",
