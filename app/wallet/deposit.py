@@ -43,7 +43,7 @@ def initialize_web3(network) -> tuple[Web3, Contract]:
 # Function to get deposits
 def get_deposits(web3: Web3, contract: Contract, block, block_confirmation):
     latest_block = web3.eth.block_number
-    if block < latest_block - block_confirmation:
+    if block > latest_block - block_confirmation:
         return block, []
     events = contract.events.Deposit.get_logs(
         fromBlock=block, toBlock=latest_block - block_confirmation
