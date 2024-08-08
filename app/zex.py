@@ -86,6 +86,16 @@ class Zex(metaclass=SingletonMeta):
         if self.test_mode:
             from secp256k1 import PrivateKey
 
+            client_private = (
+                "31a84594060e103f5a63eb742bd46cf5f5900d8406e2726dedfc61c7cf43eba0"
+            )
+            client_priv = PrivateKey(bytes(bytearray.fromhex(client_private)), raw=True)
+            client_pub = client_priv.pubkey.serialize()
+
+            self.trades[client_pub] = deque()
+            self.orders[client_pub] = {}
+            self.nonces[client_pub] = 0
+
             private_seed = (
                 "31a84594060e103f5a63eb742bd46cf5f5900d8406e2726dedfc61c7cf43ebac"
             )
@@ -112,6 +122,7 @@ class Zex(metaclass=SingletonMeta):
                         if f"{chain}:{token_id}" not in self.balances:
                             self.balances[f"{chain}:{token_id}"] = {}
                         self.balances[f"{chain}:{token_id}"][bot_pub] = 2_000_000 + i
+                        self.balances[f"{chain}:{token_id}"][client_pub] = 1_000_000
 
     @line_profiler.profile
     def process(self, txs: list[bytes]):
