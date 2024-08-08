@@ -75,7 +75,7 @@ class Zex(metaclass=SingletonMeta):
         self.orders = {}
         self.withdrawals = {}
         self.deposited_blocks = {
-            "BST": 42723804,
+            "BST": 42803038,
             "SEP": 6431079,
             "HOL": 2061292,
         }
@@ -121,7 +121,9 @@ class Zex(metaclass=SingletonMeta):
                     for token_id in token_ids:
                         if f"{chain}:{token_id}" not in self.balances:
                             self.balances[f"{chain}:{token_id}"] = {}
-                        self.balances[f"{chain}:{token_id}"][bot_pub] = 2_000_000 + i
+                        self.balances[f"{chain}:{token_id}"][bot_pub] = (
+                            9_000_000_000_000 + i
+                        )
                         self.balances[f"{chain}:{token_id}"][client_pub] = 1_000_000
 
     @line_profiler.profile
