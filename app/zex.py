@@ -7,6 +7,7 @@ from copy import deepcopy
 from struct import unpack
 from threading import Lock
 from time import time as unix_time
+from typing import IO
 
 import line_profiler
 import pandas as pd
@@ -15,6 +16,7 @@ from loguru import logger
 from .models.transaction import (
     WithdrawTransaction,
 )
+from .proto import zex_pb2
 from .verify import chunkify, verify
 
 DEPOSIT, WITHDRAW, BUY, SELL, CANCEL = b"dwbsc"
@@ -61,23 +63,30 @@ class Zex(metaclass=SingletonMeta):
         self,
         kline_callback: Callable[[str, pd.DataFrame], None],
         depth_callback: Callable[[str, dict], None],
+        state_dest: str,
+        light_node: bool = False,
         benchmark_mode=False,
     ):
         self.kline_callback = kline_callback
         self.depth_callback = depth_callback
+        self.state_dest = state_dest
+        self.light_node = light_node
+        self.save_frequency = 10_000  # save state every N transactions
 
         self.benchmark_mode = benchmark_mode
 
+        self.last_tx_index = 0
+        self.save_state_tx_index_threshold = self.save_frequency
         self.markets: dict[str, Market] = {}
         self.balances = {}
         self.amounts = {}
         self.trades = {}
         self.orders = {}
-        self.withdrawals = {}
+        self.withdrawals: dict[str, dict[bytes, list[WithdrawTransaction]]] = {}
         self.deposited_blocks = {
-            "BST": 42803038,
-            "SEP": 6431079,
-            "HOL": 2061292,
+            "BST": 43033527,
+            "SEP": 6511941,
+            "HOL": 2145016,
         }
         self.nonces = {}
         self.pair_lookup = {}
@@ -104,6 +113,8 @@ class Zex(metaclass=SingletonMeta):
             )
 
             TOKENS = {
+                "BTC": [0],
+                "XMR": [0],
                 "HOL": [1, 2, 3],
                 "BST": [1, 2, 3, 4, 5, 6],
                 "SEP": [1, 2, 3, 4],
@@ -126,8 +137,188 @@ class Zex(metaclass=SingletonMeta):
                         )
                         self.balances[f"{chain}:{token_id}"][client_pub] = 1_000_000
 
+    def to_protobuf(self) -> zex_pb2.ZexState:
+        state = zex_pb2.ZexState()
+
+        state.last_tx_index = self.last_tx_index
+
+        for pair, market in self.markets.items():
+            pb_market = state.markets[pair]
+            pb_market.base_token = market.base_token
+            pb_market.quote_token = market.quote_token
+            for order in market.buy_orders:
+                pb_order = pb_market.buy_orders.add()
+                pb_order.price = -order[0]  # Negate price for buy orders
+                pb_order.index = order[1]
+                pb_order.tx = order[2]
+            for order in market.sell_orders:
+                pb_order = pb_market.sell_orders.add()
+                pb_order.price = order[0]
+                pb_order.index = order[1]
+                pb_order.tx = order[2]
+            for price, amount in market.bids_order_book.items():
+                entry = pb_market.bids_order_book.add()
+                entry.price = price
+                entry.amount = amount
+            for price, amount in market.asks_order_book.items():
+                entry = pb_market.asks_order_book.add()
+                entry.price = price
+                entry.amount = amount
+            pb_market.first_id = market.first_id
+            pb_market.final_id = market.final_id
+            pb_market.last_update_id = market.last_update_id
+            pb_market.kline = market.kline.to_json().encode()
+
+        for token, balances in self.balances.items():
+            pb_balance = state.balances[token]
+            for public, amount in balances.items():
+                entry = pb_balance.balances.add()
+                entry.public_key = public
+                entry.amount = amount
+
+        for tx, amount in self.amounts.items():
+            entry = state.amounts.add()
+            entry.tx = tx
+            entry.amount = amount
+
+        for public, trades in self.trades.items():
+            entry = state.trades.add()
+            entry.public_key = public
+            for trade in trades:
+                pb_trade = entry.trades.add()
+                (
+                    pb_trade.t,
+                    pb_trade.amount,
+                    pb_trade.pair,
+                    pb_trade.order_type,
+                    pb_trade.order,
+                ) = trade
+
+        for public, orders in self.orders.items():
+            entry = state.orders.add()
+            entry.public_key = public
+            entry.orders.extend(orders.keys())
+
+        for chain, withdrawals in self.withdrawals.items():
+            pb_withdrawals = state.withdrawals[chain]
+            for public, withdrawal_list in withdrawals.items():
+                entry = pb_withdrawals.withdrawals.add()
+                entry.public_key = public
+                for withdrawal in withdrawal_list:
+                    pb_withdrawal = entry.transactions.add()
+                    pb_withdrawal.token = withdrawal.token
+                    pb_withdrawal.amount = withdrawal.amount
+                    pb_withdrawal.nonce = withdrawal.nonce
+                    pb_withdrawal.public = withdrawal.public
+                    pb_withdrawal.chain = withdrawal.chain
+
+        state.deposited_blocks.update(self.deposited_blocks)
+
+        for public, nonce in self.nonces.items():
+            entry = state.nonces.add()
+            entry.public_key = public
+            entry.nonce = nonce
+
+        for key, (base_token, quote_token, pair) in self.pair_lookup.items():
+            entry = state.pair_lookup.add()
+            entry.key = key
+            entry.base_token = base_token
+            entry.quote_token = quote_token
+            entry.pair = pair
+
+        return state
+
+    @classmethod
+    def from_protobuf(
+        cls,
+        pb_state: zex_pb2.ZexState,
+        kline_callback: Callable[[str, pd.DataFrame], None],
+        depth_callback: Callable[[str, dict], None],
+        state_dest: str,
+        light_node: bool,
+    ):
+        zex = cls(
+            kline_callback,
+            depth_callback,
+        )
+
+        zex.last_tx_index = pb_state.last_tx_index
+
+        for pair, pb_market in pb_state.markets.items():
+            market = Market(pb_market.base_token, pb_market.quote_token, zex)
+            market.buy_orders = [
+                (-o.price, o.index, o.tx) for o in pb_market.buy_orders
+            ]
+            market.sell_orders = [
+                (o.price, o.index, o.tx) for o in pb_market.sell_orders
+            ]
+            market.bids_order_book = defaultdict(
+                float, {e.price: e.amount for e in pb_market.bids_order_book}
+            )
+            market.asks_order_book = defaultdict(
+                float, {e.price: e.amount for e in pb_market.asks_order_book}
+            )
+            market.first_id = pb_market.first_id
+            market.final_id = pb_market.final_id
+            market.last_update_id = pb_market.last_update_id
+            market.kline = pd.read_json(pb_market.kline.decode())
+            zex.markets[pair] = market
+
+        zex.balances = {
+            token: {e.public_key: e.amount for e in pb_balance.balances}
+            for token, pb_balance in pb_state.balances.items()
+        }
+        zex.amounts = {e.tx: e.amount for e in pb_state.amounts}
+        zex.trades = {
+            e.public_key: deque(trade for trade in e.trades) for e in pb_state.trades
+        }
+        zex.orders = {
+            e.public_key: {order: True for order in e.orders} for e in pb_state.orders
+        }
+
+        zex.withdrawals = {}
+        for chain, pb_withdrawals in pb_state.withdrawals.items():
+            zex.withdrawals[chain] = {}
+            for entry in pb_withdrawals.withdrawals:
+                zex.withdrawals[chain][entry.public_key] = [
+                    WithdrawTransaction(w.token, w.amount, w.nonce, w.public, w.chain)
+                    for w in entry.transactions
+                ]
+
+        zex.deposited_blocks = dict(pb_state.deposited_blocks)
+        zex.nonces = {e.public_key: e.nonce for e in pb_state.nonces}
+        zex.pair_lookup = {
+            e.key: (e.base_token, e.quote_token, e.pair) for e in pb_state.pair_lookup
+        }
+
+        return zex
+
+    def save_state(self):
+        state = self.to_protobuf()
+        with open(self.state_dest, "wb") as f:
+            f.write(state.SerializeToString())
+
+    @classmethod
+    def load_state(
+        cls,
+        data: IO[bytes],
+        kline_callback: Callable[[str, pd.DataFrame], None],
+        depth_callback: Callable[[str, dict], None],
+        state_dest: str,
+        light_node: bool,
+    ):
+        pb_state = zex_pb2.ZexState()
+        pb_state.ParseFromString(data.read())
+        return cls.from_protobuf(
+            pb_state,
+            kline_callback,
+            depth_callback,
+            state_dest,
+            light_node,
+        )
+
     @line_profiler.profile
-    def process(self, txs: list[bytes]):
+    def process(self, txs: list[bytes], last_tx_index):
         verify(txs)
         modified_pairs = set()
         for tx in txs:
@@ -153,9 +344,9 @@ class Zex(metaclass=SingletonMeta):
                     if quote_token not in self.balances:
                         self.balances[quote_token] = {}
                 # fast route check for instant match
-                # if self.orderbooks[pair].match_instantly(tx):
-                #     modified_pairs.add(pair)
-                #     continue
+                if self.markets[pair].match_instantly(tx):
+                    modified_pairs.add(pair)
+                    continue
                 t = unpack(">I", tx[32:36])[0]
                 ok = self.markets[pair].place(tx)
                 if not ok:
@@ -175,6 +366,15 @@ class Zex(metaclass=SingletonMeta):
             asyncio.create_task(self.kline_callback(pair, self.get_kline(pair)))
             asyncio.create_task(
                 self.depth_callback(pair, self.get_order_book_update(pair))
+            )
+        self.last_tx_index = last_tx_index
+
+        if self.save_state_tx_index_threshold < self.last_tx_index:
+            self.save_state()
+            self.save_state_tx_index_threshold = (
+                self.last_tx_index
+                - (self.last_tx_index % self.save_frequency)
+                + self.save_frequency
             )
 
     def deposit(self, tx: bytes):
@@ -358,11 +558,128 @@ class Market:
             self.last_update_id = self.final_id
         return data
 
+    def match_instantly(self, tx: bytes) -> bool:
+        operation, amount, price, nonce, public, index = self._parse_transaction(tx)
+
+        if not self._validate_nonce(public, nonce):
+            return False
+
+        if operation == BUY:
+            if not self.sell_orders:
+                return False
+            best_sell_price, _, _ = self.sell_orders[0]
+            if price >= best_sell_price:
+                return self._execute_instant_buy(public, amount, price, index, tx)
+        elif operation == SELL:
+            if not self.buy_orders:
+                return False
+            best_buy_price = -self.buy_orders[0][
+                0
+            ]  # Negate because buy prices are stored negatively
+            if price <= best_buy_price:
+                return self._execute_instant_sell(public, amount, price, index, tx)
+        else:
+            raise ValueError(f"Unsupported transaction type: {operation}")
+
+        return False
+
+    def _execute_instant_buy(
+        self, public: bytes, amount: float, price: float, index: int, tx: bytes
+    ) -> bool:
+        required = amount * price
+        balance = self.quote_token_balances.get(public, 0)
+        if balance < required:
+            logger.debug(
+                "Insufficient balance, current balance: {current_balance}, quote token: {quote_token}",
+                current_balance=balance,
+                quote_token=self.quote_token,
+            )
+            return False
+
+        self.zex.amounts[tx] = amount
+        self.zex.orders[public][tx] = True
+        self.quote_token_balances[public] = balance - required
+
+        # Execute the trade
+        t = int(unix_time())
+        while amount > 0 and self.sell_orders and self.sell_orders[0][0] <= price:
+            sell_price, _, sell_order = self.sell_orders[0]
+            trade_amount = min(amount, self.zex.amounts[sell_order])
+            self._execute_trade(tx, sell_order, trade_amount, sell_price, t)
+            amount -= trade_amount
+
+        if amount > 0:
+            # Add remaining amount to buy orders
+            heapq.heappush(self.buy_orders, (-price, index, tx))
+            with self.order_book_lock:
+                self.bids_order_book[price] += amount
+                self._order_book_updates["bids"][price] = self.bids_order_book[price]
+
+        return True
+
+    def _execute_instant_sell(
+        self, public: bytes, amount: float, price: float, index: int, tx: bytes
+    ) -> bool:
+        balance = self.base_token_balances.get(public, 0)
+        if balance < amount:
+            logger.debug(
+                "Insufficient balance, current balance: {current_balance}, base token: {base_token}",
+                current_balance=balance,
+                base_token=self.base_token,
+            )
+            return False
+
+        self.zex.amounts[tx] = amount
+        self.zex.orders[public][tx] = True
+        self.base_token_balances[public] = balance - amount
+
+        # Execute the trade
+        t = int(unix_time())
+        while amount > 0 and self.buy_orders and -self.buy_orders[0][0] >= price:
+            buy_price, _, buy_order = self.buy_orders[0]
+            buy_price = -buy_price  # Negate because buy prices are stored negatively
+            trade_amount = min(amount, self.zex.amounts[buy_order])
+            self._execute_trade(buy_order, tx, trade_amount, buy_price, t)
+            amount -= trade_amount
+
+        if amount > 0:
+            # Add remaining amount to sell orders
+            heapq.heappush(self.sell_orders, (price, index, tx))
+            with self.order_book_lock:
+                self.asks_order_book[price] += amount
+                self._order_book_updates["asks"][price] = self.asks_order_book[price]
+
+        return True
+
+    def _execute_trade(
+        self,
+        buy_order: bytes,
+        sell_order: bytes,
+        trade_amount: float,
+        price: float,
+        t: int,
+    ):
+        buy_public = buy_order[40:73]
+        sell_public = sell_order[40:73]
+
+        self._update_orders(
+            buy_order, sell_order, trade_amount, price, price, buy_public, sell_public
+        )
+        self._update_balances(buy_public, sell_public, trade_amount, price)
+        self._record_trade(
+            buy_order, sell_order, buy_public, sell_public, trade_amount, t
+        )
+
+        if not self.zex.benchmark_mode and not self.zex.light_node:
+            self._update_kline(price, trade_amount)
+
+        self.final_id += 1
+
     def place(self, tx: bytes) -> bool:
         operation, amount, price, nonce, public, index = self._parse_transaction(tx)
 
         if not self._validate_nonce(public, nonce):
-            return
+            return False
 
         if operation == BUY:
             ok = self._place_buy_order(public, amount, price, index, tx)
@@ -426,7 +743,7 @@ class Market:
             buy_order, sell_order, buy_public, sell_public, trade_amount, t
         )
 
-        if not self.zex.benchmark_mode:
+        if not self.zex.benchmark_mode and not self.zex.light_node:
             self._update_kline(sell_price, trade_amount)
 
         return True

@@ -16,6 +16,7 @@ from app.models.response import (
 from app.zex import BUY
 
 router = APIRouter()
+light_router = APIRouter()
 
 
 @router.get("/user/{user}/balances")
@@ -87,7 +88,6 @@ def user_nonce(user: str) -> NonceResponse:
     return NonceResponse(nonce=zex.nonces.get(user, 0))
 
 
-@router.get("/user/{user}/withdrawals/{chain}/{nonce}")
 def user_withdrawals(user: str, chain: str, nonce: int):
     user = bytes.fromhex(user)
     withdrawals = zex.withdrawals.get(chain, {}).get(user, [])
@@ -111,3 +111,9 @@ def user_withdrawals(user: str, chain: str, nonce: int):
         "nonce": nonce,
         "signature": signature,
     }
+
+
+if zex.light_node:
+    light_router.get("/user/{user}/withdrawals/{chain}/{nonce}")(user_withdrawals)
+else:
+    router.get("/user/{user}/withdrawals/{chain}/{nonce}")(user_withdrawals)

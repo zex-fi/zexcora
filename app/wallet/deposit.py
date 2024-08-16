@@ -32,7 +32,7 @@ TOKENS = {
 
 # Function to initialize Web3 instance for each network
 def initialize_web3(network) -> tuple[Web3, Contract]:
-    web3 = Web3(Web3.WebsocketProvider(network["node_url"]))
+    web3 = Web3(Web3.HTTPProvider(network["node_url"]))
     web3.middleware_onion.inject(geth_poa_middleware, layer=0)
     contract = web3.eth.contract(
         address=network["contract_address"], abi=network["contract_abi"]

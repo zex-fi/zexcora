@@ -34,6 +34,7 @@ class ZexBot:
         self.pair = pair
         self.side = side
         self.send_tx_lock = lock
+        self.is_running = False
         self.rng = random.Random(seed)
 
         self.pubkey = self.privkey.pubkey.serialize()
@@ -150,7 +151,8 @@ class ZexBot:
             on_message=self.on_messsage_wrapper(),
         )
         Thread(target=self.websocket.run_forever, kwargs={"reconnect": 5}).start()
-        while True:
+        self.is_running = True
+        while self.is_running:
             time.sleep(0.1)
             maker = self.rng.choices([True, False], [0.5, 0.75])[0]
             price = 0

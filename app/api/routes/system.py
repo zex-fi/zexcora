@@ -58,7 +58,7 @@ async def process_loop():
             )
             txs = [tx["tx"].encode("latin-1") for tx in finalized_txs]
             try:
-                zex.process(txs)
+                zex.process(txs, index)
             except Exception:
                 logger.exception("process loop")
         await asyncio.sleep(0.1)

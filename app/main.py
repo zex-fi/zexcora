@@ -45,7 +45,7 @@ class JSONMessageManager:
 
 # Run the broadcaster in the background
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_: FastAPI):
     Thread(target=asyncio.run, args=(process_loop(),), daemon=True).start()
     yield
     t = Thread(target=close_pool)

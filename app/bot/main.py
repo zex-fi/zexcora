@@ -16,7 +16,7 @@ ip = os.getenv("HOST")
 port = int(os.getenv("PORT"))
 
 
-def start_threads() -> list[Thread]:
+def start_threads() -> list[tuple[Thread, ZexBot]]:
     threads: list[Thread] = []
     bot1_lock = Lock()
     bot2_lock = Lock()
@@ -58,12 +58,22 @@ def start_threads() -> list[Thread]:
                     t2 = Thread(target=seller_bot.run)
                     t1.start()
                     t2.start()
-                    threads.extend([t1, t2])
+                    threads.extend([(t1, buyer_bot), (t2, seller_bot)])
                     idx += 2
     return threads
 
 
 if __name__ == "__main__":
     threads = start_threads()
-    for t in threads:
+    try:
+        for t, _ in threads:
+            t.join()
+    except KeyboardInterrupt:
+        print("KeyboardInterrupt received, stopping bots...")
+        for _, bot in threads:
+            bot.is_running = False
+
+    # Wait for all threads to finish
+    for t, _ in threads:
         t.join()
+    print("All bots stopped.")
