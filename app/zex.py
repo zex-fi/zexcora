@@ -344,9 +344,9 @@ class Zex(metaclass=SingletonMeta):
                     if quote_token not in self.balances:
                         self.balances[quote_token] = {}
                 # fast route check for instant match
-                if self.markets[pair].match_instantly(tx):
-                    modified_pairs.add(pair)
-                    continue
+                # if self.markets[pair].match_instantly(tx):
+                #     modified_pairs.add(pair)
+                #     continue
                 t = unpack(">I", tx[32:36])[0]
                 ok = self.markets[pair].place(tx)
                 if not ok:
