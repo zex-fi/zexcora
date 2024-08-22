@@ -93,10 +93,9 @@ class MarketTransaction:
 
 
 class Deposit(BaseModel):
-    token: int
+    token: str
     amount: float
     time: int
-    public: bytes
 
 
 class DepositTransaction(BaseModel):

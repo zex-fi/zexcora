@@ -9,9 +9,11 @@ from loguru import logger
 from app import BLS_PRIVATE, zex
 from app.models.response import (
     BalanceResponse,
+    DepositResponse,
     NonceResponse,
     OrderResponse,
     TradeResponse,
+    UserIDResponse,
 )
 from app.zex import BUY
 
@@ -86,6 +88,31 @@ def user_orders(user: str) -> list[OrderResponse]:
 def user_nonce(user: str) -> NonceResponse:
     user = bytes.fromhex(user)
     return NonceResponse(nonce=zex.nonces.get(user, 0))
+
+
+@router.get("/user/{user}/id")
+def user_id(user: str):
+    user = bytes.fromhex(user)
+    if user not in zex.id_lookup:
+        return HTTPException(404, {"error": "user not found"})
+
+    user_id = zex.id_lookup[user]
+    return UserIDResponse(id=user_id)
+
+
+@router.get("/user/{user}/deposits")
+def user_deposits(user: str) -> list[DepositResponse]:
+    public = bytes.fromhex(user)
+    if public not in zex.deposits:
+        return HTTPException(404, {"error": "user not found"})
+    return [
+        DepositResponse(
+            token=d.token,
+            amount=d.amount,
+            time=d.time,
+        )
+        for d in zex.deposits[public]
+    ]
 
 
 def user_withdrawals(user: str, chain: str, nonce: int):

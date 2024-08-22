@@ -35,9 +35,19 @@ class NonceResponse(BaseModel):
     nonce: int
 
 
+class UserIDResponse(BaseModel):
+    id: int
+
+
 class Asset(BaseModel):
     chain: str
     id: int
+
+
+class DepositResponse(BaseModel):
+    token: str
+    amount: float
+    time: int
 
 
 class Symbol(BaseModel):

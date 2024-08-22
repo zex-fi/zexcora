@@ -6,7 +6,7 @@ from eth_hash.auto import keccak
 from loguru import logger
 from secp256k1 import PublicKey
 
-DEPOSIT, WITHDRAW, BUY, SELL, CANCEL = b"dwbsc"
+DEPOSIT, WITHDRAW, BUY, SELL, CANCEL, REGISTER = b"dwbscr"
 
 monitor_pub = "033452c6fa7b1ac52c14bb4ed4b592ffafdae5f2dba7f360435fd9c71428029c71"
 monitor_pub = PublicKey(bytes.fromhex(monitor_pub), raw=True)
@@ -29,6 +29,12 @@ def withdraw_msg(tx):
     msg += f'nonce: {unpack(">I", tx[41:45])[0]}\n'
     msg += f"public: {tx[45:78].hex()}\n"
     msg = "\x19Ethereum Signed Message:\n" + str(len(msg)) + msg
+    return msg.encode()
+
+
+def register_msg(tx: bytes):
+    msg = f"""v: {tx[0]}\nname: register\npublic: {tx[2:35]}\n"""
+    msg = "".join(("\x19Ethereum Signed Message:\n", str(len(msg)), msg))
     return msg.encode()
 
 
@@ -55,6 +61,8 @@ def __verify(txs):
                 msg, pubkey, sig = tx[:74], tx[41:74], tx[74 : 74 + 64]
             elif name in (BUY, SELL):
                 msg, pubkey, sig = order_msg(tx), tx[40:73], tx[73 : 73 + 64]
+            elif name == REGISTER:
+                msg, pubkey, sig = register_msg(tx), tx[2:35], tx[35 : 35 + 64]
             else:
                 res[i] = False
                 continue

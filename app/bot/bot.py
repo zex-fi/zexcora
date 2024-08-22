@@ -153,7 +153,7 @@ class ZexBot:
         Thread(target=self.websocket.run_forever, kwargs={"reconnect": 5}).start()
         self.is_running = True
         while self.is_running:
-            time.sleep(0.1)
+            time.sleep(1)
             maker = self.rng.choices([True, False], [0.5, 0.75])[0]
             price = 0
             if maker:

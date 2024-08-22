@@ -11,6 +11,7 @@ message ZexState {
     repeated NonceEntry nonces = 8;
     repeated PairLookupEntry pair_lookup = 9;
     uint64 last_tx_index = 10;
+    repeated IdLookupEntry id_lookup = 11;
 }
 
 message Market {
@@ -96,4 +97,9 @@ message PairLookupEntry {
     string base_token = 2;
     string quote_token = 3;
     string pair = 4;
+}
+
+message IdLookupEntry {
+    bytes public_key = 1;
+    uint64 user_id = 2;
 }

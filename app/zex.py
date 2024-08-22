@@ -14,12 +14,13 @@ import pandas as pd
 from loguru import logger
 
 from .models.transaction import (
+    Deposit,
     WithdrawTransaction,
 )
 from .proto import zex_pb2
 from .verify import chunkify, verify
 
-DEPOSIT, WITHDRAW, BUY, SELL, CANCEL = b"dwbsc"
+DEPOSIT, WITHDRAW, BUY, SELL, CANCEL, REGISTER = b"dwbscr"
 TRADES_TTL = 1000
 
 
@@ -82,14 +83,21 @@ class Zex(metaclass=SingletonMeta):
         self.amounts = {}
         self.trades = {}
         self.orders = {}
+        self.deposits: dict[bytes, list[Deposit]] = {}
+        self.id_lookup = {}
+
         self.withdrawals: dict[str, dict[bytes, list[WithdrawTransaction]]] = {}
         self.deposited_blocks = {
-            "BST": 43033527,
-            "SEP": 6511941,
-            "HOL": 2145016,
+            "BTC": 2874366,
+            "BST": 43207507,
+            "SEP": 6550488,
+            "HOL": 2184356,
         }
         self.nonces = {}
         self.pair_lookup = {}
+
+        self.last_user_id_lock = Lock()
+        self.last_user_id = 0
 
         self.test_mode = os.getenv("TEST_MODE")
         if self.test_mode:
@@ -226,6 +234,11 @@ class Zex(metaclass=SingletonMeta):
             entry.quote_token = quote_token
             entry.pair = pair
 
+        for public, user_id in self.id_lookup.items():
+            entry = state.id_lookup.add()
+            entry.public_key = public
+            entry.user_id = user_id
+
         return state
 
     @classmethod
@@ -240,6 +253,8 @@ class Zex(metaclass=SingletonMeta):
         zex = cls(
             kline_callback,
             depth_callback,
+            state_dest,
+            light_node,
         )
 
         zex.last_tx_index = pb_state.last_tx_index
@@ -290,6 +305,11 @@ class Zex(metaclass=SingletonMeta):
         zex.pair_lookup = {
             e.key: (e.base_token, e.quote_token, e.pair) for e in pb_state.pair_lookup
         }
+
+        zex.id_lookup = {
+            entry.public_key: entry.user_id for entry in pb_state.id_lookup
+        }
+        zex.last_user_id = max(zex.id_lookup.values()) if zex.id_lookup else 0
 
         return zex
 
@@ -343,16 +363,15 @@ class Zex(metaclass=SingletonMeta):
                         self.balances[base_token] = {}
                     if quote_token not in self.balances:
                         self.balances[quote_token] = {}
-                # fast route check for instant match
-                # if self.markets[pair].match_instantly(tx):
-                #     modified_pairs.add(pair)
-                #     continue
                 t = unpack(">I", tx[32:36])[0]
+                # fast route check for instant match
+                if self.markets[pair].match_instantly(tx, t):
+                    modified_pairs.add(pair)
+                    continue
                 ok = self.markets[pair].place(tx)
                 if not ok:
                     continue
-                while self.markets[pair].match(t):
-                    pass
+
                 modified_pairs.add(pair)
 
             elif name == CANCEL:
@@ -398,10 +417,24 @@ class Zex(metaclass=SingletonMeta):
                 self.balances[token] = {}
             if public not in self.balances[token]:
                 self.balances[token][public] = 0
+
+            if public not in self.deposits:
+                self.deposits[public] = []
+
+            self.deposits[public].append(
+                Deposit(
+                    token=token,
+                    amount=amount,
+                    time=t,
+                )
+            )
             self.balances[token][public] += amount
+
             if public not in self.trades:
                 self.trades[public] = deque()
+            if public not in self.orders:
                 self.orders[public] = {}
+            if public not in self.nonces:
                 self.nonces[public] = 0
 
     def withdraw(self, tx: WithdrawTransaction):
@@ -502,6 +535,21 @@ class Zex(metaclass=SingletonMeta):
         self.pair_lookup[tx[2:16]] = (base_token, quote_token, pair)
         return base_token, quote_token, pair
 
+    def register_pub(self, public: bytes):
+        if public not in self.id_lookup:
+            with self.last_user_id_lock:
+                self.last_user_id += 1
+                self.id_lookup[public] = self.last_user_id
+
+        if public not in self.trades:
+            self.trades[public] = deque()
+        if public not in self.orders:
+            self.orders[public] = {}
+        if public not in self.deposits:
+            self.deposits[public] = {}
+        if public not in self.nonces:
+            self.nonces[public] = 0
+
 
 def get_current_1m_open_time():
     now = int(unix_time())
@@ -558,7 +606,7 @@ class Market:
             self.last_update_id = self.final_id
         return data
 
-    def match_instantly(self, tx: bytes) -> bool:
+    def match_instantly(self, tx: bytes, t: int) -> bool:
         operation, amount, price, nonce, public, index = self._parse_transaction(tx)
 
         if not self._validate_nonce(public, nonce):
@@ -569,7 +617,7 @@ class Market:
                 return False
             best_sell_price, _, _ = self.sell_orders[0]
             if price >= best_sell_price:
-                return self._execute_instant_buy(public, amount, price, index, tx)
+                return self._execute_instant_buy(public, amount, price, index, tx, t)
         elif operation == SELL:
             if not self.buy_orders:
                 return False
@@ -577,14 +625,20 @@ class Market:
                 0
             ]  # Negate because buy prices are stored negatively
             if price <= best_buy_price:
-                return self._execute_instant_sell(public, amount, price, index, tx)
+                return self._execute_instant_sell(public, amount, price, index, tx, t)
         else:
             raise ValueError(f"Unsupported transaction type: {operation}")
 
         return False
 
     def _execute_instant_buy(
-        self, public: bytes, amount: float, price: float, index: int, tx: bytes
+        self,
+        public: bytes,
+        amount: float,
+        price: float,
+        index: int,
+        tx: bytes,
+        t: int,
     ) -> bool:
         required = amount * price
         balance = self.quote_token_balances.get(public, 0)
@@ -596,21 +650,24 @@ class Market:
             )
             return False
 
-        self.zex.amounts[tx] = amount
         self.zex.orders[public][tx] = True
-        self.quote_token_balances[public] = balance - required
 
         # Execute the trade
-        t = int(unix_time())
         while amount > 0 and self.sell_orders and self.sell_orders[0][0] <= price:
             sell_price, _, sell_order = self.sell_orders[0]
             trade_amount = min(amount, self.zex.amounts[sell_order])
             self._execute_trade(tx, sell_order, trade_amount, sell_price, t)
+
+            sell_public = sell_order[40:73]
+            self._update_sell_order(sell_order, trade_amount, sell_price, sell_public)
+            self._update_balances(public, sell_public, trade_amount, sell_price)
+
             amount -= trade_amount
 
         if amount > 0:
             # Add remaining amount to buy orders
             heapq.heappush(self.buy_orders, (-price, index, tx))
+            self.zex.amounts[tx] = amount
             with self.order_book_lock:
                 self.bids_order_book[price] += amount
                 self._order_book_updates["bids"][price] = self.bids_order_book[price]
@@ -618,7 +675,13 @@ class Market:
         return True
 
     def _execute_instant_sell(
-        self, public: bytes, amount: float, price: float, index: int, tx: bytes
+        self,
+        public: bytes,
+        amount: float,
+        price: float,
+        index: int,
+        tx: bytes,
+        t: int,
     ) -> bool:
         balance = self.base_token_balances.get(public, 0)
         if balance < amount:
@@ -629,22 +692,26 @@ class Market:
             )
             return False
 
-        self.zex.amounts[tx] = amount
         self.zex.orders[public][tx] = True
         self.base_token_balances[public] = balance - amount
 
         # Execute the trade
-        t = int(unix_time())
         while amount > 0 and self.buy_orders and -self.buy_orders[0][0] >= price:
             buy_price, _, buy_order = self.buy_orders[0]
             buy_price = -buy_price  # Negate because buy prices are stored negatively
             trade_amount = min(amount, self.zex.amounts[buy_order])
             self._execute_trade(buy_order, tx, trade_amount, buy_price, t)
+
+            buy_public = buy_order[40:73]
+            self._update_buy_order(buy_order, trade_amount, buy_price, buy_public)
+            self._update_balances(buy_public, public, trade_amount, buy_price)
+
             amount -= trade_amount
 
         if amount > 0:
             # Add remaining amount to sell orders
             heapq.heappush(self.sell_orders, (price, index, tx))
+            self.zex.amounts[tx] = amount
             with self.order_book_lock:
                 self.asks_order_book[price] += amount
                 self._order_book_updates["asks"][price] = self.asks_order_book[price]
@@ -662,10 +729,6 @@ class Market:
         buy_public = buy_order[40:73]
         sell_public = sell_order[40:73]
 
-        self._update_orders(
-            buy_order, sell_order, trade_amount, price, price, buy_public, sell_public
-        )
-        self._update_balances(buy_public, sell_public, trade_amount, price)
         self._record_trade(
             buy_order, sell_order, buy_public, sell_public, trade_amount, t
         )
@@ -677,9 +740,6 @@ class Market:
 
     def place(self, tx: bytes) -> bool:
         operation, amount, price, nonce, public, index = self._parse_transaction(tx)
-
-        if not self._validate_nonce(public, nonce):
-            return False
 
         if operation == BUY:
             ok = self._place_buy_order(public, amount, price, index, tx)
@@ -712,41 +772,6 @@ class Market:
             break
         else:
             raise Exception("order not found")
-
-    def match(self, t: int) -> bool:
-        if not self.buy_orders or not self.sell_orders:
-            return False
-
-        buy_price, buy_i, buy_order = self.buy_orders[0]
-        sell_price, sell_i, sell_order = self.sell_orders[0]
-        buy_price = -buy_price
-
-        if buy_price < sell_price:
-            return False
-
-        trade_amount = min(self.zex.amounts[buy_order], self.zex.amounts[sell_order])
-        price = sell_price if sell_i < buy_i else buy_price
-
-        buy_public = buy_order[40:73]
-        sell_public = sell_order[40:73]
-        self._update_orders(
-            buy_order,
-            sell_order,
-            trade_amount,
-            buy_price,
-            sell_price,
-            buy_public,
-            sell_public,
-        )
-        self._update_balances(buy_public, sell_public, trade_amount, price)
-        self._record_trade(
-            buy_order, sell_order, buy_public, sell_public, trade_amount, t
-        )
-
-        if not self.zex.benchmark_mode and not self.zex.light_node:
-            self._update_kline(sell_price, trade_amount)
-
-        return True
 
     def get_last_price(self):
         if len(self.kline) == 0:
@@ -795,7 +820,7 @@ class Market:
         total_span = self.kline.index[-1] - self.kline.index[0]
 
         ms_in_7D = 7 * 24 * 60 * 60 * 1000
-        if total_span >= ms_in_7D:
+        if total_span > ms_in_7D:
             prev_7D_index = 7 * 24 * 60 * 60
             open_price = self.kline["Open"].iloc[-prev_7D_index]
             close_price = self.kline["Close"].iloc[-1]
@@ -809,7 +834,7 @@ class Market:
         total_span = self.kline.index[-1] - self.kline.index[0]
 
         ms_in_24h = 24 * 60 * 60 * 1000
-        if total_span >= ms_in_24h:
+        if total_span > ms_in_24h:
             prev_24h_index = 24 * 60 * 60
             return self.kline["Volume"].iloc[-prev_24h_index:].sum()
         return self.kline["Volume"].sum()
@@ -821,7 +846,7 @@ class Market:
         total_span = self.kline.index[-1] - self.kline.index[0]
 
         ms_in_24h = 24 * 60 * 60 * 1000
-        if total_span >= ms_in_24h:
+        if total_span > ms_in_24h:
             prev_24h_index = 24 * 60 * 60
             return self.kline["High"].iloc[-prev_24h_index:].max()
         return self.kline["High"].max()
@@ -833,7 +858,7 @@ class Market:
         total_span = self.kline.index[-1] - self.kline.index[0]
 
         ms_in_24h = 24 * 60 * 60 * 1000
-        if total_span >= ms_in_24h:
+        if total_span > ms_in_24h:
             prev_24h_index = 24 * 60 * 60
             return self.kline["Low"].iloc[-prev_24h_index:].min()
         return self.kline["Low"].min()

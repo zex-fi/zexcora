@@ -6,7 +6,7 @@ from typing import ClassVar as _ClassVar, Iterable as _Iterable, Mapping as _Map
 DESCRIPTOR: _descriptor.FileDescriptor
 
 class ZexState(_message.Message):
-    __slots__ = ["markets", "balances", "amounts", "trades", "orders", "withdrawals", "deposited_blocks", "nonces", "pair_lookup", "last_tx_index"]
+    __slots__ = ["markets", "balances", "amounts", "trades", "orders", "withdrawals", "deposited_blocks", "nonces", "pair_lookup", "last_tx_index", "id_lookup"]
     class MarketsEntry(_message.Message):
         __slots__ = ["key", "value"]
         KEY_FIELD_NUMBER: _ClassVar[int]
@@ -45,6 +45,7 @@ class ZexState(_message.Message):
     NONCES_FIELD_NUMBER: _ClassVar[int]
     PAIR_LOOKUP_FIELD_NUMBER: _ClassVar[int]
     LAST_TX_INDEX_FIELD_NUMBER: _ClassVar[int]
+    ID_LOOKUP_FIELD_NUMBER: _ClassVar[int]
     markets: _containers.MessageMap[str, Market]
     balances: _containers.MessageMap[str, Balance]
     amounts: _containers.RepeatedCompositeFieldContainer[AmountEntry]
@@ -55,7 +56,8 @@ class ZexState(_message.Message):
     nonces: _containers.RepeatedCompositeFieldContainer[NonceEntry]
     pair_lookup: _containers.RepeatedCompositeFieldContainer[PairLookupEntry]
     last_tx_index: int
-    def __init__(self, markets: _Optional[_Mapping[str, Market]] = ..., balances: _Optional[_Mapping[str, Balance]] = ..., amounts: _Optional[_Iterable[_Union[AmountEntry, _Mapping]]] = ..., trades: _Optional[_Iterable[_Union[TradeEntry, _Mapping]]] = ..., orders: _Optional[_Iterable[_Union[OrderEntry, _Mapping]]] = ..., withdrawals: _Optional[_Mapping[str, Withdrawals]] = ..., deposited_blocks: _Optional[_Mapping[str, int]] = ..., nonces: _Optional[_Iterable[_Union[NonceEntry, _Mapping]]] = ..., pair_lookup: _Optional[_Iterable[_Union[PairLookupEntry, _Mapping]]] = ..., last_tx_index: _Optional[int] = ...) -> None: ...
+    id_lookup: _containers.RepeatedCompositeFieldContainer[IdLookupEntry]
+    def __init__(self, markets: _Optional[_Mapping[str, Market]] = ..., balances: _Optional[_Mapping[str, Balance]] = ..., amounts: _Optional[_Iterable[_Union[AmountEntry, _Mapping]]] = ..., trades: _Optional[_Iterable[_Union[TradeEntry, _Mapping]]] = ..., orders: _Optional[_Iterable[_Union[OrderEntry, _Mapping]]] = ..., withdrawals: _Optional[_Mapping[str, Withdrawals]] = ..., deposited_blocks: _Optional[_Mapping[str, int]] = ..., nonces: _Optional[_Iterable[_Union[NonceEntry, _Mapping]]] = ..., pair_lookup: _Optional[_Iterable[_Union[PairLookupEntry, _Mapping]]] = ..., last_tx_index: _Optional[int] = ..., id_lookup: _Optional[_Iterable[_Union[IdLookupEntry, _Mapping]]] = ...) -> None: ...
 
 class Market(_message.Message):
     __slots__ = ["base_token", "quote_token", "buy_orders", "sell_orders", "bids_order_book", "asks_order_book", "first_id", "final_id", "last_update_id", "kline"]
@@ -198,3 +200,11 @@ class PairLookupEntry(_message.Message):
     quote_token: str
     pair: str
     def __init__(self, key: _Optional[bytes] = ..., base_token: _Optional[str] = ..., quote_token: _Optional[str] = ..., pair: _Optional[str] = ...) -> None: ...
+
+class IdLookupEntry(_message.Message):
+    __slots__ = ["public_key", "user_id"]
+    PUBLIC_KEY_FIELD_NUMBER: _ClassVar[int]
+    USER_ID_FIELD_NUMBER: _ClassVar[int]
+    public_key: bytes
+    user_id: int
+    def __init__(self, public_key: _Optional[bytes] = ..., user_id: _Optional[int] = ...) -> None: ...

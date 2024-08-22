@@ -4,6 +4,8 @@ from struct import pack
 
 import requests
 import yaml
+from bitcoinlib.services.services import Service
+from bitcoinlib.transactions import Output, Transaction
 from secp256k1 import PrivateKey
 from web3 import Web3
 from web3.contract.contract import Contract
@@ -12,6 +14,9 @@ from web3.middleware import geth_poa_middleware
 IS_RUNNING = True
 
 TOKENS = {
+    "BTC": {
+        0: 1e8,
+    },
     "BST": {
         3: 1e6,
         4: 1e6,
@@ -69,9 +74,12 @@ def create_tx(
     block_range = pack(">QQ", from_block, to_block)
     tx = version + b"d" + chain + block_range + pack(">H", len(deposits))
     for deposit in deposits:
-        prefix = "02" if deposit["pubKeyYParity"] == 0 else "03"
-        pubKeyX = f"{deposit['pubKeyX']:#0{32}x}"[2:]
-        public = bytes.fromhex(prefix + pubKeyX)
+        if "public" in deposit:
+            public = bytes.fromhex(deposit["public"])
+        else:
+            prefix = "02" if deposit["pubKeyYParity"] == 0 else "03"
+            pubKeyX = f"{deposit['pubKeyX']:#0{32}x}"[2:]
+            public = bytes.fromhex(prefix + pubKeyX)
         token_id = deposit["tokenIndex"]
         amount = deposit["amount"] / TOKENS[chain.decode()].get(token_id, 1e18)
 
@@ -123,7 +131,94 @@ async def run_monitor(network: dict, api_url: str, monitor: PrivateKey):
         # to check if request is applied, query latest processed block from zex
         sent_block = requests.get(f"{api_url}/{chain}/block/latest").json()["block"]
 
-        sent_block = processed_block
+        network["processed_block"] = sent_block
+
+    return network
+
+
+def get_tx_data_output(tx: Transaction):
+    for out in tx.outputs:
+        if out.script_type != "nulldata":
+            continue
+        return out.script.commands[1].hex()
+    return ""
+
+
+def get_deposit_output(tx: Transaction, wallet_address: str) -> Output | None:
+    outputs: list[Output] = tx.outputs
+    for out in outputs:
+        if out.address == wallet_address:
+            return out
+    return None
+
+
+async def run_monitor_btc(network: dict, api_url: str, monitor: PrivateKey):
+    blocks_confirmation = network["blocks_confirmation"]
+    block_duration = network["block_duration"]
+    chain = network["chain"]
+    sent_block = requests.get(f"{api_url}/{chain}/block/latest").json()["block"]
+    processed_block = network["processed_block"]
+    if sent_block > processed_block:
+        network["processed_block"] = sent_block
+        processed_block = sent_block
+
+    srv = Service(network="mainnet" if network["mainnet"] else "testnet")
+    last_processed_txid = ""
+
+    while IS_RUNNING:
+        latest_block = srv.blockcount()
+        if processed_block >= latest_block - blocks_confirmation:
+            await asyncio.sleep(block_duration)
+            continue
+
+        txs: list[Transaction] = srv.gettransactions(
+            network["wallet_address"], after_txid=last_processed_txid
+        )
+        if len(txs) == 0:
+            print(f"BTC no event from:{sent_block}, to: {processed_block}")
+            continue
+        processed_block = srv.blockcount() - blocks_confirmation
+
+        deposits = []
+        for tx in txs:
+            last_processed_txid = tx.txid
+            if tx.confirmations < blocks_confirmation:
+                continue
+
+            if all(out.script_type != "nulldata" for out in tx.outputs):
+                print(f"found deposit without OP_RETURN data, txid: {tx.txid}")
+                continue
+            data_output = get_tx_data_output(tx)
+            assert data_output != "", "this should never happen"
+            if len(data_output) != 33:
+                print(f"invalid public key: {data_output}")
+                continue
+
+            deposit_output = get_deposit_output(tx, network["wallet_address"])
+            assert (
+                deposit_output is not None
+            ), "none of the ouitputs was a deposit to wallet"
+
+            deposits.append(
+                {
+                    "public": data_output,
+                    "tokenIndex": 0,
+                    "amount": deposit_output.value,
+                }
+            )
+        block = srv.getblock(srv.blockcount() - blocks_confirmation, limit=1)
+        tx = create_tx(
+            deposits,
+            chain,
+            sent_block + 1,
+            processed_block,
+            block.time,
+            monitor,
+        )
+        requests.post(f"{api_url}/txs", json=[tx.decode("latin-1")])
+        # to check if request is applied, query latest processed block from zex
+        sent_block = requests.get(f"{api_url}/{chain}/block/latest").json()["block"]
+
         network["processed_block"] = sent_block
 
     return network
@@ -151,7 +246,10 @@ async def main():
 
     tasks = []
     for network in networks:
-        t = asyncio.create_task(run_monitor(network, api_url, monitor))
+        if network["name"] == "btc":
+            t = asyncio.create_task(run_monitor_btc(network, api_url, monitor))
+        else:
+            t = asyncio.create_task(run_monitor(network, api_url, monitor))
         tasks.append(t)
 
     try:
