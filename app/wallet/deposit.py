@@ -280,6 +280,9 @@ async def run_monitor_btc(network: dict, api_url: str, monitor: PrivateKey):
                     page=page,
                     limit=limit,
                 )
+                if block is False:
+                    await asyncio.sleep(10)
+                    continue
 
                 tx: Transaction
                 for tx in block.transactions:
@@ -299,6 +302,7 @@ async def run_monitor_btc(network: dict, api_url: str, monitor: PrivateKey):
                                     "amount": out.value,
                                 }
                             )
+                await asyncio.sleep(0.1)  # give time to other tasks
 
             if len(deposits) == 0:
                 print(f"{chain} no deposit in block: {processed_block}")
