@@ -14,6 +14,7 @@ from app.models.response import (
     OrderResponse,
     TradeResponse,
     UserIDResponse,
+    UserPublicResponse,
 )
 from app.zex import BUY
 
@@ -21,9 +22,9 @@ router = APIRouter()
 light_router = APIRouter()
 
 
-@router.get("/user/{user}/balances")
-def user_balances(user: str) -> list[BalanceResponse]:
-    user = bytes.fromhex(user)
+@router.get("/user/{public}/balances")
+def user_balances(public: str) -> list[BalanceResponse]:
+    user = bytes.fromhex(public)
 
     return [
         BalanceResponse(
@@ -36,9 +37,9 @@ def user_balances(user: str) -> list[BalanceResponse]:
     ]
 
 
-@router.get("/user/{user}/trades")
-def user_trades(user: str) -> list[TradeResponse]:
-    user = bytes.fromhex(user)
+@router.get("/user/{public}/trades")
+def user_trades(public: str) -> list[TradeResponse]:
+    user = bytes.fromhex(public)
     trades = zex.trades.get(user, [])
     resp = {}
     for time, amount, pair, name, tx in trades:
@@ -62,9 +63,9 @@ def user_trades(user: str) -> list[TradeResponse]:
     return [value for _, value in sorted(resp.items(), key=lambda x: x[0])]
 
 
-@router.get("/user/{user}/orders")
-def user_orders(user: str) -> list[OrderResponse]:
-    user = bytes.fromhex(user)
+@router.get("/user/{public}/orders")
+def user_orders(public: str) -> list[OrderResponse]:
+    user = bytes.fromhex(public)
     orders = zex.orders.get(user, {})
     resp = []
     for order in orders:
@@ -84,35 +85,48 @@ def user_orders(user: str) -> list[OrderResponse]:
     return resp
 
 
-@router.get("/user/{user}/nonce")
-def user_nonce(user: str) -> NonceResponse:
-    user = bytes.fromhex(user)
+@router.get("/user/{public}/nonce")
+def user_nonce(public: str) -> NonceResponse:
+    user = bytes.fromhex(public)
     return NonceResponse(nonce=zex.nonces.get(user, 0))
 
 
-@router.get("/user/{user}/id")
-def user_id(user: str):
-    user = bytes.fromhex(user)
-    if user not in zex.id_lookup:
+@router.get("/user/{public}/id")
+def user_id(public: str):
+    user = bytes.fromhex(public)
+    if user not in zex.public_to_id_lookup:
         return HTTPException(404, {"error": "user not found"})
 
-    user_id = zex.id_lookup[user]
+    user_id = zex.public_to_id_lookup[user]
     return UserIDResponse(id=user_id)
 
 
-@router.get("/user/{user}/deposits")
-def user_deposits(user: str) -> list[DepositResponse]:
-    public = bytes.fromhex(user)
-    if public not in zex.deposits:
-        return HTTPException(404, {"error": "user not found"})
+@router.get("/user/{public}/deposits")
+def user_deposits(public: str) -> list[DepositResponse]:
+    user = bytes.fromhex(public)
+    if user not in zex.deposits:
+        return []
     return [
         DepositResponse(
             token=d.token,
             amount=d.amount,
             time=d.time,
         )
-        for d in zex.deposits[public]
+        for d in zex.deposits[user]
     ]
+
+
+@router.get("/user/{id}/public")
+def get_user_public(id: int):
+    if id not in zex.id_to_public_lookup:
+        return HTTPException(404, {"error": "user not found"})
+    public = zex.id_to_public_lookup[id].hex()
+    return UserPublicResponse(public=public)
+
+
+@router.get("/users/latest-id")
+def get_latest_user_id():
+    return UserIDResponse(id=zex.last_user_id)
 
 
 def user_withdrawals(user: str, chain: str, nonce: int):

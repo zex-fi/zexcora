@@ -1,11 +1,15 @@
 import asyncio
+import hashlib
 import signal
+from pprint import pprint
 from struct import pack
 
 import requests
 import yaml
 from bitcoinlib.services.services import Service
 from bitcoinlib.transactions import Output, Transaction
+from bitcoinutils.keys import P2trAddress, PublicKey
+from bitcoinutils.utils import tweak_taproot_pubkey
 from secp256k1 import PrivateKey
 from web3 import Web3
 from web3.contract.contract import Contract
@@ -46,15 +50,12 @@ def initialize_web3(network) -> tuple[Web3, Contract]:
 
 
 # Function to get deposits
-async def get_deposits(web3: Web3, contract: Contract, block, block_confirmation):
-    latest_block = web3.eth.block_number
-    if block > latest_block - block_confirmation:
-        return block, []
+async def get_deposits(contract: Contract, from_block, to_block):
     failed = True
     while failed and IS_RUNNING:
         try:
             events = contract.events.Deposit.get_logs(
-                fromBlock=block, toBlock=latest_block - block_confirmation
+                fromBlock=from_block, toBlock=to_block
             )
             failed = False
         except Exception as e:
@@ -62,8 +63,8 @@ async def get_deposits(web3: Web3, contract: Contract, block, block_confirmation
             await asyncio.sleep(5)
             continue
     if failed:
-        return block, []
-    return latest_block - block_confirmation, [dict(event["args"]) for event in events]
+        return None
+    return [dict(event["args"]) for event in events]
 
 
 def create_tx(
@@ -104,35 +105,56 @@ async def run_monitor(network: dict, api_url: str, monitor: PrivateKey):
         network["processed_block"] = sent_block
         processed_block = sent_block
 
-    while IS_RUNNING:
-        latest_block = web3.eth.block_number
-        if processed_block >= latest_block - blocks_confirmation:
-            await asyncio.sleep(block_duration)
-            continue
+    try:
+        while IS_RUNNING:
+            latest_block = web3.eth.block_number
+            if processed_block >= latest_block - blocks_confirmation:
+                await asyncio.sleep(block_duration)
+                continue
 
-        to_block, deposits = await get_deposits(
-            web3, contract, processed_block, blocks_confirmation
-        )
-        processed_block = to_block
-        if len(deposits) == 0:
-            print(f"no event from:{sent_block}, to: {processed_block}")
-            continue
+            deposits = await get_deposits(
+                contract,
+                processed_block + 1,
+                latest_block - blocks_confirmation,
+            )
+            if deposits is None:
+                print(f"{chain} failed to get_logs from contract")
+                continue
 
-        block = web3.eth.get_block(processed_block)
-        tx = create_tx(
-            deposits,
-            chain,
-            sent_block + 1,
-            processed_block,
-            block["timestamp"],
-            monitor,
-        )
-        requests.post(f"{api_url}/txs", json=[tx.decode("latin-1")])
-        # to check if request is applied, query latest processed block from zex
-        sent_block = requests.get(f"{api_url}/{chain}/block/latest").json()["block"]
+            if len(deposits) == 0:
+                print(
+                    f"{chain} no event from: {processed_block+1}, to: {latest_block-blocks_confirmation}"
+                )
+                processed_block = latest_block - blocks_confirmation
+                continue
+            processed_block = latest_block - blocks_confirmation
 
-        network["processed_block"] = sent_block
+            block = web3.eth.get_block(processed_block)
+            tx = create_tx(
+                deposits,
+                chain,
+                sent_block + 1,
+                processed_block,
+                block["timestamp"],
+                monitor,
+            )
+            requests.post(f"{api_url}/txs", json=[tx.decode("latin-1")])
 
+            sent_block = requests.get(f"{api_url}/{chain}/block/latest").json()["block"]
+            while sent_block != processed_block and IS_RUNNING:
+                print(
+                    f"{chain} deposit is not yet applied, server desposited block: {sent_block}, script processed block: {processed_block}"
+                )
+                await asyncio.sleep(2)
+
+                sent_block = requests.get(f"{api_url}/{chain}/block/latest").json()[
+                    "block"
+                ]
+                continue
+    except asyncio.CancelledError:
+        pass
+
+    network["processed_block"] = processed_block
     return network
 
 
@@ -152,6 +174,58 @@ def get_deposit_output(tx: Transaction, wallet_address: str) -> Output | None:
     return None
 
 
+def tagged_hash(data: bytes, tag: str) -> bytes:
+    """
+    Tagged hashes ensure that hashes used in one context can not be used in another.
+    It is used extensively in Taproot
+
+    A tagged hash is: SHA256( SHA256("TapTweak") ||
+                              SHA256("TapTweak") ||
+                              data
+                            )
+    """
+
+    tag_digest = hashlib.sha256(tag.encode()).digest()
+    return hashlib.sha256(tag_digest + tag_digest + data).digest()
+
+
+# to convert hashes to ints we need byteorder BIG...
+def b_to_i(b: bytes) -> int:
+    """Converts a bytes to a number"""
+    return int.from_bytes(b, byteorder="big")
+
+
+def i_to_b8(i: int) -> bytes:
+    """Converts a integer to bytes"""
+    return i.to_bytes(8, byteorder="big")
+
+
+def calculate_tweak(pubkey: PublicKey, user_id: int) -> int:
+    """
+    Calculates the tweak to apply to the public and private key when required.
+    """
+
+    # only the x coordinate is tagged_hash'ed
+    key_x = pubkey.to_bytes()[:32]
+
+    tweak = tagged_hash(key_x + i_to_b8(user_id), "TapTweak")
+
+    # we convert to int for later elliptic curve  arithmetics
+    tweak_int = b_to_i(tweak)
+
+    return tweak_int
+
+
+def get_taproot_address(master_public: PublicKey, user_id: int) -> P2trAddress:
+    tweak_int = calculate_tweak(master_public, user_id)
+    # keep x-only coordinate
+    tweak_and_odd = tweak_taproot_pubkey(master_public.key.to_string(), tweak_int)
+    pubkey = tweak_and_odd[0][:32]
+    is_odd = tweak_and_odd[1]
+
+    return P2trAddress(witness_program=pubkey.hex(), is_odd=is_odd)
+
+
 async def run_monitor_btc(network: dict, api_url: str, monitor: PrivateKey):
     blocks_confirmation = network["blocks_confirmation"]
     block_duration = network["block_duration"]
@@ -162,65 +236,102 @@ async def run_monitor_btc(network: dict, api_url: str, monitor: PrivateKey):
         network["processed_block"] = sent_block
         processed_block = sent_block
 
+    master_pub = PublicKey.from_hex(network["public_key"])
     srv = Service(network="mainnet" if network["mainnet"] else "testnet")
-    last_processed_txid = ""
 
-    while IS_RUNNING:
-        latest_block = srv.blockcount()
-        if processed_block >= latest_block - blocks_confirmation:
-            await asyncio.sleep(block_duration)
-            continue
+    latest_user_id = 0
+    all_taproot_addresses: dict[str, str] = {}
 
-        txs: list[Transaction] = srv.gettransactions(
-            network["wallet_address"], after_txid=last_processed_txid
-        )
-        if len(txs) == 0:
-            print(f"BTC no event from:{sent_block}, to: {processed_block}")
-            continue
-        processed_block = srv.blockcount() - blocks_confirmation
-
-        deposits = []
-        for tx in txs:
-            last_processed_txid = tx.txid
-            if tx.confirmations < blocks_confirmation:
+    try:
+        while IS_RUNNING:
+            latest_block_num = srv.blockcount()
+            if processed_block > latest_block_num - blocks_confirmation:
+                await asyncio.sleep(block_duration)
                 continue
 
-            if all(out.script_type != "nulldata" for out in tx.outputs):
-                print(f"found deposit without OP_RETURN data, txid: {tx.txid}")
-                continue
-            data_output = get_tx_data_output(tx)
-            assert data_output != "", "this should never happen"
-            if len(data_output) != 33:
-                print(f"invalid public key: {data_output}")
+            new_latest_user_id = requests.get(f"{api_url}/users/latest-id").json()["id"]
+            if latest_user_id != new_latest_user_id:
+                for i in range(latest_user_id + 1, new_latest_user_id + 1):
+                    taproot_pub = get_taproot_address(master_pub, i)
+
+                    if i == 1:
+                        print(f"God user taproot address: {taproot_pub.to_string()}")
+                    public = requests.get(f"{api_url}/user/{i}/public").json()["public"]
+                    all_taproot_addresses[taproot_pub.to_string()] = public
+
+                latest_user_id = new_latest_user_id
+
+            latest_block = srv.getblock(processed_block + 1, parse_transactions=False)
+            if latest_block is False:
+                print(f"{chain} get block failed")
+                await asyncio.sleep(2)
                 continue
 
-            deposit_output = get_deposit_output(tx, network["wallet_address"])
-            assert (
-                deposit_output is not None
-            ), "none of the ouitputs was a deposit to wallet"
+            seen_txs = set()
+            deposits = []
+            count = 0
+            # Iterate through transactions in the block
+            while count != latest_block.tx_count:
+                limit = 25
+                page = (count // limit) + 1
+                block = srv.getblock(
+                    processed_block + 1,
+                    parse_transactions=True,
+                    page=page,
+                    limit=limit,
+                )
 
-            deposits.append(
-                {
-                    "public": data_output,
-                    "tokenIndex": 0,
-                    "amount": deposit_output.value,
-                }
+                tx: Transaction
+                for tx in block.transactions:
+                    if tx.txid in seen_txs:
+                        continue
+                    seen_txs.add(tx.txid)
+                    count += 1
+
+                    # Check if any output address matches our list of Taproot addresses
+                    out: Output
+                    for out in tx.outputs:
+                        if out.address in all_taproot_addresses:
+                            deposits.append(
+                                {
+                                    "public": all_taproot_addresses[out.address],
+                                    "tokenIndex": 0,
+                                    "amount": out.value,
+                                }
+                            )
+
+            if len(deposits) == 0:
+                print(f"{chain} no deposit in block: {processed_block}")
+                processed_block += 1
+                continue
+            processed_block += 1
+
+            tx = create_tx(
+                deposits,
+                chain,
+                sent_block + 1,
+                processed_block,
+                latest_block.time,
+                monitor,
             )
-        block = srv.getblock(srv.blockcount() - blocks_confirmation, limit=1)
-        tx = create_tx(
-            deposits,
-            chain,
-            sent_block + 1,
-            processed_block,
-            block.time,
-            monitor,
-        )
-        requests.post(f"{api_url}/txs", json=[tx.decode("latin-1")])
-        # to check if request is applied, query latest processed block from zex
-        sent_block = requests.get(f"{api_url}/{chain}/block/latest").json()["block"]
+            requests.post(f"{api_url}/txs", json=[tx.decode("latin-1")])
+            # to check if request is applied, query latest processed block from zex
 
-        network["processed_block"] = sent_block
+            sent_block = requests.get(f"{api_url}/{chain}/block/latest").json()["block"]
+            while sent_block != processed_block and IS_RUNNING:
+                print(
+                    f"{chain} deposit is not yet applied, server desposited block: {sent_block}, script processed block: {processed_block}"
+                )
+                await asyncio.sleep(2)
 
+                sent_block = requests.get(f"{api_url}/{chain}/block/latest").json()[
+                    "block"
+                ]
+                continue
+    except asyncio.CancelledError:
+        pass
+
+    network["processed_block"] = processed_block
     return network
 
 
@@ -235,6 +346,7 @@ async def main():
 
     loop = asyncio.get_running_loop()
     loop.add_signal_handler(signal.SIGINT, signal_handler)
+    loop.add_signal_handler(signal.SIGTERM, signal_handler)
 
     with open("config.yaml") as file:
         config = yaml.safe_load(file)
@@ -255,11 +367,23 @@ async def main():
     try:
         # Wait for all tasks to complete or until interrupted
         results = await asyncio.gather(*tasks, return_exceptions=True)
+        print(results)
         config["networks"] = results
-        with open("config.yaml", "w") as file:
-            yaml.safe_dump(config, file)
+        pprint(config, indent=2)
+        # with open("config.yaml", "w") as file:
+        #     yaml.safe_dump(config)
     except asyncio.CancelledError:
         print("Tasks were cancelled")
+    finally:
+        # Ensure all tasks are properly cancelled
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+
+        # Wait for all tasks to be cancelled
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+        print("All tasks have been stopped. Exiting program.")
 
 
 if __name__ == "__main__":

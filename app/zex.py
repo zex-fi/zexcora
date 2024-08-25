@@ -84,11 +84,12 @@ class Zex(metaclass=SingletonMeta):
         self.trades = {}
         self.orders = {}
         self.deposits: dict[bytes, list[Deposit]] = {}
-        self.id_lookup = {}
+        self.public_to_id_lookup: dict[bytes, int] = {}
+        self.id_to_public_lookup: dict[int, bytes] = {}
 
         self.withdrawals: dict[str, dict[bytes, list[WithdrawTransaction]]] = {}
         self.deposited_blocks = {
-            "BTC": 2874366,
+            "BTC": 2874750,
             "BST": 43207507,
             "SEP": 6550488,
             "HOL": 2184356,
@@ -108,10 +109,7 @@ class Zex(metaclass=SingletonMeta):
             )
             client_priv = PrivateKey(bytes(bytearray.fromhex(client_private)), raw=True)
             client_pub = client_priv.pubkey.serialize()
-
-            self.trades[client_pub] = deque()
-            self.orders[client_pub] = {}
-            self.nonces[client_pub] = 0
+            self.register_pub(client_pub)
 
             private_seed = (
                 "31a84594060e103f5a63eb742bd46cf5f5900d8406e2726dedfc61c7cf43ebac"
@@ -132,9 +130,7 @@ class Zex(metaclass=SingletonMeta):
                 bot_private_key = (private_seed_int + i).to_bytes(32, "big")
                 bot_priv = PrivateKey(bot_private_key, raw=True)
                 bot_pub = bot_priv.pubkey.serialize()
-                self.trades[bot_pub] = deque()
-                self.orders[bot_pub] = {}
-                self.nonces[bot_pub] = 0
+                self.register_pub(bot_pub)
 
                 for chain, token_ids in TOKENS.items():
                     for token_id in token_ids:
@@ -234,7 +230,7 @@ class Zex(metaclass=SingletonMeta):
             entry.quote_token = quote_token
             entry.pair = pair
 
-        for public, user_id in self.id_lookup.items():
+        for public, user_id in self.public_to_id_lookup.items():
             entry = state.id_lookup.add()
             entry.public_key = public
             entry.user_id = user_id
@@ -306,10 +302,12 @@ class Zex(metaclass=SingletonMeta):
             e.key: (e.base_token, e.quote_token, e.pair) for e in pb_state.pair_lookup
         }
 
-        zex.id_lookup = {
+        zex.public_to_id_lookup = {
             entry.public_key: entry.user_id for entry in pb_state.id_lookup
         }
-        zex.last_user_id = max(zex.id_lookup.values()) if zex.id_lookup else 0
+        zex.last_user_id = (
+            max(zex.public_to_id_lookup.values()) if zex.public_to_id_lookup else 0
+        )
 
         return zex
 
@@ -375,8 +373,11 @@ class Zex(metaclass=SingletonMeta):
                 modified_pairs.add(pair)
 
             elif name == CANCEL:
-                self.markets[pair].cancel(tx)
-                modified_pairs.add(pair)
+                success = self.markets[pair].cancel(tx)
+                if success:
+                    modified_pairs.add(pair)
+            elif name == REGISTER:
+                self.register_pub(public=tx[2:35])
             else:
                 raise ValueError(f"invalid transaction name {name}")
         for pair in modified_pairs:
@@ -536,17 +537,18 @@ class Zex(metaclass=SingletonMeta):
         return base_token, quote_token, pair
 
     def register_pub(self, public: bytes):
-        if public not in self.id_lookup:
+        if public not in self.public_to_id_lookup:
             with self.last_user_id_lock:
                 self.last_user_id += 1
-                self.id_lookup[public] = self.last_user_id
+                self.public_to_id_lookup[public] = self.last_user_id
+                self.id_to_public_lookup[self.last_user_id] = public
 
         if public not in self.trades:
             self.trades[public] = deque()
         if public not in self.orders:
             self.orders[public] = {}
         if public not in self.deposits:
-            self.deposits[public] = {}
+            self.deposits[public] = []
         if public not in self.nonces:
             self.nonces[public] = 0
 
@@ -756,7 +758,7 @@ class Market:
         self.zex.orders[public][tx] = True
         return True
 
-    def cancel(self, tx: bytes):
+    def cancel(self, tx: bytes) -> bool:
         operation = tx[2]
         amount, price = unpack(">dd", tx[17:33])
         public = tx[41:74]
@@ -769,9 +771,9 @@ class Market:
                 self.quote_token_balances[public] += amount * price
             else:
                 self.base_token_balances[public] += amount
-            break
+            return True
         else:
-            raise Exception("order not found")
+            return False
 
     def get_last_price(self):
         if len(self.kline) == 0:

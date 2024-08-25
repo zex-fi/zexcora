@@ -39,6 +39,10 @@ class UserIDResponse(BaseModel):
     id: int
 
 
+class UserPublicResponse(BaseModel):
+    public: str
+
+
 class Asset(BaseModel):
     chain: str
     id: int
