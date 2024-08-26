@@ -17,6 +17,8 @@ pandas = "^2.2.2"
 "eth-hash[pycryptodome]" = "^0.7.0"
 loguru = "^0.7.2"
 bitcoinlib = "^0.6.15"
+bitcoin-utils = "0.6.8"
+pycryptodomex = "^3.20"
 
 [tool.poetry.dependencies.eigensdk]
 git = "https://github.com/zellular-xyz/eigensdk-python"
