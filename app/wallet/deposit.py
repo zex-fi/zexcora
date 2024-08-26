@@ -158,14 +158,6 @@ async def run_monitor(network: dict, api_url: str, monitor: PrivateKey):
     return network
 
 
-def get_tx_data_output(tx: Transaction):
-    for out in tx.outputs:
-        if out.script_type != "nulldata":
-            continue
-        return out.script.commands[1].hex()
-    return ""
-
-
 def get_deposit_output(tx: Transaction, wallet_address: str) -> Output | None:
     outputs: list[Output] = tx.outputs
     for out in outputs:
@@ -271,7 +263,7 @@ async def run_monitor_btc(network: dict, api_url: str, monitor: PrivateKey):
             deposits = []
             count = 0
             # Iterate through transactions in the block
-            while count != latest_block.tx_count:
+            while count != latest_block.tx_count and IS_RUNNING:
                 limit = 25
                 page = (count // limit) + 1
                 block = srv.getblock(
@@ -302,10 +294,11 @@ async def run_monitor_btc(network: dict, api_url: str, monitor: PrivateKey):
                                     "amount": out.value,
                                 }
                             )
+                            print(f"found deposit to address: {out.address}")
                 await asyncio.sleep(0.1)  # give time to other tasks
 
             if len(deposits) == 0:
-                print(f"{chain} no deposit in block: {processed_block}")
+                print(f"{chain} no deposit in block: {processed_block+1}")
                 processed_block += 1
                 continue
             processed_block += 1
