@@ -52,7 +52,12 @@ async def lifespan(_: FastAPI):
     t.start()
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(
+    lifespan=lifespan,
+    docs_url="/api/v1/docs",
+    redoc_url="/api/v1/redoc",
+    openapi_url="/api/v1/openapi.json",
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
