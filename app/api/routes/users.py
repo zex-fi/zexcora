@@ -197,11 +197,11 @@ def get_user_addresses(public: str) -> UserAddressesResponse:
     hol_contract_address = "0x3254BEe5c12A3f5c878D0ACEF194A6d611727Df7"
     sep_contract_address = "0xcD04Fb8a4d987dc537345267751EfD271d464F91"
     return UserAddressesResponse(
-        btc=taproot_address.to_string(),
-        xmr=str(monero_address),
-        bst=bst_contract_address,
-        hol=hol_contract_address,
-        sep=sep_contract_address,
+        BTC=taproot_address.to_string(),
+        XMR=str(monero_address),
+        BST=bst_contract_address,
+        HOL=hol_contract_address,
+        SEP=sep_contract_address,
     )
 
 

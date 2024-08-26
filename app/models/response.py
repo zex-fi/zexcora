@@ -44,11 +44,11 @@ class UserPublicResponse(BaseModel):
 
 
 class UserAddressesResponse(BaseModel):
-    btc: str
-    xmr: str
-    bst: str
-    hol: str
-    sep: str
+    BTC: str
+    XMR: str
+    BST: str
+    HOL: str
+    SEP: str
 
 
 class Asset(BaseModel):
