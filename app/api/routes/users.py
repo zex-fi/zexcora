@@ -1,21 +1,26 @@
+import hashlib
 from struct import unpack
 
 import eth_abi
+from bitcoinutils.keys import P2trAddress, PublicKey
+from bitcoinutils.utils import tweak_taproot_pubkey
 from eigensdk.crypto.bls.attestation import KeyPair
 from eth_hash.auto import keccak
 from fastapi import APIRouter, HTTPException
 from loguru import logger
 
-from app import BLS_PRIVATE, zex
+from app import BLS_PRIVATE, ZEX_BTC_PUBLIC_KEY, ZEX_MONERO_PUBLIC_ADDRESS, zex
 from app.models.response import (
     BalanceResponse,
     DepositResponse,
     NonceResponse,
     OrderResponse,
     TradeResponse,
+    UserAddressesResponse,
     UserIDResponse,
     UserPublicResponse,
 )
+from app.monero.address import Address
 from app.zex import BUY
 
 router = APIRouter()
@@ -117,11 +122,87 @@ def user_deposits(public: str) -> list[DepositResponse]:
 
 
 @router.get("/user/{id}/public")
-def get_user_public(id: int):
+def get_user_public(id: int) -> UserPublicResponse:
     if id not in zex.id_to_public_lookup:
-        return HTTPException(404, {"error": "user not found"})
+        raise HTTPException(404, {"error": "user not found"})
     public = zex.id_to_public_lookup[id].hex()
     return UserPublicResponse(public=public)
+
+
+def tagged_hash(data: bytes, tag: str) -> bytes:
+    """
+    Tagged hashes ensure that hashes used in one context can not be used in another.
+    It is used extensively in Taproot
+
+    A tagged hash is: SHA256( SHA256("TapTweak") ||
+                              SHA256("TapTweak") ||
+                              data
+                            )
+    """
+
+    tag_digest = hashlib.sha256(tag.encode()).digest()
+    return hashlib.sha256(tag_digest + tag_digest + data).digest()
+
+
+# to convert hashes to ints we need byteorder BIG...
+def b_to_i(b: bytes) -> int:
+    """Converts a bytes to a number"""
+    return int.from_bytes(b, byteorder="big")
+
+
+def i_to_b8(i: int) -> bytes:
+    """Converts a integer to bytes"""
+    return i.to_bytes(8, byteorder="big")
+
+
+def calculate_tweak(pubkey: PublicKey, user_id: int) -> int:
+    """
+    Calculates the tweak to apply to the public and private key when required.
+    """
+
+    # only the x coordinate is tagged_hash'ed
+    key_x = pubkey.to_bytes()[:32]
+
+    tweak = tagged_hash(key_x + i_to_b8(user_id), "TapTweak")
+
+    # we convert to int for later elliptic curve  arithmetics
+    tweak_int = b_to_i(tweak)
+
+    return tweak_int
+
+
+def get_taproot_address(master_public: PublicKey, user_id: int) -> P2trAddress:
+    tweak_int = calculate_tweak(master_public, user_id)
+    # keep x-only coordinate
+    tweak_and_odd = tweak_taproot_pubkey(master_public.key.to_string(), tweak_int)
+    pubkey = tweak_and_odd[0][:32]
+    is_odd = tweak_and_odd[1]
+
+    return P2trAddress(witness_program=pubkey.hex(), is_odd=is_odd)
+
+
+btc_master_pubkey = PublicKey(ZEX_BTC_PUBLIC_KEY)
+monero_master_address = Address(ZEX_MONERO_PUBLIC_ADDRESS)
+
+
+@router.get("/user/{public}/addresses")
+def get_user_addresses(public: str) -> UserAddressesResponse:
+    user = bytes.fromhex(public)
+    if user not in zex.public_to_id_lookup:
+        raise HTTPException(404, {"error": "user not found"})
+    user_id = zex.public_to_id_lookup[user]
+    taproot_address = get_taproot_address(btc_master_pubkey, user_id)
+    monero_address = monero_master_address.with_payment_id(user_id)
+    bst_contract_address = "0xEca9036cFbfD61C952126F233682f9A6f97E4DBD"
+    hol_contract_address = "0x3254BEe5c12A3f5c878D0ACEF194A6d611727Df7"
+    sep_contract_address = "0xcD04Fb8a4d987dc537345267751EfD271d464F91"
+    return UserAddressesResponse(
+        btc=taproot_address.to_string(),
+        xmr=str(monero_address),
+        bst=bst_contract_address,
+        hol=hol_contract_address,
+        sep=sep_contract_address,
+    )
 
 
 @router.get("/users/latest-id")

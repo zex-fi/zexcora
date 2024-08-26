@@ -43,6 +43,14 @@ class UserPublicResponse(BaseModel):
     public: str
 
 
+class UserAddressesResponse(BaseModel):
+    btc: str
+    xmr: str
+    bst: str
+    hol: str
+    sep: str
+
+
 class Asset(BaseModel):
     chain: str
     id: int
