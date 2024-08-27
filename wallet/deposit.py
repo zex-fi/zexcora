@@ -408,7 +408,7 @@ async def run_monitor_xmr(network: dict, api_url: str, monitor: PrivateKey):
 
         if len(deposits) == 0:
             print(
-                f"{chain} no deposit in from block {processed_block+1} to {latest_block["height"]}"
+                f"{chain} no deposit in from block {processed_block+1} to {latest_block['height']}"
             )
             processed_block = latest_block["height"] - blocks_confirmation
             continue
