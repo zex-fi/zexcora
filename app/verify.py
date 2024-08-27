@@ -33,7 +33,7 @@ def withdraw_msg(tx):
 
 
 def register_msg(tx: bytes):
-    msg = f"""v: {tx[0]}\nname: register\npublic: {tx[2:35]}\n"""
+    msg = "Welcome to ZEX."
     msg = "".join(("\x19Ethereum Signed Message:\n", str(len(msg)), msg))
     return msg.encode()
 

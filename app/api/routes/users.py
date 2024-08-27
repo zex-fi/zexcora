@@ -11,6 +11,7 @@ from loguru import logger
 
 from app import BLS_PRIVATE, ZEX_BTC_PUBLIC_KEY, ZEX_MONERO_PUBLIC_ADDRESS, zex
 from app.models.response import (
+    Addresses,
     BalanceResponse,
     DepositResponse,
     NonceResponse,
@@ -197,11 +198,14 @@ def get_user_addresses(public: str) -> UserAddressesResponse:
     hol_contract_address = "0x3254BEe5c12A3f5c878D0ACEF194A6d611727Df7"
     sep_contract_address = "0xcD04Fb8a4d987dc537345267751EfD271d464F91"
     return UserAddressesResponse(
-        BTC=taproot_address.to_string(),
-        XMR=str(monero_address),
-        BST=bst_contract_address,
-        HOL=hol_contract_address,
-        SEP=sep_contract_address,
+        user=user.hex(),
+        addresses=Addresses(
+            BTC=taproot_address.to_string(),
+            XMR=str(monero_address),
+            BST=bst_contract_address,
+            HOL=hol_contract_address,
+            SEP=sep_contract_address,
+        ),
     )
 
 
