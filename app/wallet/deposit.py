@@ -6,8 +6,7 @@ from struct import pack
 
 import requests
 import yaml
-from bitcoinlib.services.services import Service
-from bitcoinlib.transactions import Output, Transaction
+from bitcoinrpc import BitcoinRPC
 from bitcoinutils.keys import P2trAddress, PublicKey
 from bitcoinutils.utils import tweak_taproot_pubkey
 from secp256k1 import PrivateKey
@@ -158,14 +157,6 @@ async def run_monitor(network: dict, api_url: str, monitor: PrivateKey):
     return network
 
 
-def get_deposit_output(tx: Transaction, wallet_address: str) -> Output | None:
-    outputs: list[Output] = tx.outputs
-    for out in outputs:
-        if out.address == wallet_address:
-            return out
-    return None
-
-
 def tagged_hash(data: bytes, tag: str) -> bytes:
     """
     Tagged hashes ensure that hashes used in one context can not be used in another.
@@ -227,17 +218,18 @@ async def run_monitor_btc(network: dict, api_url: str, monitor: PrivateKey):
     if sent_block > processed_block:
         network["processed_block"] = sent_block
         processed_block = sent_block
+    rpc = BitcoinRPC.from_config(network["node_url"], None)
 
     master_pub = PublicKey.from_hex(network["public_key"])
-    srv = Service(network="mainnet" if network["mainnet"] else "testnet")
 
     latest_user_id = 0
     all_taproot_addresses: dict[str, str] = {}
 
     try:
         while IS_RUNNING:
-            latest_block_num = srv.blockcount()
+            latest_block_num = await rpc.getblockcount()
             if processed_block > latest_block_num - blocks_confirmation:
+                print(f"{chain} waiting for new block")
                 await asyncio.sleep(block_duration)
                 continue
 
@@ -253,49 +245,34 @@ async def run_monitor_btc(network: dict, api_url: str, monitor: PrivateKey):
 
                 latest_user_id = new_latest_user_id
 
-            latest_block = srv.getblock(processed_block + 1, parse_transactions=False)
-            if latest_block is False:
-                print(f"{chain} get block failed")
-                await asyncio.sleep(2)
-                continue
+            block_hash = await rpc.getblockhash(latest_block_num)
+            latest_block = await rpc.getblock(block_hash, 2)
 
             seen_txs = set()
             deposits = []
-            count = 0
+
             # Iterate through transactions in the block
-            while count != latest_block.tx_count and IS_RUNNING:
-                limit = 25
-                page = (count // limit) + 1
-                block = srv.getblock(
-                    processed_block + 1,
-                    parse_transactions=True,
-                    page=page,
-                    limit=limit,
-                )
-                if block is False:
-                    await asyncio.sleep(10)
+            for tx in latest_block["tx"]:
+                if tx["txid"] in seen_txs:
                     continue
+                seen_txs.add(tx["txid"])
 
-                tx: Transaction
-                for tx in block.transactions:
-                    if tx.txid in seen_txs:
+                # Check if any output address matches our list of Taproot addresses
+                for out in tx["vout"]:
+                    if "address" not in out["scriptPubKey"]:
                         continue
-                    seen_txs.add(tx.txid)
-                    count += 1
 
-                    # Check if any output address matches our list of Taproot addresses
-                    out: Output
-                    for out in tx.outputs:
-                        if out.address in all_taproot_addresses:
-                            deposits.append(
-                                {
-                                    "public": all_taproot_addresses[out.address],
-                                    "tokenIndex": 0,
-                                    "amount": out.value,
-                                }
-                            )
-                            print(f"found deposit to address: {out.address}")
-                await asyncio.sleep(0.1)  # give time to other tasks
+                    address = out["scriptPubKey"]["address"]
+                    if address in all_taproot_addresses:
+                        deposits.append(
+                            {
+                                "public": all_taproot_addresses[address],
+                                "tokenIndex": 0,
+                                "amount": out["value"],
+                            }
+                        )
+                        print(f"found deposit to address: {address}")
+                await asyncio.sleep(0)  # give time to other tasks
 
             if len(deposits) == 0:
                 print(f"{chain} no deposit in block: {processed_block+1}")
@@ -308,7 +285,7 @@ async def run_monitor_btc(network: dict, api_url: str, monitor: PrivateKey):
                 chain,
                 sent_block + 1,
                 processed_block,
-                latest_block.time,
+                latest_block["time"],
                 monitor,
             )
             requests.post(f"{api_url}/txs", json=[tx.decode("latin-1")])
@@ -367,8 +344,8 @@ async def main():
         print(results)
         config["networks"] = results
         pprint(config, indent=2)
-        # with open("config.yaml", "w") as file:
-        #     yaml.safe_dump(config)
+        with open("config.yaml", "w") as file:
+            yaml.safe_dump(config)
     except asyncio.CancelledError:
         print("Tasks were cancelled")
     finally:
@@ -378,7 +355,7 @@ async def main():
                 task.cancel()
 
         # Wait for all tasks to be cancelled
-        await asyncio.gather(*tasks, return_exceptions=True)
+        await asyncio.gather(*tasks, return_exceptions=False)
 
         print("All tasks have been stopped. Exiting program.")
 
