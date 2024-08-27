@@ -378,7 +378,7 @@ async def run_monitor_xmr(network: dict, api_url: str, monitor: PrivateKey):
 
     while IS_RUNNING:
         latest_block = await get_xmr_last_block(network)
-        if processed_block > latest_block["height"] - blocks_confirmation:
+        if processed_block >= latest_block["height"] - (blocks_confirmation - 1):
             print(f"{chain} waiting for new block")
             await asyncio.sleep(block_duration)
             continue
@@ -410,9 +410,10 @@ async def run_monitor_xmr(network: dict, api_url: str, monitor: PrivateKey):
             print(
                 f"{chain} no deposit in from block {processed_block+1} to {latest_block['height']}"
             )
-            processed_block = latest_block["height"] - blocks_confirmation
+            # -1 since all transaction already have 1 confirmation
+            processed_block = latest_block["height"] - (blocks_confirmation - 1)
             continue
-        processed_block = latest_block["height"] - blocks_confirmation
+        processed_block = latest_block["height"] - (blocks_confirmation - 1)
 
         tx = create_tx(
             deposits,
