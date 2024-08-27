@@ -1,6 +1,8 @@
 import asyncio
 import hashlib
+import json
 import signal
+from asyncio import subprocess
 from pprint import pprint
 from struct import pack
 
@@ -20,6 +22,7 @@ TOKENS = {
     "BTC": {
         0: 1e8,
     },
+    "XMR": {0: 1e12},
     "BST": {
         3: 1e6,
         4: 1e6,
@@ -309,6 +312,130 @@ async def run_monitor_btc(network: dict, api_url: str, monitor: PrivateKey):
     return network
 
 
+async def get_xmr_last_block(network: dict):
+    process = await subprocess.create_subprocess_exec(
+        "node",
+        "monero/get-height.js",
+        f"rpc={network['node_url']}",
+        f"network={0 if network['mainnet'] else 1}",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    # Wait for the subprocess to finish and capture output
+    stdout, stderr = await process.communicate()
+
+    # Decode and strip the output
+    output = stdout.decode().strip()
+    error = stderr.decode().strip()
+    if error:
+        print(f"{network['chain']} exec error: {error}")
+        return None
+    try:
+        return json.loads(output)
+    except json.JSONDecodeError as e:
+        print(f"{network['chain']} decode error: {e}")
+        return None
+
+
+async def get_xmr_transactions(network: dict, from_block, to_block):
+    process = await subprocess.create_subprocess_exec(
+        "node",
+        "monero/get-blocks.js",
+        f"rpc={network['node_url']}",
+        f"network={0 if network['mainnet'] else 1}",
+        f"walletPath={network['wallet_path']}",
+        f"walletPass={network['wallet_pass']}",
+        f"from={from_block}",
+        f"to={to_block}",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    # Wait for the subprocess to finish and capture output
+    stdout, stderr = await process.communicate()
+
+    # Decode and strip the output
+    output = stdout.decode().strip()
+    error = stderr.decode().strip()
+    if error:
+        print(f"{network['chain']} exec error: {error}")
+        return None
+    try:
+        return json.loads(output)
+    except json.JSONDecodeError as e:
+        print(f"{network['chain']} decode error: {e}")
+        return None
+
+
+async def run_monitor_xmr(network: dict, api_url: str, monitor: PrivateKey):
+    blocks_confirmation = network["blocks_confirmation"]
+    block_duration = network["block_duration"]
+    chain = network["chain"]
+    sent_block = requests.get(f"{api_url}/{chain}/block/latest").json()["block"]
+    processed_block = network["processed_block"]
+    if sent_block > processed_block:
+        network["processed_block"] = sent_block
+        processed_block = sent_block
+
+    while IS_RUNNING:
+        latest_block = await get_xmr_last_block(network)
+        if processed_block > latest_block["height"] - blocks_confirmation:
+            print(f"{chain} waiting for new block")
+            await asyncio.sleep(block_duration)
+            continue
+        txs = await get_xmr_transactions(
+            network, processed_block + 1, latest_block["height"]
+        )
+        if txs is None:
+            print(f"{chain} failed to get transactions")
+            await asyncio.sleep(10)
+            continue
+        deposits = []
+        for tx in txs:
+            if "paymentId" not in tx["tx"]:
+                continue
+            user_id = int(tx["tx"]["paymentId"], 16)
+            resp = requests.get(f"{api_url}/user/{user_id}/public")
+            if resp.status_code != 200:
+                print(f"{chain} deposit for not registered user with id={user_id}")
+            user_public = resp.json()["public"]
+            deposits.append(
+                {
+                    "public": user_public,
+                    "tokenIndex": 0,
+                    "amount": int(tx["amount"]),
+                }
+            )
+
+        if len(deposits) == 0:
+            print(f"{chain} no deposit in block: {processed_block+1}")
+            processed_block += 1
+            continue
+        processed_block = latest_block["height"] - blocks_confirmation
+
+        tx = create_tx(
+            deposits,
+            chain,
+            sent_block + 1,
+            processed_block,
+            latest_block["block"]["timestamp"],
+            monitor,
+        )
+        requests.post(f"{api_url}/txs", json=[tx.decode("latin-1")])
+        # to check if request is applied, query latest processed block from zex
+
+        sent_block = requests.get(f"{api_url}/{chain}/block/latest").json()["block"]
+        while sent_block != processed_block and IS_RUNNING:
+            print(
+                f"{chain} deposit is not yet applied, server desposited block: {sent_block}, script processed block: {processed_block}"
+            )
+            await asyncio.sleep(2)
+
+            sent_block = requests.get(f"{api_url}/{chain}/block/latest").json()["block"]
+            continue
+
+    return network
+
+
 async def main():
     # processed_block = web3.eth.block_number - BLOCKS_CONFIRMATION # should be queried from zex
     # print(processed_block)
@@ -334,18 +461,19 @@ async def main():
     for network in networks:
         if network["name"] == "btc":
             t = asyncio.create_task(run_monitor_btc(network, api_url, monitor))
+        elif network["name"] == "monero":
+            t = asyncio.create_task(run_monitor_xmr(network, api_url, monitor))
         else:
             t = asyncio.create_task(run_monitor(network, api_url, monitor))
         tasks.append(t)
 
     try:
         # Wait for all tasks to complete or until interrupted
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        print(results)
+        results = await asyncio.gather(*tasks, return_exceptions=False)
         config["networks"] = results
         pprint(config, indent=2)
-        with open("config.yaml", "w") as file:
-            yaml.safe_dump(config)
+        # with open("config.yaml", "w") as file:
+        #     yaml.safe_dump(config)
     except asyncio.CancelledError:
         print("Tasks were cancelled")
     finally:
