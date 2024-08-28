@@ -6,6 +6,7 @@ from asyncio import subprocess
 from pprint import pprint
 from struct import pack
 
+import httpx
 import requests
 import yaml
 from bitcoinrpc import BitcoinRPC
@@ -221,7 +222,9 @@ async def run_monitor_btc(network: dict, api_url: str, monitor: PrivateKey):
     if sent_block > processed_block:
         network["processed_block"] = sent_block
         processed_block = sent_block
-    rpc = BitcoinRPC.from_config(network["node_url"], None)
+
+    transport = httpx.AsyncHTTPTransport(retries=5)
+    rpc = BitcoinRPC.from_config(network["node_url"], None, transport=transport)
 
     master_pub = PublicKey.from_hex(network["public_key"])
 
@@ -397,6 +400,7 @@ async def run_monitor_xmr(network: dict, api_url: str, monitor: PrivateKey):
             resp = requests.get(f"{api_url}/user/{user_id}/public")
             if resp.status_code != 200:
                 print(f"{chain} deposit for not registered user with id={user_id}")
+                continue
             user_public = resp.json()["public"]
             deposits.append(
                 {
