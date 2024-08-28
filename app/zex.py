@@ -89,11 +89,11 @@ class Zex(metaclass=SingletonMeta):
 
         self.withdrawals: dict[str, dict[bytes, list[WithdrawTransaction]]] = {}
         self.deposited_blocks = {
-            "BTC": 2899886,
-            "XMR": 2569718,
-            "BST": 43359842,
-            "SEP": 6584084,
-            "HOL": 2219398,
+            "BTC": 2900393,
+            "XMR": 2570051,
+            "BST": 43373358,
+            "SEP": 6586931,
+            "HOL": 2222491,
         }
         self.nonces = {}
         self.pair_lookup = {}
