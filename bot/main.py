@@ -2,8 +2,7 @@ import os
 from struct import pack
 from threading import Lock, Thread
 
-from app.bot import ZexBot
-from app.bot.markets import BASES, BEST_ASKS, BEST_BIDS, QUOTES
+from bot import BASES, BEST_ASKS, BEST_BIDS, QUOTES, ZexBot
 
 DEPOSIT, WITHDRAW, BUY, SELL, CANCEL = b"dwbsc"
 
