@@ -9,7 +9,7 @@ from struct import pack
 import httpx
 import requests
 import yaml
-from bitcoinrpc import BitcoinRPC
+from bitcoinrpc import BitcoinRPC, RPCError
 from bitcoinutils.keys import P2trAddress, PublicKey
 from bitcoinutils.utils import tweak_taproot_pubkey
 from secp256k1 import PrivateKey
@@ -237,7 +237,7 @@ async def run_monitor_btc(network: dict, api_url: str, monitor: PrivateKey):
         while IS_RUNNING:
             try:
                 latest_block_num = await rpc.getblockcount()
-            except httpx.ReadTimeout as e:
+            except (httpx.ReadTimeout, RPCError) as e:
                 print(f"{chain} error {e}")
                 await asyncio.sleep(10)
                 continue
@@ -261,7 +261,7 @@ async def run_monitor_btc(network: dict, api_url: str, monitor: PrivateKey):
             try:
                 block_hash = await rpc.getblockhash(latest_block_num)
                 latest_block = await rpc.getblock(block_hash, 2)
-            except httpx.ReadTimeout as e:
+            except (httpx.ReadTimeout, RPCError) as e:
                 print(f"{chain} error {e}")
                 await asyncio.sleep(10)
                 continue
