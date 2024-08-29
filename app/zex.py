@@ -374,6 +374,7 @@ class Zex(metaclass=SingletonMeta):
                 modified_pairs.add(pair)
 
             elif name == CANCEL:
+                base_token, quote_token, pair = self._get_tx_pair(tx[1:])
                 success = self.markets[pair].cancel(tx)
                 if success:
                     modified_pairs.add(pair)
@@ -671,6 +672,7 @@ class Market:
             # Add remaining amount to buy orders
             heapq.heappush(self.buy_orders, (-price, index, tx))
             self.zex.amounts[tx] = amount
+            self.quote_token_balances[public] -= price * amount
             with self.order_book_lock:
                 self.bids_order_book[price] += amount
                 self._order_book_updates["bids"][price] = self.bids_order_book[price]
@@ -715,6 +717,7 @@ class Market:
             # Add remaining amount to sell orders
             heapq.heappush(self.sell_orders, (price, index, tx))
             self.zex.amounts[tx] = amount
+            self.base_token_balances[public] -= amount
             with self.order_book_lock:
                 self.asks_order_book[price] += amount
                 self._order_book_updates["asks"][price] = self.asks_order_book[price]
@@ -772,10 +775,21 @@ class Market:
                 self.quote_token_balances[public] += amount * price
                 self.buy_orders.remove((-price, index, order))
                 heapq.heapify(self.buy_orders)
+                with self.order_book_lock:
+                    self.bids_order_book[price] -= amount
+                    self._order_book_updates["bids"][price] = self.bids_order_book[
+                        price
+                    ]
+
             else:
                 self.base_token_balances[public] += amount
                 self.sell_orders.remove((price, index, order))
                 heapq.heapify(self.sell_orders)
+                with self.order_book_lock:
+                    self.asks_order_book[price] += amount
+                    self._order_book_updates["asks"][price] = self.asks_order_book[
+                        price
+                    ]
             return True
         else:
             return False
@@ -1009,9 +1023,12 @@ class Market:
         self.base_token_balances[buy_public] = (
             self.base_token_balances.get(buy_public, 0) + trade_amount
         )
+        self.base_token_balances[sell_public] -= trade_amount
+
         self.quote_token_balances[sell_public] = (
             self.quote_token_balances.get(sell_public, 0) + price * trade_amount
         )
+        self.quote_token_balances[buy_public] -= price * trade_amount
 
     def _record_trade(
         self,

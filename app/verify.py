@@ -38,6 +38,12 @@ def register_msg(tx: bytes):
     return msg.encode()
 
 
+def cancel_msg(tx: bytes):
+    msg = f"""v: {tx[0]}\nname: cancel\nslice: {tx[2:41].hex()}\npublic: {tx[41:74].hex()}\n"""
+    msg = "".join(("\x19Ethereum Signed Message:\n", str(len(msg)), msg))
+    return msg.encode()
+
+
 @line_profiler.profile
 def __verify(txs):
     res = [None] * len(txs)
@@ -58,7 +64,7 @@ def __verify(txs):
 
         else:
             if name == CANCEL:
-                msg, pubkey, sig = tx[:74], tx[41:74], tx[74 : 74 + 64]
+                msg, pubkey, sig = cancel_msg(tx), tx[41:74], tx[74 : 74 + 64]
             elif name in (BUY, SELL):
                 msg, pubkey, sig = order_msg(tx), tx[40:73], tx[73 : 73 + 64]
             elif name == REGISTER:
@@ -94,8 +100,8 @@ def close_pool():
 @line_profiler.profile
 def verify(txs):
     chunks = list(chunkify(txs, len(txs) // n_chunks + 1))
-    results = pool.map(__verify, chunks)
-    # results = [__verify(x) for x in chunks]
+    # results = pool.map(__verify, chunks)
+    results = [__verify(x) for x in chunks]
 
     i = 0
     for sublist in results:

@@ -31,7 +31,7 @@ light_router = APIRouter()
 USDT_MAINNET = "HOL:1"
 
 
-@timed_lru_cache(seconds=60)
+# @timed_lru_cache(seconds=10)
 def _user_balances(user: bytes) -> list[BalanceResponse]:
     result = []
     for token in zex.balances:
