@@ -46,20 +46,23 @@ TOKENS = {
 def initialize_web3(network) -> tuple[Web3, Contract]:
     web3 = Web3(Web3.HTTPProvider(network["node_url"]))
     web3.middleware_onion.inject(geth_poa_middleware, layer=0)
-    contract = web3.eth.contract(
-        address=network["contract_address"], abi=network["contract_abi"]
-    )
+    with open(network["contract_abi"]) as f:
+        abi = f.read()
+    contract = web3.eth.contract(address=network["contract_address"], abi=abi)
     return web3, contract
 
 
 # Function to get deposits
 async def get_deposits(contract: Contract, from_block, to_block):
     failed = True
+    events = []
     while failed and IS_RUNNING:
         try:
-            events = contract.events.Deposit.get_logs(
-                fromBlock=from_block, toBlock=to_block
-            )
+            for x in range(from_block + 2500, to_block + 2500, 2500):
+                logs = contract.events.Deposit.get_logs(fromBlock=from_block, toBlock=x)
+                await asyncio.sleep(1)
+                events.extend([dict(e["args"]) for e in logs])
+                from_block = x + 1
             failed = False
         except Exception as e:
             print(e)
@@ -67,7 +70,7 @@ async def get_deposits(contract: Contract, from_block, to_block):
             continue
     if failed:
         return None
-    return [dict(event["args"]) for event in events]
+    return events
 
 
 def create_tx(
@@ -223,8 +226,7 @@ async def run_monitor_btc(network: dict, api_url: str, monitor: PrivateKey):
         network["processed_block"] = sent_block
         processed_block = sent_block
 
-    transport = httpx.AsyncHTTPTransport(retries=5)
-    rpc = BitcoinRPC.from_config(network["node_url"], None, transport=transport)
+    rpc = BitcoinRPC.from_config(network["node_url"], None)
 
     master_pub = PublicKey.from_hex(network["public_key"])
 
@@ -233,7 +235,12 @@ async def run_monitor_btc(network: dict, api_url: str, monitor: PrivateKey):
 
     try:
         while IS_RUNNING:
-            latest_block_num = await rpc.getblockcount()
+            try:
+                latest_block_num = await rpc.getblockcount()
+            except httpx.ReadTimeout as e:
+                print(f"{chain} error {e}")
+                await asyncio.sleep(10)
+                continue
             if processed_block > latest_block_num - blocks_confirmation:
                 print(f"{chain} waiting for new block")
                 await asyncio.sleep(block_duration)
@@ -251,8 +258,13 @@ async def run_monitor_btc(network: dict, api_url: str, monitor: PrivateKey):
 
                 latest_user_id = new_latest_user_id
 
-            block_hash = await rpc.getblockhash(latest_block_num)
-            latest_block = await rpc.getblock(block_hash, 2)
+            try:
+                block_hash = await rpc.getblockhash(latest_block_num)
+                latest_block = await rpc.getblock(block_hash, 2)
+            except httpx.ReadTimeout as e:
+                print(f"{chain} error {e}")
+                await asyncio.sleep(10)
+                continue
 
             seen_txs = set()
             deposits = []

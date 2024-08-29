@@ -2,7 +2,7 @@ import os
 from struct import pack
 from threading import Lock, Thread
 
-from bot import BASES, BEST_ASKS, BEST_BIDS, QUOTES, ZexBot
+from bot import PAIRS, ZexBot
 
 DEPOSIT, WITHDRAW, BUY, SELL, CANCEL = b"dwbsc"
 
@@ -20,10 +20,10 @@ def start_threads() -> list[tuple[Thread, ZexBot]]:
     bot1_lock = Lock()
     bot2_lock = Lock()
     idx = 0
-    for quote_chain, quote_token_ids in QUOTES.items():
-        for quote_token_id in quote_token_ids:
-            for base_chain, base_token_ids in BASES.items():
-                for base_token_id in base_token_ids:
+    for base_chain, x in PAIRS.items():
+        for base_token_id, y in x.items():
+            for quote_chain, z in y.items():
+                for quote_token_id, bid_ask_digits in z.items():
                     print(
                         f"{base_chain}:{base_token_id}-{quote_chain}:{quote_token_id}"
                     )
@@ -31,12 +31,9 @@ def start_threads() -> list[tuple[Thread, ZexBot]]:
                         private_key=(private_seed_int + idx).to_bytes(32, "big"),
                         pair=f"{base_chain}:{base_token_id}-{quote_chain}:{quote_token_id}",
                         side="buy",
-                        best_bid=BEST_BIDS[base_chain][base_token_id][quote_chain][
-                            quote_token_id
-                        ],
-                        best_ask=BEST_ASKS[base_chain][base_token_id][quote_chain][
-                            quote_token_id
-                        ],
+                        best_bid=bid_ask_digits["bid"],
+                        best_ask=bid_ask_digits["ask"],
+                        digits=bid_ask_digits["digits"],
                         lock=bot1_lock,
                         seed=idx,
                     )
@@ -44,12 +41,9 @@ def start_threads() -> list[tuple[Thread, ZexBot]]:
                         private_key=(private_seed_int + idx + 1).to_bytes(32, "big"),
                         pair=f"{base_chain}:{base_token_id}-{quote_chain}:{quote_token_id}",
                         side="sell",
-                        best_bid=BEST_BIDS[base_chain][base_token_id][quote_chain][
-                            quote_token_id
-                        ],
-                        best_ask=BEST_ASKS[base_chain][base_token_id][quote_chain][
-                            quote_token_id
-                        ],
+                        best_bid=bid_ask_digits["bid"],
+                        best_ask=bid_ask_digits["ask"],
+                        digits=bid_ask_digits["digits"],
                         lock=bot2_lock,
                         seed=idx + 1,
                     )

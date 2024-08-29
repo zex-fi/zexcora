@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException
 from loguru import logger
 
 from app import BLS_PRIVATE, ZEX_BTC_PUBLIC_KEY, ZEX_MONERO_PUBLIC_ADDRESS, zex
+from app.api.cache import timed_lru_cache
 from app.models.response import (
     Addresses,
     BalanceResponse,
@@ -27,20 +28,43 @@ from app.zex import BUY
 router = APIRouter()
 light_router = APIRouter()
 
+USDT_MAINNET = "HOL:1"
+
+
+@timed_lru_cache(seconds=60)
+def _user_balances(user: bytes) -> list[BalanceResponse]:
+    result = []
+    for token in zex.balances:
+        if zex.balances[token].get(user, 0) == 0:
+            continue
+
+        price = 0
+        change_24h = 0
+        if token == USDT_MAINNET:
+            price = 1
+            change_24h = 0
+        elif f"{token}-{USDT_MAINNET}" in zex.markets:
+            market = zex.markets[f"{token}-{USDT_MAINNET}"]
+            price = market.get_last_price()
+            change_24h = market.get_price_change_24h_percent()
+        balance = zex.balances[token][user]
+        result.append(
+            BalanceResponse(
+                chain=token[0:3],
+                token=int(token[4]),
+                balance=str(balance),
+                price=price,
+                change_24h=change_24h,
+                value=balance * price,
+            )
+        )
+    return result
+
 
 @router.get("/user/{public}/balances")
 def user_balances(public: str) -> list[BalanceResponse]:
     user = bytes.fromhex(public)
-
-    return [
-        BalanceResponse(
-            chain=token[0:3],
-            token=int(token[4]),
-            balance=str(zex.balances[token][user]),
-        )
-        for token in zex.balances
-        if zex.balances[token].get(user, 0) > 0
-    ]
+    return _user_balances(user)
 
 
 @router.get("/user/{public}/trades")

@@ -1,243 +1,129 @@
-QUOTES = {"BTC": [0], "HOL": [1, 2, 3]}
-BASES = {
+QUOTES = {"BTC": [0], "HOL": [1, 2]}
+TOKENS = {
+    "BTC": [0],
     "XMR": [0],
-    "BST": [1, 2, 3, 4, 5, 6],
+    "HOL": [1, 2, 3, 4],
+    "BST": [1, 2, 3, 4],
     "SEP": [1, 2, 3, 4],
 }
-
-BEST_BIDS = {
+PAIRS = {
+    "HOL": {
+        2: {  # USDC
+            "HOL": {
+                1: {"bid": (0.9999, 250), "ask": (1.0000, 250), "digits": 4},
+            },
+        },
+        3: {  # WBTC
+            "HOL": {
+                1: {"bid": (58000, 100), "ask": (58000, 100), "digits": 2},
+                2: {"bid": (58100, 90), "ask": (58100, 90), "digits": 2},
+            },
+            "BTC": {
+                0: {"bid": (0.9999, 1), "ask": (1.0001, 1), "digits": 4},
+            },
+        },
+        4: {  # Link
+            "HOL": {
+                1: {"bid": (9.7, 2), "ask": (9.7, 2), "digits": 4},
+                2: {"bid": (9.7, 1), "ask": (9.7, 1), "digits": 4},
+            },
+            "BTC": {
+                0: {"bid": (0.00016, 1), "ask": (0.00016, 1), "digits": 8},
+            },
+        },
+    },
+    "BTC": {
+        0: {  # BTC
+            "HOL": {
+                1: {"bid": (58000, 0.1), "ask": (58000, 0.2), "digits": 2},
+                2: {"bid": (58100, 0.25), "ask": (58100, 0.3), "digits": 2},
+            },
+        },
+    },
     "XMR": {
         0: {  # XMR
             "HOL": {
-                1: (140.1, 100),  # (price, volume)
-                2: (141.0, 90),  # (price, volume)
-                3: (0.002537, 1),  # (price, volume)
+                1: {"bid": (170, 1), "ask": (171, 1), "digits": 4},
+                2: {"bid": (170, 1), "ask": (171, 1), "digits": 4},
             },
             "BTC": {
-                0: (0.002538, 1),  # (price, volume)
+                0: {"bid": (0.0029, 1.1), "ask": (0.0029, 1.2), "digits": 6},
             },
         },
     },
     "BST": {
-        1: {  # ALICE
+        1: {  # USDT
             "HOL": {
-                1: (9.5, 100),  # (price, volume)
-                2: (10.1, 90),  # (price, volume)
-                3: (0.0001, 1),  # (price, volume)
+                1: {"bid": (0.9999, 250), "ask": (1.0000, 250), "digits": 4},
+                2: {"bid": (0.9999, 250), "ask": (1.0000, 250), "digits": 4},
             },
             "BTC": {
-                0: (0.0001, 1),  # (price, volume)
+                0: {"bid": (0.000017, 500), "ask": (0.0000171, 510), "digits": 8},
             },
         },
-        2: {  # PION
+        2: {  # USDC
             "HOL": {
-                1: (20, 100),  # (price, volume)
-                2: (20.1, 90),  # (price, volume)
-                3: (0.0002, 1),  # (price, volume)
+                1: {"bid": (0.9999, 250), "ask": (1.0000, 250), "digits": 4},
+                2: {"bid": (0.9999, 250), "ask": (1.0000, 250), "digits": 4},
             },
             "BTC": {
-                0: (0.0002, 1),  # (price, volume)
+                0: {"bid": (0.000017, 500), "ask": (0.0000171, 510), "digits": 8},
             },
         },
-        3: {  # USDT
+        3: {  # WBTC
             "HOL": {
-                1: (1.01, 250),  # (price, volume)
-                2: (0.99, 100),  # (price, volume)
-                3: (0.000017, 1),  # (price, volume)
+                1: {"bid": (58000, 100), "ask": (58000, 100), "digits": 2},
+                2: {"bid": (58100, 90), "ask": (58100, 90), "digits": 2},
             },
             "BTC": {
-                0: (0.000017, 1),  # (price, volume)
+                0: {"bid": (0.9999, 1), "ask": (1.0001, 1), "digits": 4},
             },
         },
-        4: {  # USDC
+        4: {  # Link
             "HOL": {
-                1: (1.01, 250),  # (price, volume)
-                2: (0.99, 100),  # (price, volume)
-                3: (0.000017, 1),  # (price, volume)
+                1: {"bid": (9.7, 2), "ask": (9.7, 2), "digits": 4},
+                2: {"bid": (9.7, 1), "ask": (9.7, 1), "digits": 4},
             },
             "BTC": {
-                0: (0.000017, 1),  # (price, volume)
-            },
-        },
-        5: {  # WBTC
-            "HOL": {
-                1: (58000, 100),  # (price, volume)
-                2: (58100, 90),  # (price, volume)
-                3: (0.99, 1),  # (price, volume)
-            },
-            "BTC": {
-                0: (1.01, 1),  # (price, volume)
-            },
-        },
-        6: {  # LINK
-            "HOL": {
-                1: (9.7, 2),  # (price, volume)
-                2: (9.8, 3),  # (price, volume)
-                3: (0.00016, 1),  # (price, volume)
-            },
-            "BTC": {
-                0: (0.00016, 1),  # (price, volume)
+                0: {"bid": (0.00016, 1), "ask": (0.00016, 1), "digits": 8},
             },
         },
     },
     "SEP": {
         1: {  # USDT
             "HOL": {
-                1: (1.01, 250),  # (price, volume)
-                2: (0.99, 100),  # (price, volume)
-                3: (0.000017, 1),  # (price, volume)
+                1: {"bid": (0.9999, 250), "ask": (1.0000, 250), "digits": 4},
+                2: {"bid": (0.9999, 250), "ask": (1.0000, 250), "digits": 4},
             },
             "BTC": {
-                0: (0.000017, 1),  # (price, volume)
+                0: {"bid": (0.000017, 500), "ask": (0.0000171, 510), "digits": 8},
             },
         },
         2: {  # USDC
             "HOL": {
-                1: (1.01, 250),  # (price, volume)
-                2: (0.99, 100),  # (price, volume)
-                3: (0.000017, 1),  # (price, volume)
+                1: {"bid": (0.9999, 250), "ask": (1.0000, 250), "digits": 4},
+                2: {"bid": (0.9999, 250), "ask": (1.0000, 250), "digits": 4},
             },
             "BTC": {
-                0: (0.000017, 1),  # (price, volume)
+                0: {"bid": (0.000017, 500), "ask": (0.0000171, 510), "digits": 8},
             },
         },
         3: {  # WBTC
             "HOL": {
-                1: (58000, 100),  # (price, volume)
-                2: (58100, 90),  # (price, volume)
-                3: (0.99, 1),  # (price, volume)
+                1: {"bid": (58000, 100), "ask": (58000, 100), "digits": 2},
+                2: {"bid": (58100, 90), "ask": (58100, 90), "digits": 2},
             },
             "BTC": {
-                0: (1.01, 1),  # (price, volume)
+                0: {"bid": (0.9999, 1), "ask": (1.0001, 1), "digits": 4},
             },
         },
-        4: {  # LINK
+        4: {  # Link
             "HOL": {
-                1: (9.7, 2),  # (price, volume)
-                2: (9.8, 3),  # (price, volume)
-                3: (0.00016, 1),  # (price, volume)
+                1: {"bid": (9.7, 2), "ask": (9.7, 2), "digits": 4},
+                2: {"bid": (9.7, 1), "ask": (9.7, 1), "digits": 4},
             },
             "BTC": {
-                0: (0.00016, 1),  # (price, volume)
-            },
-        },
-    },
-}
-
-BEST_ASKS = {
-    "XMR": {
-        0: {  # XMR
-            "HOL": {
-                1: (140.1, 100),  # (price, volume)
-                2: (141.0, 90),  # (price, volume)
-                3: (0.002537, 1),  # (price, volume)
-            },
-            "BTC": {
-                0: (0.002540, 1),  # (price, volume)
-            },
-        },
-    },
-    "BST": {
-        1: {  # ALICE
-            "HOL": {
-                1: (10.5, 100),  # (price, volume)
-                2: (10.1, 90),  # (price, volume)
-                3: (0.0001, 1),  # (price, volume)
-            },
-            "BTC": {
-                0: (0.0001, 1),  # (price, volume)
-            },
-        },
-        2: {  # PION
-            "HOL": {
-                1: (20, 100),  # (price, volume)
-                2: (20.1, 90),  # (price, volume)
-                3: (0.0002, 1),  # (price, volume)
-            },
-            "BTC": {
-                0: (0.0001, 1),  # (price, volume)
-            },
-        },
-        3: {  # USDT
-            "HOL": {
-                1: (1.01, 250),  # (price, volume)
-                2: (0.99, 100),  # (price, volume)
-                3: (0.000017, 1),  # (price, volume)
-            },
-            "BTC": {
-                0: (0.000017, 1),  # (price, volume)
-            },
-        },
-        4: {  # USDC
-            "HOL": {
-                1: (1.01, 250),  # (price, volume)
-                2: (0.99, 100),  # (price, volume)
-                3: (0.000017, 1),  # (price, volume)
-            },
-            "BTC": {
-                0: (0.000017, 1),  # (price, volume)
-            },
-        },
-        5: {  # WBTC
-            "HOL": {
-                1: (58000, 100),  # (price, volume)
-                2: (58100, 90),  # (price, volume)
-                3: (0.99, 1),  # (price, volume)
-            },
-            "BTC": {
-                0: (1.01, 1),  # (price, volume)
-            },
-        },
-        6: {  # LINK
-            "HOL": {
-                1: (9.7, 2),  # (price, volume)
-                2: (9.8, 3),  # (price, volume)
-                3: (0.00016, 1),  # (price, volume)
-            },
-            "BTC": {
-                0: (0.00016, 1),  # (price, volume)
-            },
-        },
-    },
-    "SEP": {
-        1: {  # USDT
-            "HOL": {
-                1: (1.01, 250),  # (price, volume)
-                2: (0.99, 100),  # (price, volume)
-                3: (0.000017, 1),  # (price, volume)
-            },
-            "BTC": {
-                0: (0.00016, 1),  # (price, volume)
-            },
-        },
-        2: {  # USDC
-            "HOL": {
-                1: (1.01, 250),  # (price, volume)
-                2: (0.99, 100),  # (price, volume)
-                3: (0.000017, 1),  # (price, volume)
-            },
-            "BTC": {
-                0: (0.000017, 1),  # (price, volume)
-            },
-        },
-        3: {  # WBTC
-            "HOL": {
-                1: (58000, 100),  # (price, volume)
-                2: (58100, 90),  # (price, volume)
-                3: (0.99, 1),  # (price, volume)
-            },
-            "BTC": {
-                0: (1.01, 1),  # (price, volume)
-            },
-        },
-        4: {  # LINK
-            "HOL": {
-                1: (9.7, 2),  # (price, volume)
-                2: (9.8, 3),  # (price, volume)
-                3: (0.00016, 1),  # (price, volume)
-            },
-            "BTC": {
-                0: (0.00016, 1),  # (price, volume)
+                0: {"bid": (0.00016, 1), "ask": (0.00016, 1), "digits": 8},
             },
         },
     },

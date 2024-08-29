@@ -122,8 +122,8 @@ class Zex(metaclass=SingletonMeta):
             TOKENS = {
                 "BTC": [0],
                 "XMR": [0],
-                "HOL": [1, 2, 3],
-                "BST": [1, 2, 3, 4, 5, 6],
+                "HOL": [1, 2, 3, 4],
+                "BST": [1, 2, 3, 4],
                 "SEP": [1, 2, 3, 4],
             }
 

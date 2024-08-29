@@ -5,6 +5,9 @@ class BalanceResponse(BaseModel):
     chain: str
     token: int
     balance: str
+    price: float
+    change_24h: float
+    value: float
 
 
 class TradeResponse(BaseModel):

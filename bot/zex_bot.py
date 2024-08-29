@@ -27,6 +27,7 @@ class ZexBot:
         side: str,
         best_bid: tuple[float, float],
         best_ask: tuple[float, float],
+        digits: int,
         lock: Lock,
         seed: int | None = 1,
     ) -> None:
@@ -35,6 +36,7 @@ class ZexBot:
         self.side = side
         self.send_tx_lock = lock
         self.is_running = False
+        self.digits = digits
         self.rng = random.Random(seed)
 
         self.pubkey = self.privkey.pubkey.serialize()
@@ -153,7 +155,7 @@ class ZexBot:
         Thread(target=self.websocket.run_forever, kwargs={"reconnect": 5}).start()
         self.is_running = True
         while self.is_running:
-            time.sleep(1)
+            time.sleep(2)
             maker = self.rng.choices([True, False], [0.5, 0.75])[0]
             price = 0
             if maker:
@@ -170,10 +172,10 @@ class ZexBot:
                     price = self.best_ask[0]
                 elif self.side == "sell":
                     price = self.best_bid[0]
-            price = round(price, 8)
-            volume = round(self.rng.random() * 0.02, 4)
-            while volume < 0.0001:
-                volume = round(self.rng.random() * 0.02, 4)
+            price = round(price, self.digits)
+            volume = round(self.rng.random() * 0.02, 3)
+            while volume < 0.001:
+                volume = round(self.rng.random() * 0.02, 3)
 
             resp = requests.get(
                 f"http://{ip}:{port}/api/v1/user/{self.pubkey.hex()}/nonce"
@@ -181,4 +183,5 @@ class ZexBot:
             self.nonce = resp.json()["nonce"]
             # with self.send_tx_lock:
             tx = self.create_order(price, volume, maker=maker).decode("latin-1")
+            self.orders.add(tx)
             requests.post(f"http://{ip}:{port}/api/v1/txs", json=[tx])
