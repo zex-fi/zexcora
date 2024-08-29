@@ -760,18 +760,22 @@ class Market:
         return True
 
     def cancel(self, tx: bytes) -> bool:
-        operation = tx[2]
-        amount, price = unpack(">dd", tx[17:33])
         public = tx[41:74]
         order_slice = tx[2:41]
         for order in self.zex.orders[public]:
             if order_slice not in order:
                 continue
-            self.zex.amounts[order] = 0
+            operation, _, price, nonce, public, index = self._parse_transaction(order)
+            amount = self.zex.amounts.pop(order)
+            del self.zex.orders[public][order]
             if operation == BUY:
                 self.quote_token_balances[public] += amount * price
+                self.buy_orders.remove((-price, index, order))
+                heapq.heapify(self.buy_orders)
             else:
                 self.base_token_balances[public] += amount
+                self.sell_orders.remove((price, index, order))
+                heapq.heapify(self.sell_orders)
             return True
         else:
             return False

@@ -98,6 +98,7 @@ def user_orders(public: str) -> list[OrderResponse]:
     user = bytes.fromhex(public)
     orders = zex.orders.get(user, {})
     resp = []
+    order: bytes
     for order in orders:
         o = {
             "name": "buy" if order[1] == BUY else "sell",
@@ -110,6 +111,7 @@ def user_orders(public: str) -> list[OrderResponse]:
             "t": unpack(">I", order[32:36])[0],
             "nonce": unpack(">I", order[36:40])[0],
             "index": unpack(">Q", order[137:145])[0],
+            "slice": order[1:40].hex(),
         }
         resp.append(o)
     return resp

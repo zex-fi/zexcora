@@ -32,6 +32,7 @@ class OrderResponse(BaseModel):
     price: float
     t: int
     nonce: int
+    slice: str
 
 
 class NonceResponse(BaseModel):
