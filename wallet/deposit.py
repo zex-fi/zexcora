@@ -54,15 +54,21 @@ def initialize_web3(network) -> tuple[Web3, Contract]:
 
 # Function to get deposits
 async def get_deposits(contract: Contract, from_block, to_block):
+    step = 2500
     failed = True
     events = []
     while failed and IS_RUNNING:
         try:
-            for x in range(from_block + 2500, to_block + 2500, 2500):
+            for x in range(from_block + step, to_block, step):
                 logs = contract.events.Deposit.get_logs(fromBlock=from_block, toBlock=x)
-                await asyncio.sleep(1)
                 events.extend([dict(e["args"]) for e in logs])
                 from_block = x + 1
+                await asyncio.sleep(1)
+            if from_block <= to_block:
+                logs = contract.events.Deposit.get_logs(
+                    fromBlock=from_block, toBlock=to_block
+                )
+                events.extend([dict(e["args"]) for e in logs])
             failed = False
         except Exception as e:
             print(e)
