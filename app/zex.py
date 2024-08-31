@@ -786,7 +786,7 @@ class Market:
                 self.sell_orders.remove((price, index, order))
                 heapq.heapify(self.sell_orders)
                 with self.order_book_lock:
-                    self.asks_order_book[price] += amount
+                    self.asks_order_book[price] -= amount
                     self._order_book_updates["asks"][price] = self.asks_order_book[
                         price
                     ]
