@@ -57,7 +57,23 @@ class UserAddressesResponse(BaseModel):
     addresses: Addresses
 
 
-class Asset(BaseModel):
+class DepositResponse(BaseModel):
+    token: str
+    amount: float
+    time: int
+
+
+class Symbol(BaseModel):
+    symbol: str
+    lastPrice: float
+    volume24h: float
+    priceChange24h: float
+    high24h: float
+    low24h: float
+    priceChange7D: float
+
+
+class Token(BaseModel):
     chain: str
     id: int
     chainType: str
@@ -68,24 +84,7 @@ class Asset(BaseModel):
     tag: str
 
 
-class DepositResponse(BaseModel):
-    token: str
-    amount: float
-    time: int
-
-
-class Symbol(BaseModel):
-    symbol: str
-    baseAsset: Asset
-    quoteAsset: Asset
-    lastPrice: float
-    volume24h: float
-    priceChange24h: float
-    high24h: float
-    low24h: float
-    priceChange7D: float
-
-
 class ExchangeInfoResponse(BaseModel):
     timezone: str
     symbols: list[Symbol]
+    tokens: list[Token]

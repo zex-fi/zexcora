@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app import zex
-from app.models.response import Asset, ExchangeInfoResponse, Symbol
+from app.models.response import Asset, ExchangeInfoResponse, Symbol, Token
 
 router = APIRouter()
 
@@ -64,46 +64,6 @@ async def exhange_info() -> ExchangeInfoResponse:
         symbols=[
             Symbol(
                 symbol=name,
-                baseAsset=Asset(
-                    chain=market.base_token[:3],
-                    id=int(market.base_token[4:]),
-                    chainType="evm"
-                    if market.base_token[:3] not in ["BTC", "XMR"]
-                    else "native_only",
-                    address=None,  # TODO: implement
-                    decimals=DECIMALS[market.base_token],
-                    price=zex.markets[
-                        f"{market.base_token}-{USDT_MAINNET}"
-                    ].get_last_price()
-                    if market.base_token != USDT_MAINNET
-                    else 1,
-                    change_24h=zex.markets[
-                        f"{market.base_token}-{USDT_MAINNET}"
-                    ].get_price_change_24h_percent()
-                    if market.base_token != USDT_MAINNET
-                    else 0,
-                    tag=TAGS[market.base_token],
-                ),
-                quoteAsset=Asset(
-                    chain=market.quote_token[:3],
-                    id=int(market.quote_token[4:]),
-                    address=None,  # TODO: implement
-                    chainType="evm"
-                    if market.quote_token[:3] not in ["BTC", "XMR"]
-                    else "native_only",
-                    decimals=DECIMALS[market.quote_token],
-                    price=zex.markets[
-                        f"{market.quote_token}-{USDT_MAINNET}"
-                    ].get_last_price()
-                    if market.quote_token != USDT_MAINNET
-                    else 1,
-                    change_24h=zex.markets[
-                        f"{market.quote_token}-{USDT_MAINNET}"
-                    ].get_price_change_24h_percent()
-                    if market.quote_token != USDT_MAINNET
-                    else 0,
-                    tag=TAGS[market.quote_token],
-                ),
                 lastPrice=market.get_last_price(),
                 volume24h=market.get_volume_24h(),
                 priceChange24h=market.get_price_change_24h_percent(),
@@ -112,6 +72,25 @@ async def exhange_info() -> ExchangeInfoResponse:
                 priceChange7D=market.get_price_change_7D_percent(),
             )
             for name, market in zex.markets.items()
+        ],
+        tokens=[
+            Token(
+                chain=token[:3],
+                id=int(token[4:]),
+                address=None,  # TODO: implement
+                chainType="evm" if token[:3] not in ["BTC", "XMR"] else "native_only",
+                decimals=DECIMALS[token],
+                price=zex.markets[f"{token}-{USDT_MAINNET}"].get_last_price()
+                if token != USDT_MAINNET
+                else 1,
+                change_24h=zex.markets[
+                    f"{token}-{USDT_MAINNET}"
+                ].get_price_change_24h_percent()
+                if token != USDT_MAINNET
+                else 0,
+                tag=TAGS[token],
+            )
+            for token in zex.balances.keys()
         ],
     )
     return resp
