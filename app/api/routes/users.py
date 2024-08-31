@@ -38,24 +38,12 @@ def _user_balances(user: bytes) -> list[BalanceResponse]:
         if zex.balances[token].get(user, 0) == 0:
             continue
 
-        price = 0
-        change_24h = 0
-        if token == USDT_MAINNET:
-            price = 1
-            change_24h = 0
-        elif f"{token}-{USDT_MAINNET}" in zex.markets:
-            market = zex.markets[f"{token}-{USDT_MAINNET}"]
-            price = market.get_last_price()
-            change_24h = market.get_price_change_24h_percent()
         balance = zex.balances[token][user]
         result.append(
             BalanceResponse(
                 chain=token[0:3],
                 token=int(token[4]),
                 balance=str(balance),
-                price=price,
-                change_24h=change_24h,
-                value=balance * price,
             )
         )
     return result

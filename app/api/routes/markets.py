@@ -5,6 +5,42 @@ from app.models.response import Asset, ExchangeInfoResponse, Symbol
 
 router = APIRouter()
 
+USDT_MAINNET = "HOL:1"
+
+DECIMALS = {
+    "BTC:0": 8,
+    "XMR:0": 12,
+    "HOL:1": 6,
+    "HOL:2": 6,
+    "HOL:3": 8,
+    "HOL:4": 18,
+    "BST:1": 6,
+    "BST:2": 6,
+    "BST:3": 8,
+    "BST:4": 18,
+    "SEP:1": 6,
+    "SEP:2": 6,
+    "SEP:3": 8,
+    "SEP:4": 18,
+}
+
+TAGS = {
+    "BTC:0": "btc",
+    "XMR:0": "xmr",
+    "HOL:1": "usdt",
+    "HOL:2": "usdc",
+    "HOL:3": "btc",
+    "HOL:4": "link",
+    "BST:1": "usdt",
+    "BST:2": "usdc",
+    "BST:3": "btc",
+    "BST:4": "link",
+    "SEP:1": "usdt",
+    "SEP:2": "usdc",
+    "SEP:3": "btc",
+    "SEP:4": "link",
+}
+
 
 @router.get("/depth")
 async def depth(symbol: str, limit: int = 500):
@@ -22,17 +58,51 @@ async def historical_trades(symbol: str, limit: int = 500, fromId: int | None = 
 
 
 @router.get("/exchangeInfo")
-async def exhange_info():
+async def exhange_info() -> ExchangeInfoResponse:
     resp = ExchangeInfoResponse(
         timezone="UTC",
         symbols=[
             Symbol(
                 symbol=name,
                 baseAsset=Asset(
-                    chain=market.base_token[:3], id=int(market.base_token[4:])
+                    chain=market.base_token[:3],
+                    id=int(market.base_token[4:]),
+                    chainType="evm"
+                    if market.base_token[:3] not in ["BTC", "XMR"]
+                    else "native_only",
+                    address=None,  # TODO: implement
+                    decimals=DECIMALS[market.base_token],
+                    price=zex.markets[
+                        f"{market.base_token}-{USDT_MAINNET}"
+                    ].get_last_price()
+                    if market.base_token != USDT_MAINNET
+                    else 1,
+                    change_24h=zex.markets[
+                        f"{market.base_token}-{USDT_MAINNET}"
+                    ].get_price_change_24h_percent()
+                    if market.base_token != USDT_MAINNET
+                    else 0,
+                    tag=TAGS[market.base_token],
                 ),
                 quoteAsset=Asset(
-                    chain=market.quote_token[:3], id=int(market.quote_token[4:])
+                    chain=market.quote_token[:3],
+                    id=int(market.quote_token[4:]),
+                    address=None,  # TODO: implement
+                    chainType="evm"
+                    if market.quote_token[:3] not in ["BTC", "XMR"]
+                    else "native_only",
+                    decimals=DECIMALS[market.quote_token],
+                    price=zex.markets[
+                        f"{market.quote_token}-{USDT_MAINNET}"
+                    ].get_last_price()
+                    if market.quote_token != USDT_MAINNET
+                    else 1,
+                    change_24h=zex.markets[
+                        f"{market.quote_token}-{USDT_MAINNET}"
+                    ].get_price_change_24h_percent()
+                    if market.quote_token != USDT_MAINNET
+                    else 0,
+                    tag=TAGS[market.quote_token],
                 ),
                 lastPrice=market.get_last_price(),
                 volume24h=market.get_volume_24h(),

@@ -5,9 +5,6 @@ class BalanceResponse(BaseModel):
     chain: str
     token: int
     balance: str
-    price: float
-    change_24h: float
-    value: float
 
 
 class TradeResponse(BaseModel):
@@ -63,6 +60,12 @@ class UserAddressesResponse(BaseModel):
 class Asset(BaseModel):
     chain: str
     id: int
+    chainType: str
+    address: str | None
+    decimals: int
+    price: float  # price is USDT
+    change_24h: float
+    tag: str
 
 
 class DepositResponse(BaseModel):
