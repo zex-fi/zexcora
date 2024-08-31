@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app import zex
-from app.models.response import Asset, ExchangeInfoResponse, Symbol, Token
+from app.models.response import ExchangeInfoResponse, Symbol, Token
 
 router = APIRouter()
 
