@@ -399,6 +399,11 @@ async def run_monitor_xmr(network: dict, api_url: str, monitor: PrivateKey):
 
     while IS_RUNNING:
         latest_block = await get_xmr_last_block(network)
+        if latest_block is None:
+            print(f"{chain} failed to get latest block info")
+            await asyncio.sleep(10)
+            continue
+
         if processed_block >= latest_block["height"] - (blocks_confirmation - 1):
             print(f"{chain} waiting for new block")
             await asyncio.sleep(block_duration)
