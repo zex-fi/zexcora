@@ -33,7 +33,8 @@ def start_threads() -> list[tuple[Thread, ZexBot]]:
                         side="buy",
                         best_bid=bid_ask_digits["bid"],
                         best_ask=bid_ask_digits["ask"],
-                        digits=bid_ask_digits["digits"],
+                        volume_digits=bid_ask_digits["volume_digits"],
+                        price_digits=bid_ask_digits["price_digits"],
                         lock=bot1_lock,
                         seed=idx,
                     )
@@ -43,7 +44,8 @@ def start_threads() -> list[tuple[Thread, ZexBot]]:
                         side="sell",
                         best_bid=bid_ask_digits["bid"],
                         best_ask=bid_ask_digits["ask"],
-                        digits=bid_ask_digits["digits"],
+                        volume_digits=bid_ask_digits["volume_digits"],
+                        price_digits=bid_ask_digits["price_digits"],
                         lock=bot2_lock,
                         seed=idx + 1,
                     )

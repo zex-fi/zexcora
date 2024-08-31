@@ -27,7 +27,8 @@ class ZexBot:
         side: str,
         best_bid: tuple[float, float],
         best_ask: tuple[float, float],
-        digits: int,
+        volume_digits: int,
+        price_digits: int,
         lock: Lock,
         seed: int | None = 1,
     ) -> None:
@@ -36,7 +37,8 @@ class ZexBot:
         self.side = side
         self.send_tx_lock = lock
         self.is_running = False
-        self.digits = digits
+        self.volume_digits = volume_digits
+        self.price_digits = price_digits
         self.rng = random.Random(seed)
 
         self.pubkey = self.privkey.pubkey.serialize()
@@ -45,12 +47,13 @@ class ZexBot:
         self.orders = set()
         self.websocket: WebSocketApp = None
 
-        # self.best_bid = (1950.0, 10)
         self.best_bid = best_bid
-        self.bids = {best_bid[0]: best_bid[1]}
-
         self.best_ask = best_ask
-        self.asks = {best_ask[0]: best_ask[1]}
+
+        self.base_volume = 50 / best_bid
+
+        self.bids = {best_bid: self.base_volume}
+        self.asks = {best_ask: self.base_volume}
 
     def on_open_wrapper(self):
         def on_open(ws: WebSocket):
@@ -86,9 +89,9 @@ class ZexBot:
                     else:
                         self.asks[price] = qty
                 best_bid_price = max(self.bids.keys())
-                self.best_bid = (best_bid_price, self.bids[best_bid_price])
+                self.best_bid = best_bid_price
                 best_ask_price = min(self.asks.keys())
-                self.best_ask = (best_ask_price, self.asks[best_ask_price])
+                self.best_ask = best_ask_price
 
         return on_message
 
@@ -156,24 +159,23 @@ class ZexBot:
         self.is_running = True
         while self.is_running:
             time.sleep(2)
-            maker = self.rng.choices([True, False], [0.5, 0.75])[0]
+            maker = self.rng.choices([True, False], [0.5, 0.5])[0]
             price = 0
             if maker:
                 if self.side == "buy":
-                    price = self.best_ask[0] - (
-                        self.best_ask[0] * 0.05 * self.rng.random()
-                    )
+                    price = self.best_ask - (self.best_ask * 0.1 * self.rng.random())
                 elif self.side == "sell":
-                    price = self.best_bid[0] + (
-                        self.best_bid[0] * 0.05 * self.rng.random()
-                    )
+                    price = self.best_bid + (self.best_bid * 0.1 * self.rng.random())
             else:
                 if self.side == "buy":
-                    price = self.best_ask[0]
+                    price = self.best_ask
                 elif self.side == "sell":
-                    price = self.best_bid[0]
-            price = round(price, self.digits)
-            volume = round(self.rng.random() * 0.02, 3)
+                    price = self.best_bid
+            price = round(price, self.price_digits)
+            volume = round(
+                self.base_volume + self.rng.random() * self.base_volume / 2,
+                self.volume_digits,
+            )
             while volume < 0.001:
                 volume = round(self.rng.random() * 0.02, 3)
 
