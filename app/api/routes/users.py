@@ -245,7 +245,7 @@ def get_withdraw_nonce(public: str, chain: str) -> WithdrawNonce:
     user = bytes.fromhex(public)
     chain = chain.upper()
     if chain not in zex.withdrawal_nonces:
-        raise HTTPException(404, {"error", f"{chain} not found"})
+        raise HTTPException(404, {"error": f"{chain} not found"})
     return WithdrawNonce(
         chain=chain,
         nonce=zex.withdrawal_nonces[chain].get(user, 0),
@@ -257,7 +257,9 @@ def get_withdraws(public: str, chain: str) -> list[Withdraw]:
     user = bytes.fromhex(public)
     chain = chain.upper()
     if chain not in zex.withdrawals:
-        raise HTTPException(404, {"error", f"{chain} not found"})
+        raise HTTPException(404, {"error": f"{chain} not found"})
+    if user not in zex.withdrawals[chain]:
+        return []
     return [
         Withdraw(
             chain=w.chain,
@@ -326,19 +328,22 @@ def schnorr_verify(public_key, message, signature, nounce_public):
 
 
 def user_withdraw_signature(public: str, chain: str, nonce: int):
+    if nonce < 0:
+        raise HTTPException(400, {"error": "invalid nonce"})
+
     user = bytes.fromhex(public)
 
     withdrawals = zex.withdrawals[chain].get(user, [])
-    if nonce < len(withdrawals):
+    if nonce >= len(withdrawals):
         logger.debug(f"invalid nonce: maximum nonce is {len(withdrawals) - 1}")
-        return HTTPException(400, {"error": "invalid nonce"})
+        raise HTTPException(400, {"error": "invalid nonce"})
 
     withdraw_tx = withdrawals[nonce]
 
     packed = Web3.solidity_keccak(
         ["address", "uint256", "uint256", "uint256"],
         [
-            public,
+            Web3.to_checksum_address(withdraw_tx.dest),
             withdraw_tx.token_id,
             int(withdraw_tx.amount * (10 ** DECIMALS[withdraw_tx.token])),
             withdraw_tx.nonce,
@@ -359,7 +364,7 @@ def user_withdraw_signature(public: str, chain: str, nonce: int):
             chain=withdraw_tx.chain,
             tokenID=withdraw_tx.token_id,
             amount=withdraw_tx.amount,
-            destination=withdraw_tx.dest,
+            destination=Web3.to_checksum_address(withdraw_tx.dest),
             t=withdraw_tx.time,
             nonce=withdraw_tx.nonce,
         ),

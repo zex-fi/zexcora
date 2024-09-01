@@ -47,12 +47,14 @@ async def exhange_info() -> ExchangeInfoResponse:
                 chainType="evm" if token[:3] not in ["BTC", "XMR"] else "native_only",
                 decimals=DECIMALS[token],
                 price=zex.markets[f"{token}-{USDT_MAINNET}"].get_last_price()
+                if f"{token}-{USDT_MAINNET}" in zex.markets
+                else 0
                 if token != USDT_MAINNET
                 else 1,
                 change_24h=zex.markets[
                     f"{token}-{USDT_MAINNET}"
                 ].get_price_change_24h_percent()
-                if token != USDT_MAINNET
+                if token != USDT_MAINNET and f"{token}-{USDT_MAINNET}" in zex.markets
                 else 0,
                 name=NAMES[token],
                 symbol=SYMBOLS[token],

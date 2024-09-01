@@ -354,6 +354,7 @@ class Zex(metaclass=SingletonMeta):
             if name == DEPOSIT:
                 self.deposit(tx)
             elif name == WITHDRAW:
+                tx += b"00000001"
                 tx = WithdrawTransaction.from_tx(tx)
                 self.withdraw(tx)
             elif name in (BUY, SELL):
@@ -456,6 +457,10 @@ class Zex(metaclass=SingletonMeta):
         if balance < tx.amount:
             logger.debug("balance not enough")
             return
+
+        if tx.public not in self.withdrawal_nonces[tx.chain]:
+            self.withdrawal_nonces[tx.chain][tx.public] = 0
+
         self.balances[tx.token][tx.public] = balance - tx.amount
 
         if tx.chain not in self.withdrawals:

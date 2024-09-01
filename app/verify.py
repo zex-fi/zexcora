@@ -56,7 +56,7 @@ def __verify(txs):
 
         elif name == WITHDRAW:
             msg, pubkey, sig = withdraw_msg(tx), tx[45:78], tx[78 : 78 + 64]
-            logger.info("withdraw request", pubkey=pubkey)
+            logger.info(f"withdraw request pubkey: {pubkey}")
             pubkey = PublicKey(pubkey, raw=True)
             sig = pubkey.ecdsa_deserialize_compact(sig)
             msg_hash = keccak(msg)
@@ -100,8 +100,8 @@ def close_pool():
 @line_profiler.profile
 def verify(txs):
     chunks = list(chunkify(txs, len(txs) // n_chunks + 1))
-    # results = pool.map(__verify, chunks)
-    results = [__verify(x) for x in chunks]
+    results = pool.map(__verify, chunks)
+    # results = [__verify(x) for x in chunks]
 
     i = 0
     for sublist in results:
