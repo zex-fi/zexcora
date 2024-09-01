@@ -5,7 +5,7 @@ networks:
     public_key: "0290ab36a28c3107d0091e8ea731e3c528046e317f854ed7b35f746d4e3484b1b3"
     blocks_confirmation: 1
     block_duration: 60
-    processed_block: 2901775
+    processed_block: 2902176
   - name: monero
     chain: XMR
     mainnet: false
@@ -14,11 +14,11 @@ networks:
     wallet_pass: ""
     blocks_confirmation: 1
     block_duration: 60
-    processed_block: 2571772
+    processed_block: 2572891
   - name: bst-testnet
     chain: "BST"
     node_url: https://bsc-testnet-rpc.publicnode.com
-    contract_address: "0x555f5692537639D149D2ba2DCbEA312449B5817f"
+    contract_address: "0xcEAD50af016F8B834Eb71212698897Ca444E3C7C"
     contract_abi: "abi/bst.json"
     blocks_confirmation: 5
     block_duration: 5
@@ -26,7 +26,7 @@ networks:
   - name: sepolia
     chain: "SEP"
     node_url: https://ethereum-sepolia-rpc.publicnode.com
-    contract_address: "0xFE34764A4E488dBA24A304308dA876E5EdA411b7"
+    contract_address: "0x7D3Fca2AB96123e2C944eE26C566dab26877A94e"
     contract_abi: "abi/sep.json"
     blocks_confirmation: 3
     block_duration: 15
@@ -34,7 +34,7 @@ networks:
   - name: holesky
     chain: "HOL"
     node_url: https://ethereum-holesky-rpc.publicnode.com
-    contract_address: "0x5800a015815BC8f6b0FF46dD01AbFDdCD5D56879"
+    contract_address: "0x13E509dc1480A8dcB3c86DaA7F13E313263c3c87"
     contract_abi: "abi/hol.json"
     blocks_confirmation: 4
     block_duration: 10
