@@ -1,15 +1,21 @@
 import hashlib
 from struct import unpack
 
-import eth_abi
 from bitcoinutils.keys import P2trAddress, PublicKey
 from bitcoinutils.utils import tweak_taproot_pubkey
-from eigensdk.crypto.bls.attestation import KeyPair
-from eth_hash.auto import keccak
+from eth_abi.packed import encode_packed
 from fastapi import APIRouter, HTTPException
+from fastecdsa import curve, keys
 from loguru import logger
+from web3 import Web3
 
-from app import BLS_PRIVATE, ZEX_BTC_PUBLIC_KEY, ZEX_MONERO_PUBLIC_ADDRESS, zex
+from app import (
+    BLS_PRIVATE,
+    SCHNORR_PRIVATE,
+    ZEX_BTC_PUBLIC_KEY,
+    ZEX_MONERO_PUBLIC_ADDRESS,
+    zex,
+)
 from app.api.cache import timed_lru_cache
 from app.models.response import (
     Addresses,
@@ -17,13 +23,19 @@ from app.models.response import (
     DepositResponse,
     NonceResponse,
     OrderResponse,
+    Signature,
     TradeResponse,
     UserAddressesResponse,
     UserIDResponse,
     UserPublicResponse,
+    Withdraw,
+    WithdrawNonce,
+    WithdrawSignature,
 )
 from app.monero.address import Address
 from app.zex import BUY
+
+from . import DECIMALS
 
 router = APIRouter()
 light_router = APIRouter()
@@ -228,32 +240,136 @@ def get_latest_user_id():
     return UserIDResponse(id=zex.last_user_id)
 
 
-def user_withdrawals(user: str, chain: str, nonce: int):
-    user = bytes.fromhex(user)
-    withdrawals = zex.withdrawals.get(chain, {}).get(user, [])
-    nonce = int(nonce)
+@router.get("/user/{public}/withdraws/{chain}/nonce")
+def get_withdraw_nonce(public: str, chain: str) -> WithdrawNonce:
+    user = bytes.fromhex(public)
+    chain = chain.upper()
+    if chain not in zex.withdrawal_nonces:
+        raise HTTPException(404, {"error", f"{chain} not found"})
+    return WithdrawNonce(
+        chain=chain,
+        nonce=zex.withdrawal_nonces[chain].get(user, 0),
+    )
+
+
+@router.get("/user/{public}/withdraws/{chain}")
+def get_withdraws(public: str, chain: str) -> list[Withdraw]:
+    user = bytes.fromhex(public)
+    chain = chain.upper()
+    if chain not in zex.withdrawals:
+        raise HTTPException(404, {"error", f"{chain} not found"})
+    return [
+        Withdraw(
+            chain=w.chain,
+            tokenID=w.token_id,
+            amount=w.amount,
+            destination=w.dest,
+            t=w.time,
+            nonce=w.nonce,
+        )
+        for w in zex.withdrawals[chain][user]
+    ]
+
+
+ecurve = curve.secp256k1
+N = ecurve.q
+Half_N = ((N >> 1) % N + 1) % N
+
+
+def private_to_point(private_key):
+    return keys.get_public_key(private_key, ecurve)
+
+
+def pub_to_addr(public_key):
+    pub_key_hex = str(hex(public_key.x))[2:] + str(hex(public_key.y))[2:]
+    pub_hash = Web3.keccak(int(pub_key_hex, 16))
+    return Web3.to_checksum_address("0x" + str(pub_hash.hex())[-40:])
+
+
+def schnorr_hash(public_key, message, nonce_pub):
+    packed_data = encode_packed(
+        ["bytes32", "uint8", "bytes32", "address"],
+        [
+            public_key.x.to_bytes(32, byteorder="big"),
+            public_key.y % 2,
+            message.to_bytes(32, byteorder="big"),
+            pub_to_addr(nonce_pub),
+        ],
+    )
+    return hashlib.sha256(packed_data).digest()
+
+
+def schnorr_sign(shared_private_key, nounce_private, nounce_public, message):
+    e = int.from_bytes(
+        schnorr_hash(private_to_point(shared_private_key), message, nounce_public),
+        "big",
+    )
+    s = (nounce_private - e * shared_private_key) % N
+    return {"s": s, "e": e}
+
+
+def split_signature(string_signature: str) -> dict[str, int]:
+    raw_bytes = string_signature[2:]
+    assert len(raw_bytes) == 128, "Invalid schnorr signature string"
+    e = "0x" + raw_bytes[0:64]
+    s = "0x" + raw_bytes[64:]
+    return {"s": int(s, 16), "e": int(e, 16)}
+
+
+def schnorr_verify(public_key, message, signature, nounce_public):
+    if isinstance(signature, str):
+        signature = split_signature(signature)
+    assert signature["s"] < N, "Signature must be reduced modulo N"
+    r_v = (signature["s"] * ecurve.G) + (signature["e"] * public_key)
+    e_v = schnorr_hash(public_key, message, nounce_public)
+    return int.from_bytes(e_v, "big") == signature["e"]
+
+
+def user_withdraw_signature(public: str, chain: str, nonce: int):
+    user = bytes.fromhex(public)
+
+    withdrawals = zex.withdrawals[chain].get(user, [])
     if nonce < len(withdrawals):
         logger.debug(f"invalid nonce: maximum nonce is {len(withdrawals) - 1}")
         return HTTPException(400, {"error": "invalid nonce"})
 
-    withdrawal = withdrawals[nonce]
-    key = KeyPair.from_string(BLS_PRIVATE)
-    encoded = eth_abi.encode(
+    withdraw_tx = withdrawals[nonce]
+
+    packed = Web3.solidity_keccak(
         ["address", "uint256", "uint256", "uint256"],
-        ["0xE8FB09228d1373f931007ca7894a08344B80901c", 0, 1, 0],
+        [
+            public,
+            withdraw_tx.token_id,
+            int(withdraw_tx.amount * (10 ** DECIMALS[withdraw_tx.token])),
+            withdraw_tx.nonce,
+        ],
     )
-    hash_bytes = keccak(encoded)
-    signature = key.sign_message(msg_bytes=hash_bytes).to_json()
-    return {
-        "token": withdrawal.token_id,
-        "amount": withdrawal.amount,
-        "time": withdrawal.time,
-        "nonce": nonce,
-        "signature": signature,
-    }
+    msg = int.from_bytes(packed, byteorder="big")
+    nonce_priv = keys.gen_private_key(ecurve)
+    nonce_pub = private_to_point(nonce_priv)
+
+    sig = schnorr_sign(SCHNORR_PRIVATE, nonce_priv, nonce_pub, msg)
+
+    key_pub = private_to_point(SCHNORR_PRIVATE)
+    if not schnorr_verify(key_pub, msg, sig, nonce_pub):
+        raise HTTPException(500, {"error": "internal signature verification failed"})
+
+    return WithdrawSignature(
+        withdraw=Withdraw(
+            chain=withdraw_tx.chain,
+            tokenID=withdraw_tx.token_id,
+            amount=withdraw_tx.amount,
+            destination=withdraw_tx.dest,
+            t=withdraw_tx.time,
+            nonce=withdraw_tx.nonce,
+        ),
+        signature=Signature(s=sig["s"], e=sig["e"]),
+    )
 
 
 if zex.light_node:
-    light_router.get("/user/{user}/withdrawals/{chain}/{nonce}")(user_withdrawals)
+    light_router.get("/user/{public}/withdraws/{chain}/{nonce}")(
+        user_withdraw_signature
+    )
 else:
-    router.get("/user/{user}/withdrawals/{chain}/{nonce}")(user_withdrawals)
+    router.get("/user/{public}/withdraws/{chain}/{nonce}")(user_withdraw_signature)

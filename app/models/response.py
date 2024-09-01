@@ -96,3 +96,27 @@ class ExchangeInfoResponse(BaseModel):
     symbols: list[Symbol]
     tokens: list[Token]
     chains: list[Chain]
+
+
+class Withdraw(BaseModel):
+    chain: str
+    tokenID: int
+    amount: float
+    destination: str
+    t: int
+    nonce: int
+
+
+class WithdrawNonce(BaseModel):
+    chain: str
+    nonce: int
+
+
+class Signature(BaseModel):
+    s: int
+    e: int
+
+
+class WithdrawSignature(BaseModel):
+    withdraw: Withdraw
+    signature: Signature

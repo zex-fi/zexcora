@@ -95,6 +95,9 @@ class Zex(metaclass=SingletonMeta):
             "SEP": 6586931,
             "HOL": 2222491,
         }
+        self.withdrawal_nonces: dict[str, dict[bytes, int]] = {
+            k: {} for k in self.deposited_blocks.keys()
+        }
         self.nonces = {}
         self.pair_lookup = {}
 
@@ -441,19 +444,27 @@ class Zex(metaclass=SingletonMeta):
                 self.nonces[public] = 0
 
     def withdraw(self, tx: WithdrawTransaction):
-        if self.nonces[tx.public] != tx.nonce:
+        if tx.chain not in self.withdrawal_nonces:
+            logger.debug(f"invalid chain: {self.nonces[tx.public]} != {tx.nonce}")
+            return
+
+        if self.withdrawal_nonces[tx.chain].get(tx.public, 0) != tx.nonce:
             logger.debug(f"invalid nonce: {self.nonces[tx.public]} != {tx.nonce}")
             return
+
         balance = self.balances[tx.token].get(tx.public, 0)
         if balance < tx.amount:
             logger.debug("balance not enough")
             return
         self.balances[tx.token][tx.public] = balance - tx.amount
+
         if tx.chain not in self.withdrawals:
             self.withdrawals[tx.chain] = {}
         if tx.public not in self.withdrawals[tx.chain]:
             self.withdrawals[tx.chain][tx.public] = []
+
         self.withdrawals[tx.chain][tx.public].append(tx)
+        self.withdrawal_nonces[tx.chain][tx.public] += 1
 
     def get_order_book_update(self, pair: str):
         order_book_update = self.markets[pair].get_order_book_update()

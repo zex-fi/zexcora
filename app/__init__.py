@@ -16,7 +16,11 @@ assert ZEX_STATE_DEST is not None, "ZEX_STATE_DEST must be specified"
 # ZSEQ_PORT = int(os.environ.get("ZSEQ_PORT"))
 # ZSEQ_URL = f"http://{ZSEQ_HOST}:{ZSEQ_PORT}/node/transactions"
 BLS_PRIVATE = os.environ.get("BLS_PRIVATE")
-assert BLS_PRIVATE, "BLS_PRIVATE env variable is not set"
+SCHNORR_PRIVATE = int(os.environ.get("SCHNORR_PRIVATE"))
+
+assert (
+    SCHNORR_PRIVATE or BLS_PRIVATE
+), "SCHNORR_PRIVATE or BLS_PRIVATE env variable need to be set"
 
 ZEX_BTC_PUBLIC_KEY = os.environ.get("ZEX_BTC_PUBLIC_KEY")
 assert ZEX_BTC_PUBLIC_KEY, "ZEX_BTC_PUBLIC_KEY env variable is not set"

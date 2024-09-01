@@ -19,7 +19,7 @@ class MarketTransaction:
 
     @property
     def base_chain(self):
-        return self.raw_tx[2:5].lower().decode()
+        return self.raw_tx[2:5].upper().decode()
 
     @property
     def base_token_id(self):
@@ -27,7 +27,7 @@ class MarketTransaction:
 
     @property
     def quote_chain(self):
-        return self.raw_tx[9:12].lower().decode()
+        return self.raw_tx[9:12].upper().decode()
 
     @property
     def quote_token_id(self):
@@ -140,6 +140,7 @@ class WithdrawTransaction(BaseModel):
     chain: str
     token_id: int
     amount: float
+    dest: str
     time: int
     nonce: int
     public: bytes
@@ -155,7 +156,7 @@ class WithdrawTransaction(BaseModel):
         return WithdrawTransaction(
             version=tx[0],
             operation=chr(tx[1]),
-            chain=tx[2:5].lower(),
+            chain=tx[2:5].upper(),
             token_id=unpack(">I", tx[5:9])[0],
             amount=unpack(">d", tx[9:17])[0],
             dest="0x" + tx[17:37].hex(),
