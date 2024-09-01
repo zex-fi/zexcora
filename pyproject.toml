@@ -14,7 +14,7 @@ httpx = "^0.27.0"
 websocket-client = "^1.8.0"
 websockets = "^12.0"
 pandas = "^2.2.2"
-"eth-hash[pycryptodome]" = "^0.7.0"
+eth-hash = { extras = ["pycryptodome"], version = "^0.7.0" }
 loguru = "^0.7.2"
 bitcoinrpc = "^0.7.0"
 bitcoin-utils = "0.6.8"
