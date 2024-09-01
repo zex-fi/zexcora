@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app import zex
-from app.models.response import ExchangeInfoResponse, Symbol, Token
+from app.models.response import Chain, ExchangeInfoResponse, Symbol, Token
 
 router = APIRouter()
 
@@ -29,16 +29,58 @@ TAGS = {
     "XMR:0": "xmr",
     "HOL:1": "usdt",
     "HOL:2": "usdc",
-    "HOL:3": "btc",
+    "HOL:3": "wbtc",
     "HOL:4": "link",
     "BST:1": "usdt",
     "BST:2": "usdc",
-    "BST:3": "btc",
+    "BST:3": "wbtc",
     "BST:4": "link",
     "SEP:1": "usdt",
     "SEP:2": "usdc",
-    "SEP:3": "btc",
+    "SEP:3": "wbtc",
     "SEP:4": "link",
+}
+
+CHAIN_TYPES = {
+    "BTC": "native_only",
+    "XMR": "native_only",
+    "HOL": "evm",
+    "BST": "evm",
+    "SEP": "evm",
+}
+
+NAMES = {
+    "BTC:0": "Bitcoin",
+    "XMR:0": "Monero",
+    "HOL:1": "USD Tether",
+    "HOL:2": "USD coin",
+    "HOL:3": "Wrapped Bitcoin",
+    "HOL:4": "ChainLink",
+    "BST:1": "USD Tether",
+    "BST:2": "USD coin",
+    "BST:3": "Wrapped Bitcoin",
+    "BST:4": "ChainLink",
+    "SEP:1": "USD Tether",
+    "SEP:2": "USD coin",
+    "SEP:3": "Wrapped Bitcoin",
+    "SEP:4": "ChainLink",
+}
+
+SYMBOLS = {
+    "BTC:0": "BTC",
+    "XMR:0": "XMR",
+    "HOL:1": "USDT",
+    "HOL:2": "USDC",
+    "HOL:3": "WBTC",
+    "HOL:4": "LINK",
+    "BST:1": "USDT",
+    "BST:2": "USDC",
+    "BST:3": "WBTC",
+    "BST:4": "LINK",
+    "SEP:1": "USDT",
+    "SEP:2": "USDC",
+    "SEP:3": "WBTC",
+    "SEP:4": "LINK",
 }
 
 
@@ -88,9 +130,15 @@ async def exhange_info() -> ExchangeInfoResponse:
                 ].get_price_change_24h_percent()
                 if token != USDT_MAINNET
                 else 0,
+                name=NAMES[token],
+                symbol=SYMBOLS[token],
                 tag=TAGS[token],
             )
             for token in zex.balances.keys()
+        ],
+        chains=[
+            Chain(chain=c, chainType=CHAIN_TYPES[c])
+            for c in zex.deposited_blocks.keys()
         ],
     )
     return resp

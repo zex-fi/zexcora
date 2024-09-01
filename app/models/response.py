@@ -81,10 +81,18 @@ class Token(BaseModel):
     decimals: int
     price: float  # price is USDT
     change_24h: float
+    name: str  # standard name of the token
+    symbol: str  # standard representation of a token
     tag: str
+
+
+class Chain(BaseModel):
+    chain: str
+    chainType: str
 
 
 class ExchangeInfoResponse(BaseModel):
     timezone: str
     symbols: list[Symbol]
     tokens: list[Token]
+    chains: list[Chain]
