@@ -369,6 +369,7 @@ def user_withdraw_signature(public: str, chain: str, nonce: int):
             nonce=withdraw_tx.nonce,
         ),
         signature=Signature(s=sig["s"], e=sig["e"]),
+        publicNonce=pub_to_addr(nonce_pub),
     )
 
 

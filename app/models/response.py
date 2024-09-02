@@ -120,3 +120,4 @@ class Signature(BaseModel):
 class WithdrawSignature(BaseModel):
     withdraw: Withdraw
     signature: Signature
+    publicNonce: str
