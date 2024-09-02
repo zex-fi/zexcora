@@ -102,6 +102,7 @@ class Withdraw(BaseModel):
     chain: str
     tokenID: int
     amount: float
+    user: str
     destination: str
     t: int
     nonce: int
@@ -113,8 +114,8 @@ class WithdrawNonce(BaseModel):
 
 
 class Signature(BaseModel):
-    s: int
-    e: int
+    s: str
+    e: str
 
 
 class WithdrawSignature(BaseModel):

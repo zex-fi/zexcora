@@ -363,12 +363,13 @@ def user_withdraw_signature(public: str, chain: str, nonce: int):
         withdraw=Withdraw(
             chain=withdraw_tx.chain,
             tokenID=withdraw_tx.token_id,
-            amount=withdraw_tx.amount,
+            amount=int(withdraw_tx.amount * (10 ** DECIMALS[withdraw_tx.token])),
+            user=str(int(public[2:], 16)),
             destination=Web3.to_checksum_address(withdraw_tx.dest),
             t=withdraw_tx.time,
             nonce=withdraw_tx.nonce,
         ),
-        signature=Signature(s=sig["s"], e=sig["e"]),
+        signature=Signature(s=str(sig["s"]), e=str(sig["e"])),
         publicNonce=pub_to_addr(nonce_pub),
     )
 
