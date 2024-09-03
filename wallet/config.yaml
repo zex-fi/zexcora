@@ -5,7 +5,7 @@ networks:
     public_key: "0290ab36a28c3107d0091e8ea731e3c528046e317f854ed7b35f746d4e3484b1b3"
     blocks_confirmation: 1
     block_duration: 60
-    processed_block: 2902176
+    processed_block: 2902676
   - name: monero
     chain: XMR
     mainnet: false
@@ -14,7 +14,7 @@ networks:
     wallet_pass: ""
     blocks_confirmation: 1
     block_duration: 60
-    processed_block: 2572891
+    processed_block: 2574688
   - name: bst-testnet
     chain: "BST"
     node_url: https://bsc-testnet-rpc.publicnode.com

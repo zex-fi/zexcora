@@ -265,6 +265,7 @@ def get_withdraws(public: str, chain: str) -> list[Withdraw]:
             chain=w.chain,
             tokenID=w.token_id,
             amount=w.amount,
+            user=str(int.from_bytes(user[1:], byteorder="big")),
             destination=w.dest,
             t=w.time,
             nonce=w.nonce,
@@ -341,8 +342,9 @@ def user_withdraw_signature(public: str, chain: str, nonce: int):
     withdraw_tx = withdrawals[nonce]
 
     packed = Web3.solidity_keccak(
-        ["address", "uint256", "uint256", "uint256"],
+        ["uint256", "address", "uint256", "uint256", "uint256"],
         [
+            int.from_bytes(user[1:], byteorder="big"),
             Web3.to_checksum_address(withdraw_tx.dest),
             withdraw_tx.token_id,
             int(withdraw_tx.amount * (10 ** DECIMALS[withdraw_tx.token])),
@@ -364,7 +366,7 @@ def user_withdraw_signature(public: str, chain: str, nonce: int):
             chain=withdraw_tx.chain,
             tokenID=withdraw_tx.token_id,
             amount=int(withdraw_tx.amount * (10 ** DECIMALS[withdraw_tx.token])),
-            user=str(int(public[2:], 16)),
+            user=str(int.from_bytes(user[1:], byteorder="big")),
             destination=Web3.to_checksum_address(withdraw_tx.dest),
             t=withdraw_tx.time,
             nonce=withdraw_tx.nonce,
