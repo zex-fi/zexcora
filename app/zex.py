@@ -445,6 +445,10 @@ class Zex(metaclass=SingletonMeta):
                 self.nonces[public] = 0
 
     def withdraw(self, tx: WithdrawTransaction):
+        if tx.amount <= 0:
+            logger.debug(f"invalid amount: {tx.amount}")
+            return
+
         if tx.chain not in self.withdrawal_nonces:
             logger.debug(f"invalid chain: {self.nonces[tx.public]} != {tx.nonce}")
             return

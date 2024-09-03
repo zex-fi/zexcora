@@ -89,6 +89,7 @@ class Token(BaseModel):
 class Chain(BaseModel):
     chain: str
     chainType: str
+    contractAddress: str | None
 
 
 class ExchangeInfoResponse(BaseModel):

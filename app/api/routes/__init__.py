@@ -42,6 +42,12 @@ CHAIN_TYPES = {
     "SEP": "evm",
 }
 
+CHAIN_CONTRACTS = {
+    "BST": "0x27b4A3c6306C3177576411429EF572b2BD860298",
+    "SEP": "0xaca4F448D910548293d9Bc0636CFDF2b40813439",
+    "HOL": "0x9390FFB9dCEDf897b5fd5C5Da9dc6aBBb96f22ce",
+}
+
 NAMES = {
     "BTC:0": "Bitcoin",
     "XMR:0": "Monero",

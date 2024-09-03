@@ -3,7 +3,7 @@ from fastapi import APIRouter
 from app import zex
 from app.models.response import Chain, ExchangeInfoResponse, Symbol, Token
 
-from . import CHAIN_TYPES, DECIMALS, NAMES, SYMBOLS, TAGS, USDT_MAINNET
+from . import CHAIN_CONTRACTS, CHAIN_TYPES, DECIMALS, NAMES, SYMBOLS, TAGS, USDT_MAINNET
 
 router = APIRouter()
 
@@ -63,7 +63,11 @@ async def exhange_info() -> ExchangeInfoResponse:
             for token in zex.balances.keys()
         ],
         chains=[
-            Chain(chain=c, chainType=CHAIN_TYPES[c])
+            Chain(
+                chain=c,
+                chainType=CHAIN_TYPES[c],
+                contractAddress=CHAIN_CONTRACTS.get(c, None),
+            )
             for c in zex.deposited_blocks.keys()
         ],
     )
