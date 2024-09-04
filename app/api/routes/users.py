@@ -137,13 +137,15 @@ def user_id(public: str):
 @router.get("/user/{public}/transfers")
 def user_transfers(public: str) -> list[TransferResponse]:
     user = bytes.fromhex(public)
-    if user not in zex.deposits and user not in zex.withdraws:
+    if user not in zex.deposits:
         return []
-    all_transfers = (
-        zex.deposits.get(user, []).copy() + zex.withdraws.get(user, []).copy()
-    )
+    all_deposits = zex.deposits.get(user, []).copy()
+    all_withdraws = [
+        x for chain in zex.withdraws.keys() for x in zex.withdraws[chain].get(user, [])
+    ]
+
     sorted_transfers: list[WithdrawTransaction | Deposit] = sorted(
-        all_transfers, key=lambda transfer: transfer.time
+        all_deposits + all_withdraws, key=lambda transfer: transfer.time
     )
     return [
         TransferResponse(
