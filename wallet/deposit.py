@@ -21,7 +21,8 @@ IS_RUNNING = True
 
 TOKENS = {
     "BTC": {
-        0: 1e8,
+        0: 1,  # value is already in BTC
+        # 0: 1e8,
     },
     "XMR": {0: 1e12},
     "BST": {
