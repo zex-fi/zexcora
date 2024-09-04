@@ -87,7 +87,7 @@ class Zex(metaclass=SingletonMeta):
         self.public_to_id_lookup: dict[bytes, int] = {}
         self.id_to_public_lookup: dict[int, bytes] = {}
 
-        self.withdrawals: dict[str, dict[bytes, list[WithdrawTransaction]]] = {}
+        self.withdraws: dict[str, dict[bytes, list[WithdrawTransaction]]] = {}
         self.deposited_blocks = {
             "BTC": 2902741,
             "XMR": 2574839,
@@ -207,7 +207,7 @@ class Zex(metaclass=SingletonMeta):
             entry.public_key = public
             entry.orders.extend(orders.keys())
 
-        for chain, withdrawals in self.withdrawals.items():
+        for chain, withdrawals in self.withdraws.items():
             pb_withdrawals = state.withdrawals[chain]
             for public, withdrawal_list in withdrawals.items():
                 entry = pb_withdrawals.withdrawals.add()
@@ -291,11 +291,11 @@ class Zex(metaclass=SingletonMeta):
             e.public_key: {order: True for order in e.orders} for e in pb_state.orders
         }
 
-        zex.withdrawals = {}
+        zex.withdraws = {}
         for chain, pb_withdrawals in pb_state.withdrawals.items():
-            zex.withdrawals[chain] = {}
+            zex.withdraws[chain] = {}
             for entry in pb_withdrawals.withdrawals:
-                zex.withdrawals[chain][entry.public_key] = [
+                zex.withdraws[chain][entry.public_key] = [
                     WithdrawTransaction(w.token, w.amount, w.nonce, w.public, w.chain)
                     for w in entry.transactions
                 ]
@@ -467,12 +467,12 @@ class Zex(metaclass=SingletonMeta):
 
         self.balances[tx.token][tx.public] = balance - tx.amount
 
-        if tx.chain not in self.withdrawals:
-            self.withdrawals[tx.chain] = {}
-        if tx.public not in self.withdrawals[tx.chain]:
-            self.withdrawals[tx.chain][tx.public] = []
+        if tx.chain not in self.withdraws:
+            self.withdraws[tx.chain] = {}
+        if tx.public not in self.withdraws[tx.chain]:
+            self.withdraws[tx.chain][tx.public] = []
 
-        self.withdrawals[tx.chain][tx.public].append(tx)
+        self.withdraws[tx.chain][tx.public].append(tx)
         self.withdrawal_nonces[tx.chain][tx.public] += 1
 
     def get_order_book_update(self, pair: str):

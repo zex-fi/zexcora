@@ -57,7 +57,7 @@ class UserAddressesResponse(BaseModel):
     addresses: Addresses
 
 
-class DepositResponse(BaseModel):
+class TransferResponse(BaseModel):
     token: str
     amount: float
     time: int

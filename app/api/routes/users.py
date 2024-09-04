@@ -20,11 +20,11 @@ from app.api.cache import timed_lru_cache
 from app.models.response import (
     Addresses,
     BalanceResponse,
-    DepositResponse,
     NonceResponse,
     OrderResponse,
     Signature,
     TradeResponse,
+    TransferResponse,
     UserAddressesResponse,
     UserIDResponse,
     UserPublicResponse,
@@ -32,6 +32,7 @@ from app.models.response import (
     WithdrawNonce,
     WithdrawSignature,
 )
+from app.models.transaction import Deposit, WithdrawTransaction
 from app.monero.address import Address
 from app.zex import BUY
 
@@ -133,18 +134,24 @@ def user_id(public: str):
     return UserIDResponse(id=user_id)
 
 
-@router.get("/user/{public}/deposits")
-def user_deposits(public: str) -> list[DepositResponse]:
+@router.get("/user/{public}/transfers")
+def user_transfers(public: str) -> list[TransferResponse]:
     user = bytes.fromhex(public)
-    if user not in zex.deposits:
+    if user not in zex.deposits and user not in zex.withdraws:
         return []
+    all_transfers = (
+        zex.deposits.get(user, []).copy() + zex.withdraws.get(user, []).copy()
+    )
+    sorted_transfers: list[WithdrawTransaction | Deposit] = sorted(
+        all_transfers, key=lambda transfer: transfer.time
+    )
     return [
-        DepositResponse(
-            token=d.token,
-            amount=d.amount,
-            time=d.time,
+        TransferResponse(
+            token=t.token,
+            amount=t.amount if isinstance(t, Deposit) else -t.amount,
+            time=t.time,
         )
-        for d in zex.deposits[user]
+        for t in sorted_transfers
     ]
 
 
@@ -256,21 +263,21 @@ def get_withdraw_nonce(public: str, chain: str) -> WithdrawNonce:
 def get_withdraws(public: str, chain: str) -> list[Withdraw]:
     user = bytes.fromhex(public)
     chain = chain.upper()
-    if chain not in zex.withdrawals:
+    if chain not in zex.withdraws:
         raise HTTPException(404, {"error": f"{chain} not found"})
-    if user not in zex.withdrawals[chain]:
+    if user not in zex.withdraws[chain]:
         return []
     return [
         Withdraw(
             chain=w.chain,
             tokenID=w.token_id,
-            amount=w.amount,
+            amount=str(w.amount),
             user=str(int.from_bytes(user[1:], byteorder="big")),
             destination=w.dest,
             t=w.time,
             nonce=w.nonce,
         )
-        for w in zex.withdrawals[chain][user]
+        for w in zex.withdraws[chain][user]
     ]
 
 
@@ -334,7 +341,7 @@ def user_withdraw_signature(public: str, chain: str, nonce: int):
 
     user = bytes.fromhex(public)
 
-    withdrawals = zex.withdrawals[chain].get(user, [])
+    withdrawals = zex.withdraws[chain].get(user, [])
     if nonce >= len(withdrawals):
         logger.debug(f"invalid nonce: maximum nonce is {len(withdrawals) - 1}")
         raise HTTPException(400, {"error": "invalid nonce"})
@@ -365,7 +372,7 @@ def user_withdraw_signature(public: str, chain: str, nonce: int):
         withdraw=Withdraw(
             chain=withdraw_tx.chain,
             tokenID=withdraw_tx.token_id,
-            amount=int(withdraw_tx.amount * (10 ** DECIMALS[withdraw_tx.token])),
+            amount=str(int(withdraw_tx.amount * (10 ** DECIMALS[withdraw_tx.token]))),
             user=str(int.from_bytes(user[1:], byteorder="big")),
             destination=Web3.to_checksum_address(withdraw_tx.dest),
             t=withdraw_tx.time,
