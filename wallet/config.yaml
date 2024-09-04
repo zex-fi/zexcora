@@ -18,7 +18,7 @@ networks:
   - name: bst-testnet
     chain: "BST"
     node_url: https://bsc-testnet-rpc.publicnode.com
-    contract_address: "0xcEAD50af016F8B834Eb71212698897Ca444E3C7C"
+    contract_address: "0x27b4A3c6306C3177576411429EF572b2BD860298"
     contract_abi: "abi/bst.json"
     blocks_confirmation: 5
     block_duration: 5
@@ -26,7 +26,7 @@ networks:
   - name: sepolia
     chain: "SEP"
     node_url: https://ethereum-sepolia-rpc.publicnode.com
-    contract_address: "0x7D3Fca2AB96123e2C944eE26C566dab26877A94e"
+    contract_address: "0xaca4F448D910548293d9Bc0636CFDF2b40813439"
     contract_abi: "abi/sep.json"
     blocks_confirmation: 3
     block_duration: 15
@@ -34,7 +34,7 @@ networks:
   - name: holesky
     chain: "HOL"
     node_url: https://ethereum-holesky-rpc.publicnode.com
-    contract_address: "0x13E509dc1480A8dcB3c86DaA7F13E313263c3c87"
+    contract_address: "0x9390FFB9dCEDf897b5fd5C5Da9dc6aBBb96f22ce"
     contract_abi: "abi/hol.json"
     blocks_confirmation: 4
     block_duration: 10
