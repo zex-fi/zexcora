@@ -43,11 +43,11 @@ def kline_event(manager: ConnectionManager):
                         "i": "1m",  # Interval
                         "f": 100,  # First trade ID
                         "L": 200,  # Last trade ID
-                        "o": f"{last_candle['Open']:.2f}",  # Open price
-                        "c": f"{last_candle['Close']:.2f}",  # Close price
-                        "h": f"{last_candle['High']:.2f}",  # High price
-                        "l": f"{last_candle['Low']:.2f}",  # Low price
-                        "v": f"{last_candle['Volume']:.2f}",  # Base asset volume
+                        "o": f"{last_candle['Open']}",  # Open price
+                        "c": f"{last_candle['Close']}",  # Close price
+                        "h": f"{last_candle['High']}",  # High price
+                        "l": f"{last_candle['Low']}",  # Low price
+                        "v": f"{last_candle['Volume']}",  # Base asset volume
                         "n": last_candle["NumberOfTrades"],  # Number of trades
                         "x": bool(
                             now >= last_candle["CloseTime"]
