@@ -269,7 +269,7 @@ async def run_monitor_btc(network: dict, api_url: str, monitor: PrivateKey):
                 latest_user_id = new_latest_user_id
 
             try:
-                block_hash = await rpc.getblockhash(latest_block_num)
+                block_hash = await rpc.getblockhash(processed_block)
                 latest_block = await rpc.getblock(block_hash, 2)
             except (httpx.ReadTimeout, RPCError) as e:
                 print(f"{chain} error {e}")
@@ -303,7 +303,7 @@ async def run_monitor_btc(network: dict, api_url: str, monitor: PrivateKey):
                 await asyncio.sleep(0)  # give time to other tasks
 
             if len(deposits) == 0:
-                print(f"{chain} no deposit in block: {processed_block+1}")
+                print(f"{chain} no deposit in block: {processed_block}")
                 processed_block += 1
                 continue
             processed_block += 1
