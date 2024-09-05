@@ -827,9 +827,11 @@ class Market:
 
         ms_in_24h = 24 * 60 * 60 * 1000
         if total_span >= ms_in_24h:
-            prev_24h_index = 24 * 60 * 60
+            target_time = self.kline.index[-1] - 24 * 60 * 60 * 1000
+            prev_24h_index = self.kline.index.get_indexer([target_time], method="pad")
+
             return (
-                self.kline["Close"].iloc[-1] - self.kline["Open"].iloc[-prev_24h_index]
+                self.kline["Close"].iloc[-1] - self.kline["Open"].iloc[prev_24h_index]
             )
         return self.kline["Close"].iloc[-1] - self.kline["Open"].iloc[0]
 
@@ -841,7 +843,9 @@ class Market:
 
         ms_in_24h = 24 * 60 * 60 * 1000
         if total_span >= ms_in_24h:
-            prev_24h_index = 24 * 60 * 60
+            target_time = self.kline.index[-1] - 24 * 60 * 60 * 1000
+            prev_24h_index = self.kline.index.get_indexer([target_time], method="pad")
+
             open_price = self.kline["Open"].iloc[-prev_24h_index]
             close_price = self.kline["Close"].iloc[-1]
             if open_price == 0:
@@ -862,8 +866,10 @@ class Market:
 
         ms_in_7D = 7 * 24 * 60 * 60 * 1000
         if total_span > ms_in_7D:
-            prev_7D_index = 7 * 24 * 60 * 60
-            open_price = self.kline["Open"].iloc[-prev_7D_index]
+            target_time = self.kline.index[-1] - 7 * 24 * 60 * 60 * 1000
+            prev_7D_index = self.kline.index.get_indexer([target_time], method="pad")
+
+            open_price = self.kline["Open"].iloc[prev_7D_index]
             close_price = self.kline["Close"].iloc[-1]
             return (close_price - open_price) / open_price
         return self.kline["Close"].iloc[-1] - self.kline["Open"].iloc[0]
@@ -876,8 +882,10 @@ class Market:
 
         ms_in_24h = 24 * 60 * 60 * 1000
         if total_span > ms_in_24h:
-            prev_24h_index = 24 * 60 * 60
-            return self.kline["Volume"].iloc[-prev_24h_index:].sum()
+            target_time = self.kline.index[-1] - 24 * 60 * 60 * 1000
+            prev_24h_index = self.kline.index.get_indexer([target_time], method="pad")
+
+            return self.kline["Volume"].iloc[prev_24h_index:].sum()
         return self.kline["Volume"].sum()
 
     def get_high_24h(self):
@@ -888,8 +896,10 @@ class Market:
 
         ms_in_24h = 24 * 60 * 60 * 1000
         if total_span > ms_in_24h:
-            prev_24h_index = 24 * 60 * 60
-            return self.kline["High"].iloc[-prev_24h_index:].max()
+            target_time = self.kline.index[-1] - 24 * 60 * 60 * 1000
+            prev_24h_index = self.kline.index.get_indexer([target_time], method="pad")
+
+            return self.kline["High"].iloc[prev_24h_index:].max()
         return self.kline["High"].max()
 
     def get_low_24h(self):
@@ -900,8 +910,10 @@ class Market:
 
         ms_in_24h = 24 * 60 * 60 * 1000
         if total_span > ms_in_24h:
-            prev_24h_index = 24 * 60 * 60
-            return self.kline["Low"].iloc[-prev_24h_index:].min()
+            target_time = self.kline.index[-1] - 24 * 60 * 60 * 1000
+            prev_24h_index = self.kline.index.get_indexer([target_time], method="pad")
+
+            return self.kline["Low"].iloc[prev_24h_index:].min()
         return self.kline["Low"].min()
 
     def _parse_transaction(self, tx: bytes):
