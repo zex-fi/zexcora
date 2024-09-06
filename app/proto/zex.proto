@@ -6,12 +6,15 @@ message ZexState {
     repeated AmountEntry amounts = 3;
     repeated TradeEntry trades = 4;
     repeated OrderEntry orders = 5;
-    map<string, Withdrawals> withdrawals = 6;
-    map<string, uint64> deposited_blocks = 7;
-    repeated NonceEntry nonces = 8;
-    repeated PairLookupEntry pair_lookup = 9;
-    uint64 last_tx_index = 10;
-    repeated IdLookupEntry id_lookup = 11;
+    map<string, Withdraws> withdraws = 6;
+    map<string, WithdrawNonces> withdraw_nonces = 7;
+    map<string, uint64> deposited_blocks = 8;
+    repeated NonceEntry nonces = 9;
+    repeated PairLookupEntry pair_lookup = 10;
+    uint64 last_tx_index = 11;
+    repeated DepositEntry deposits = 12;
+    repeated IDLookupEntry public_to_id_lookup = 13;
+    map<uint64, bytes> id_to_public_lookup = 14;
 }
 
 message Market {
@@ -70,21 +73,33 @@ message OrderEntry {
     repeated bytes orders = 2;
 }
 
-message Withdrawals {
-    repeated WithdrawalEntry withdrawals = 1;
-}
-
-message WithdrawalEntry {
+message WithdrawEntry {
     bytes public_key = 1;
-    repeated WithdrawTransaction transactions = 2;
+    repeated bytes raw_txs = 2;
 }
 
-message WithdrawTransaction {
+message Withdraws {
+    repeated WithdrawEntry withdraws = 1;
+}
+
+message WithdrawNonceEntry {
+    bytes public_key = 1;
+    uint64 nonce = 2;
+}
+
+message WithdrawNonces {
+    repeated WithdrawNonceEntry nonces = 1;
+}
+
+message DepositEntry {
+    bytes public_key = 1;
+    repeated Deposit deposits = 2;
+}
+
+message Deposit {
     string token = 1;
     double amount = 2;
-    uint32 nonce = 3;
-    bytes public = 4;
-    string chain = 5;
+    uint64 time = 3;
 }
 
 message NonceEntry {
@@ -99,7 +114,7 @@ message PairLookupEntry {
     string pair = 4;
 }
 
-message IdLookupEntry {
+message IDLookupEntry {
     bytes public_key = 1;
     uint64 user_id = 2;
 }

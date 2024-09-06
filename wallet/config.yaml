@@ -5,16 +5,14 @@ networks:
     public_key: "0290ab36a28c3107d0091e8ea731e3c528046e317f854ed7b35f746d4e3484b1b3"
     blocks_confirmation: 1
     block_duration: 60
-    processed_block: 2902741
   - name: monero
     chain: XMR
     mainnet: false
-    node_url: "https://testnet.xmr.ditatompel.com:443"
+    node_url: "https://stagenet.xmr.ditatompel.com:443"
     wallet_path: "monero/wallets/zex_wallet"
     wallet_pass: ""
     blocks_confirmation: 1
     block_duration: 60
-    processed_block: 2574839
   - name: bst-testnet
     chain: "BST"
     node_url: https://bsc-testnet-rpc.publicnode.com
@@ -22,7 +20,6 @@ networks:
     contract_abi: "abi/bst.json"
     blocks_confirmation: 5
     block_duration: 5
-    processed_block: 43553360
   - name: sepolia
     chain: "SEP"
     node_url: https://ethereum-sepolia-rpc.publicnode.com
@@ -30,7 +27,6 @@ networks:
     contract_abi: "abi/sep.json"
     blocks_confirmation: 3
     block_duration: 15
-    processed_block: 6626261
   - name: holesky
     chain: "HOL"
     node_url: https://ethereum-holesky-rpc.publicnode.com
@@ -38,7 +34,6 @@ networks:
     contract_abi: "abi/hol.json"
     blocks_confirmation: 4
     block_duration: 10
-    processed_block: 2263377
 
 api_url: http://localhost:8000/api/v1
 monitor_private: "cd7d94cd90d25d8722087a85e51ce3e5d8d06d98cb9f1c02e93f646c90af0193"

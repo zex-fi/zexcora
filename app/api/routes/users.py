@@ -253,11 +253,11 @@ def get_latest_user_id():
 def get_withdraw_nonce(public: str, chain: str) -> WithdrawNonce:
     user = bytes.fromhex(public)
     chain = chain.upper()
-    if chain not in zex.withdrawal_nonces:
+    if chain not in zex.withdraw_nonces:
         raise HTTPException(404, {"error": f"{chain} not found"})
     return WithdrawNonce(
         chain=chain,
-        nonce=zex.withdrawal_nonces[chain].get(user, 0),
+        nonce=zex.withdraw_nonces[chain].get(user, 0),
     )
 
 

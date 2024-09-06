@@ -116,10 +116,7 @@ async def run_monitor(network: dict, api_url: str, monitor: PrivateKey):
     block_duration = network["block_duration"]
     chain = network["chain"]
     sent_block = requests.get(f"{api_url}/{chain}/block/latest").json()["block"]
-    processed_block = network["processed_block"]
-    if sent_block > processed_block:
-        network["processed_block"] = sent_block
-        processed_block = sent_block
+    processed_block = sent_block
 
     try:
         while IS_RUNNING:
@@ -170,7 +167,6 @@ async def run_monitor(network: dict, api_url: str, monitor: PrivateKey):
     except asyncio.CancelledError:
         pass
 
-    network["processed_block"] = processed_block
     return network
 
 
@@ -231,10 +227,7 @@ async def run_monitor_btc(network: dict, api_url: str, monitor: PrivateKey):
     block_duration = network["block_duration"]
     chain = network["chain"]
     sent_block = requests.get(f"{api_url}/{chain}/block/latest").json()["block"]
-    processed_block = network["processed_block"]
-    if sent_block > processed_block:
-        network["processed_block"] = sent_block
-        processed_block = sent_block
+    processed_block = sent_block
 
     rpc = BitcoinRPC.from_config(network["node_url"], None)
 
@@ -251,7 +244,7 @@ async def run_monitor_btc(network: dict, api_url: str, monitor: PrivateKey):
                 print(f"{chain} error {e}")
                 await asyncio.sleep(10)
                 continue
-            if processed_block > latest_block_num - blocks_confirmation:
+            if processed_block >= latest_block_num - (blocks_confirmation - 1):
                 print(f"{chain} waiting for new block")
                 await asyncio.sleep(block_duration)
                 continue
@@ -269,7 +262,7 @@ async def run_monitor_btc(network: dict, api_url: str, monitor: PrivateKey):
                 latest_user_id = new_latest_user_id
 
             try:
-                block_hash = await rpc.getblockhash(processed_block)
+                block_hash = await rpc.getblockhash(processed_block + 1)
                 latest_block = await rpc.getblock(block_hash, 2)
             except (httpx.ReadTimeout, RPCError) as e:
                 print(f"{chain} error {e}")
@@ -302,11 +295,10 @@ async def run_monitor_btc(network: dict, api_url: str, monitor: PrivateKey):
                         print(f"found deposit to address: {address}")
                 await asyncio.sleep(0)  # give time to other tasks
 
+            processed_block += 1
             if len(deposits) == 0:
                 print(f"{chain} no deposit in block: {processed_block}")
-                processed_block += 1
                 continue
-            processed_block += 1
 
             tx = create_tx(
                 deposits,
@@ -333,7 +325,6 @@ async def run_monitor_btc(network: dict, api_url: str, monitor: PrivateKey):
     except asyncio.CancelledError:
         pass
 
-    network["processed_block"] = processed_block
     return network
 
 
@@ -342,7 +333,7 @@ async def get_xmr_last_block(network: dict):
         "node",
         "monero/get-height.js",
         f"rpc={network['node_url']}",
-        f"network={0 if network['mainnet'] else 1}",
+        f"network={0 if network['mainnet'] else 2}",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -367,7 +358,7 @@ async def get_xmr_transactions(network: dict, from_block, to_block):
         "node",
         "monero/get-blocks.js",
         f"rpc={network['node_url']}",
-        f"network={0 if network['mainnet'] else 1}",
+        f"network={0 if network['mainnet'] else 2}",
         f"walletPath={network['wallet_path']}",
         f"walletPass={network['wallet_pass']}",
         f"from={from_block}",
@@ -396,10 +387,7 @@ async def run_monitor_xmr(network: dict, api_url: str, monitor: PrivateKey):
     block_duration = network["block_duration"]
     chain = network["chain"]
     sent_block = requests.get(f"{api_url}/{chain}/block/latest").json()["block"]
-    processed_block = network["processed_block"]
-    if sent_block > processed_block:
-        network["processed_block"] = sent_block
-        processed_block = sent_block
+    processed_block = sent_block
 
     while IS_RUNNING:
         latest_block = await get_xmr_last_block(network)

@@ -4,6 +4,7 @@ import os
 from collections import defaultdict, deque
 from collections.abc import Callable
 from copy import deepcopy
+from io import BytesIO
 from struct import unpack
 from threading import Lock
 from time import time as unix_time
@@ -72,7 +73,7 @@ class Zex(metaclass=SingletonMeta):
         self.depth_callback = depth_callback
         self.state_dest = state_dest
         self.light_node = light_node
-        self.save_frequency = 10_000  # save state every N transactions
+        self.save_frequency = 1_000  # save state every N transactions
 
         self.benchmark_mode = benchmark_mode
 
@@ -89,13 +90,13 @@ class Zex(metaclass=SingletonMeta):
 
         self.withdraws: dict[str, dict[bytes, list[WithdrawTransaction]]] = {}
         self.deposited_blocks = {
-            "BTC": 2902741,
-            "XMR": 2574839,
-            "BST": 43553360,
-            "SEP": 6626261,
-            "HOL": 2263377,
+            "BTC": 2903547,
+            "XMR": 1682486,
+            "BST": 43639612,
+            "SEP": 6644140,
+            "HOL": 2282836,
         }
-        self.withdrawal_nonces: dict[str, dict[bytes, int]] = {
+        self.withdraw_nonces: dict[str, dict[bytes, int]] = {
             k: {} for k in self.deposited_blocks.keys()
         }
         self.nonces = {}
@@ -175,7 +176,11 @@ class Zex(metaclass=SingletonMeta):
             pb_market.first_id = market.first_id
             pb_market.final_id = market.final_id
             pb_market.last_update_id = market.last_update_id
-            pb_market.kline = market.kline.to_json().encode()
+
+            # TODO: find a better solution since loading pickle is dangarous
+            buffer = BytesIO()
+            market.kline.to_pickle(buffer)
+            pb_market.kline = buffer.getvalue()
 
         for token, balances in self.balances.items():
             pb_balance = state.balances[token]
@@ -207,18 +212,19 @@ class Zex(metaclass=SingletonMeta):
             entry.public_key = public
             entry.orders.extend(orders.keys())
 
-        for chain, withdrawals in self.withdraws.items():
-            pb_withdrawals = state.withdrawals[chain]
-            for public, withdrawal_list in withdrawals.items():
-                entry = pb_withdrawals.withdrawals.add()
+        for chain, withdraws in self.withdraws.items():
+            pb_withdraws = state.withdraws[chain]
+            for public, withdraw_list in withdraws.items():
+                entry = pb_withdraws.withdraws.add()
                 entry.public_key = public
-                for withdrawal in withdrawal_list:
-                    pb_withdrawal = entry.transactions.add()
-                    pb_withdrawal.token = withdrawal.token
-                    pb_withdrawal.amount = withdrawal.amount
-                    pb_withdrawal.nonce = withdrawal.nonce
-                    pb_withdrawal.public = withdrawal.public
-                    pb_withdrawal.chain = withdrawal.chain
+                entry.raw_txs.extend([w.raw_tx for w in withdraw_list])
+
+        for chain, withdraw_nonces in self.withdraw_nonces.items():
+            pb_withdraw_nonces = state.withdraw_nonces[chain]
+            for public, nonce in withdraw_nonces.items():
+                entry = pb_withdraw_nonces.nonces.add()
+                entry.public_key = public
+                entry.nonce = nonce
 
         state.deposited_blocks.update(self.deposited_blocks)
 
@@ -226,6 +232,15 @@ class Zex(metaclass=SingletonMeta):
             entry = state.nonces.add()
             entry.public_key = public
             entry.nonce = nonce
+
+        for public, deposits in self.deposits.items():
+            entry = state.deposits.add()
+            entry.public_key = public
+            for deposit in deposits:
+                pb_deposit = entry.deposits.add()
+                pb_deposit.token = deposit.token
+                pb_deposit.amount = deposit.amount
+                pb_deposit.time = deposit.time
 
         for key, (base_token, quote_token, pair) in self.pair_lookup.items():
             entry = state.pair_lookup.add()
@@ -235,9 +250,10 @@ class Zex(metaclass=SingletonMeta):
             entry.pair = pair
 
         for public, user_id in self.public_to_id_lookup.items():
-            entry = state.id_lookup.add()
+            entry = state.public_to_id_lookup.add()
             entry.public_key = public
             entry.user_id = user_id
+        state.id_to_public_lookup.update(self.id_to_public_lookup)
 
         return state
 
@@ -276,7 +292,7 @@ class Zex(metaclass=SingletonMeta):
             market.first_id = pb_market.first_id
             market.final_id = pb_market.final_id
             market.last_update_id = pb_market.last_update_id
-            market.kline = pd.read_json(pb_market.kline.decode())
+            market.kline = pd.read_pickle(BytesIO(pb_market.kline))
             zex.markets[pair] = market
 
         zex.balances = {
@@ -292,23 +308,44 @@ class Zex(metaclass=SingletonMeta):
         }
 
         zex.withdraws = {}
-        for chain, pb_withdrawals in pb_state.withdrawals.items():
+        for chain, pb_withdraws in pb_state.withdraws.items():
             zex.withdraws[chain] = {}
-            for entry in pb_withdrawals.withdrawals:
+            for entry in pb_withdraws.withdraws:
                 zex.withdraws[chain][entry.public_key] = [
-                    WithdrawTransaction(w.token, w.amount, w.nonce, w.public, w.chain)
-                    for w in entry.transactions
+                    WithdrawTransaction.from_tx(raw_tx) for raw_tx in entry.raw_txs
                 ]
 
+        zex.withdraw_nonces = {}
+        for chain, pb_withdraw_nonces in pb_state.withdraw_nonces.items():
+            zex.withdraw_nonces[chain] = {
+                entry.public_key: entry.nonce for entry in pb_withdraw_nonces.nonces
+            }
+
         zex.deposited_blocks = dict(pb_state.deposited_blocks)
+
         zex.nonces = {e.public_key: e.nonce for e in pb_state.nonces}
+
+        zex.deposits = {
+            e.public_key: [
+                Deposit(
+                    token=pb_deposit.token,
+                    amount=pb_deposit.amount,
+                    time=pb_deposit.time,
+                )
+                for pb_deposit in e.deposits
+            ]
+            for e in pb_state.deposits
+        }
+
         zex.pair_lookup = {
             e.key: (e.base_token, e.quote_token, e.pair) for e in pb_state.pair_lookup
         }
 
         zex.public_to_id_lookup = {
-            entry.public_key: entry.user_id for entry in pb_state.id_lookup
+            entry.public_key: entry.user_id for entry in pb_state.public_to_id_lookup
         }
+        zex.id_to_public_lookup = dict(pb_state.id_to_public_lookup)
+
         zex.last_user_id = (
             max(zex.public_to_id_lookup.values()) if zex.public_to_id_lookup else 0
         )
@@ -449,11 +486,11 @@ class Zex(metaclass=SingletonMeta):
             logger.debug(f"invalid amount: {tx.amount}")
             return
 
-        if tx.chain not in self.withdrawal_nonces:
+        if tx.chain not in self.withdraw_nonces:
             logger.debug(f"invalid chain: {self.nonces[tx.public]} != {tx.nonce}")
             return
 
-        if self.withdrawal_nonces[tx.chain].get(tx.public, 0) != tx.nonce:
+        if self.withdraw_nonces[tx.chain].get(tx.public, 0) != tx.nonce:
             logger.debug(f"invalid nonce: {self.nonces[tx.public]} != {tx.nonce}")
             return
 
@@ -462,8 +499,8 @@ class Zex(metaclass=SingletonMeta):
             logger.debug("balance not enough")
             return
 
-        if tx.public not in self.withdrawal_nonces[tx.chain]:
-            self.withdrawal_nonces[tx.chain][tx.public] = 0
+        if tx.public not in self.withdraw_nonces[tx.chain]:
+            self.withdraw_nonces[tx.chain][tx.public] = 0
 
         self.balances[tx.token][tx.public] = balance - tx.amount
 
@@ -473,7 +510,7 @@ class Zex(metaclass=SingletonMeta):
             self.withdraws[tx.chain][tx.public] = []
 
         self.withdraws[tx.chain][tx.public].append(tx)
-        self.withdrawal_nonces[tx.chain][tx.public] += 1
+        self.withdraw_nonces[tx.chain][tx.public] += 1
 
     def get_order_book_update(self, pair: str):
         order_book_update = self.markets[pair].get_order_book_update()
@@ -828,7 +865,10 @@ class Market:
         ms_in_24h = 24 * 60 * 60 * 1000
         if total_span >= ms_in_24h:
             target_time = self.kline.index[-1] - 24 * 60 * 60 * 1000
-            prev_24h_index = self.kline.index.get_indexer([target_time], method="pad")
+            prev_24h_index = self.kline.index.get_indexer(
+                [target_time],
+                method="pad",
+            )[0].item()
 
             return (
                 self.kline["Close"].iloc[-1] - self.kline["Open"].iloc[prev_24h_index]
@@ -844,7 +884,10 @@ class Market:
         ms_in_24h = 24 * 60 * 60 * 1000
         if total_span >= ms_in_24h:
             target_time = self.kline.index[-1] - 24 * 60 * 60 * 1000
-            prev_24h_index = self.kline.index.get_indexer([target_time], method="pad")
+            prev_24h_index = self.kline.index.get_indexer(
+                [target_time],
+                method="pad",
+            )[0].item()
 
             open_price = self.kline["Open"].iloc[-prev_24h_index]
             close_price = self.kline["Close"].iloc[-1]
@@ -867,7 +910,10 @@ class Market:
         ms_in_7D = 7 * 24 * 60 * 60 * 1000
         if total_span > ms_in_7D:
             target_time = self.kline.index[-1] - 7 * 24 * 60 * 60 * 1000
-            prev_7D_index = self.kline.index.get_indexer([target_time], method="pad")
+            prev_7D_index = self.kline.index.get_indexer(
+                [target_time],
+                method="pad",
+            )[0].item()
 
             open_price = self.kline["Open"].iloc[prev_7D_index]
             close_price = self.kline["Close"].iloc[-1]
@@ -883,7 +929,10 @@ class Market:
         ms_in_24h = 24 * 60 * 60 * 1000
         if total_span > ms_in_24h:
             target_time = self.kline.index[-1] - 24 * 60 * 60 * 1000
-            prev_24h_index = self.kline.index.get_indexer([target_time], method="pad")
+            prev_24h_index = self.kline.index.get_indexer(
+                [target_time],
+                method="pad",
+            )[0].item()
 
             return self.kline["Volume"].iloc[prev_24h_index:].sum()
         return self.kline["Volume"].sum()
@@ -897,7 +946,10 @@ class Market:
         ms_in_24h = 24 * 60 * 60 * 1000
         if total_span > ms_in_24h:
             target_time = self.kline.index[-1] - 24 * 60 * 60 * 1000
-            prev_24h_index = self.kline.index.get_indexer([target_time], method="pad")
+            prev_24h_index = self.kline.index.get_indexer(
+                [target_time],
+                method="pad",
+            )[0].item()
 
             return self.kline["High"].iloc[prev_24h_index:].max()
         return self.kline["High"].max()
@@ -911,7 +963,10 @@ class Market:
         ms_in_24h = 24 * 60 * 60 * 1000
         if total_span > ms_in_24h:
             target_time = self.kline.index[-1] - 24 * 60 * 60 * 1000
-            prev_24h_index = self.kline.index.get_indexer([target_time], method="pad")
+            prev_24h_index = self.kline.index.get_indexer(
+                [target_time],
+                method="pad",
+            )[0].item()
 
             return self.kline["Low"].iloc[prev_24h_index:].min()
         return self.kline["Low"].min()
