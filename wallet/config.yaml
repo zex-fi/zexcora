@@ -9,7 +9,7 @@ networks:
     chain: XMR
     mainnet: false
     node_url: "https://stagenet.xmr.ditatompel.com:443"
-    wallet_path: "monero/wallets/zex_wallet"
+    wallet_path: "monero/wallets/zex_wallet_view"
     wallet_pass: ""
     blocks_confirmation: 1
     block_duration: 60
