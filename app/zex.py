@@ -669,6 +669,8 @@ class Market:
 
     def match_instantly(self, tx: bytes, t: int) -> bool:
         operation, amount, price, nonce, public, index = self._parse_transaction(tx)
+        if price < 0 or amount < 0:
+            return False
 
         if not self._validate_nonce(public, nonce):
             return False
@@ -711,8 +713,6 @@ class Market:
             )
             return False
 
-        self.zex.orders[public][tx] = True
-
         # Execute the trade
         while amount > 0 and self.sell_orders and self.sell_orders[0][0] <= price:
             sell_price, _, sell_order = self.sell_orders[0]
@@ -729,6 +729,7 @@ class Market:
             # Add remaining amount to buy orders
             heapq.heappush(self.buy_orders, (-price, index, tx))
             self.zex.amounts[tx] = amount
+            self.zex.orders[public][tx] = True
             self.quote_token_balances[public] -= price * amount
             with self.order_book_lock:
                 self.bids_order_book[price] += amount
@@ -754,7 +755,6 @@ class Market:
             )
             return False
 
-        self.zex.orders[public][tx] = True
         self.base_token_balances[public] = balance - amount
 
         # Execute the trade
@@ -774,6 +774,7 @@ class Market:
             # Add remaining amount to sell orders
             heapq.heappush(self.sell_orders, (price, index, tx))
             self.zex.amounts[tx] = amount
+            self.zex.orders[public][tx] = True
             self.base_token_balances[public] -= amount
             with self.order_book_lock:
                 self.asks_order_book[price] += amount
@@ -1028,19 +1029,6 @@ class Market:
 
         self.base_token_balances[public] = balance - amount
         return True
-
-    def _update_orders(
-        self,
-        buy_order: bytes,
-        sell_order: bytes,
-        trade_amount: float,
-        buy_price: float,
-        sell_price: float,
-        buy_public: bytes,
-        sell_public: bytes,
-    ):
-        self._update_buy_order(buy_order, trade_amount, buy_price, buy_public)
-        self._update_sell_order(sell_order, trade_amount, sell_price, sell_public)
 
     def _update_buy_order(
         self,
