@@ -22,6 +22,7 @@ pycryptodomex = "^3.20"
 tenacity = "^8.3.0"
 fastecdsa = "^2.3.2"
 eth-abi = "^5.1.0"
+zellular = "^0.1.4"
 
 [tool.poetry.dependencies.eigensdk]
 git = "https://github.com/zellular-xyz/eigensdk-python"

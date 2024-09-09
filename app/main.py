@@ -6,7 +6,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from app.api.routes.system import process_loop
+from app.api.routes.system import process_loop, transmit_tx
 
 from . import manager
 from .api.main import api_router
@@ -47,6 +47,7 @@ class JSONMessageManager:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     Thread(target=asyncio.run, args=(process_loop(),), daemon=True).start()
+    Thread(target=asyncio.run, args=(transmit_tx(),), daemon=True).start()
     yield
     t = Thread(target=close_pool)
     t.start()

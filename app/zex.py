@@ -19,7 +19,7 @@ from .models.transaction import (
     WithdrawTransaction,
 )
 from .proto import zex_pb2
-from .verify import chunkify, verify
+from .verify import chunkify
 
 DEPOSIT, WITHDRAW, BUY, SELL, CANCEL, REGISTER = b"dwbscr"
 TRADES_TTL = 1000
@@ -378,7 +378,6 @@ class Zex(metaclass=SingletonMeta):
 
     @line_profiler.profile
     def process(self, txs: list[bytes], last_tx_index):
-        verify(txs)
         modified_pairs = set()
         for tx in txs:
             if not tx:
@@ -415,7 +414,7 @@ class Zex(metaclass=SingletonMeta):
                 modified_pairs.add(pair)
 
             elif name == CANCEL:
-                base_token, quote_token, pair = self._get_tx_pair(tx[1:])
+                base_token, quote_token, pair = self._get_tx_pair(tx)
                 success = self.markets[pair].cancel(tx)
                 if success:
                     modified_pairs.add(pair)
@@ -669,6 +668,8 @@ class Market:
 
     def match_instantly(self, tx: bytes, t: int) -> bool:
         operation, amount, price, nonce, public, index = self._parse_transaction(tx)
+        if price < 0 or amount < 0:
+            return False
 
         if not self._validate_nonce(public, nonce):
             return False
@@ -1028,19 +1029,6 @@ class Market:
 
         self.base_token_balances[public] = balance - amount
         return True
-
-    def _update_orders(
-        self,
-        buy_order: bytes,
-        sell_order: bytes,
-        trade_amount: float,
-        buy_price: float,
-        sell_price: float,
-        buy_public: bytes,
-        sell_public: bytes,
-    ):
-        self._update_buy_order(buy_order, trade_amount, buy_price, buy_public)
-        self._update_sell_order(sell_order, trade_amount, sell_price, sell_public)
 
     def _update_buy_order(
         self,
