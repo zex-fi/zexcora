@@ -11,8 +11,8 @@ fastapi = "^0.111.0"
 pydantic = ">2.0"
 requests = "^2.32.3"
 httpx = "^0.27.0"
-websocket-client = "^1.8.0"
 websockets = "^12.0"
+websocket-client = "^1.8.0"
 pandas = "^2.2.2"
 eth-hash = { extras = ["pycryptodome"], version = "^0.7.0" }
 loguru = "^0.7.2"
@@ -22,11 +22,11 @@ pycryptodomex = "^3.20"
 tenacity = "^8.3.0"
 fastecdsa = "^2.3.2"
 eth-abi = "^5.1.0"
-zellular = "^0.1.4"
-
-[tool.poetry.dependencies.eigensdk]
-git = "https://github.com/zellular-xyz/eigensdk-python"
-branch = "main"
+flask = "^3.0.0"
+zellular = { git = "https://github.com/zellular-xyz/zellular.py.git", rev = "main" }
+eigensdk = { git = "https://github.com/zellular-xyz/eigensdk-python", rev = "main" }
+pyfrost = { git = "https://github.com/zellular-xyz/pyfrost", rev = "main" }
+web3 = "<7"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.2"
