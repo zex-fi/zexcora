@@ -20,10 +20,10 @@ def run_node(node_number: int) -> None:
     private_file = os.getenv("FROST_NODE_PRIVATE_FILE")
     assert private_file is not None, "FROST_NODE_PRIVATE_FILE env variable is not set"
 
-    private_file_password = os.getenv("FROST_NODE_PRIVATE_PASSWORRD")
+    private_file_password = os.getenv("FROST_NODE_PRIVATE_PASSWORD")
     assert (
         private_file is not None
-    ), "FROST_NODE_PRIVATE_PASSWORRD env variable is not set"
+    ), "FROST_NODE_PRIVATE_PASSWORD env variable is not set"
 
     with open(private_file) as f:
         data = json.load(f)
