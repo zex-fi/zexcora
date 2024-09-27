@@ -46,7 +46,7 @@ def send_txs(txs: list[str]):
 async def transmit_tx():
     app_name = "simple_app"
 
-    with open("/tmp/zellular_dev_net/nodes.json") as f:
+    with open("./nodes.json") as f:
         operators = json.load(f)
 
     base_url = None
