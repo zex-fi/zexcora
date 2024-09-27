@@ -2,6 +2,7 @@ import json
 import os
 import random
 import time
+from collections import deque
 from struct import pack, unpack
 from threading import Lock, Thread
 
@@ -15,8 +16,11 @@ DEPOSIT, WITHDRAW, BUY, SELL, CANCEL = b"dwbsc"
 
 version = pack(">B", 1)
 
-ip = os.getenv("HOST")
-port = int(os.getenv("PORT") or 8000)
+IP = os.getenv("HOST")
+PORT = int(os.getenv("PORT") or 8000)
+
+MAX_ORDERS_COUNT = 10
+MIN_ORDER_VALUE = 50
 
 
 class ZexBot:
@@ -42,15 +46,15 @@ class ZexBot:
         self.rng = random.Random(seed)
 
         self.pubkey = self.privkey.pubkey.serialize()
-        self.nonce = 0
+        self.nonce = -1
         self.counter = 0
-        self.orders = set()
+        self.orders = deque()
         self.websocket: WebSocketApp = None
 
         self.best_bid = best_bid
         self.best_ask = best_ask
 
-        self.base_volume = 50 / best_bid
+        self.base_volume = MIN_ORDER_VALUE / best_bid
 
         self.bids = {best_bid: self.base_volume}
         self.asks = {best_ask: self.base_volume}
@@ -148,10 +152,20 @@ class ZexBot:
         self.counter += 1
         return tx
 
+    def create_canel_order(self, order: bytes):
+        tx = version + pack(">B", CANCEL) + order + self.pubkey
+        msg = f"""v: {tx[0]}\nname: cancel\nslice: {tx[2:41].hex()}\npublic: {tx[41:74].hex()}\n"""
+        msg = "".join(("\x19Ethereum Signed Message:\n", str(len(msg)), msg))
+
+        sig = self.privkey.ecdsa_sign(keccak(msg.encode("ascii")), raw=True)
+        sig = self.privkey.ecdsa_serialize_compact(sig)
+        tx += sig
+        return tx
+
     def run(self):
         websocket.enableTrace(False)
         self.websocket = WebSocketApp(
-            f"ws://{ip}:{port}/ws",
+            f"ws://{IP}:{PORT}/ws",
             on_open=self.on_open_wrapper(),
             on_message=self.on_messsage_wrapper(),
         )
@@ -180,10 +194,17 @@ class ZexBot:
                 volume = round(self.rng.random() * 0.02, 3)
 
             resp = requests.get(
-                f"http://{ip}:{port}/api/v1/user/{self.pubkey.hex()}/nonce"
+                f"http://{IP}:{PORT}/api/v1/user/{self.pubkey.hex()}/nonce"
             )
             self.nonce = resp.json()["nonce"]
-            # with self.send_tx_lock:
-            tx = self.create_order(price, volume, maker=maker).decode("latin-1")
-            self.orders.add(tx)
-            requests.post(f"http://{ip}:{port}/api/v1/txs", json=[tx])
+            tx = self.create_order(price, volume, maker=maker)
+            self.orders.append(tx)
+
+            txs = [tx.decode("latin-1")]
+
+            if len(self.orders) >= MAX_ORDERS_COUNT:
+                oldest_tx = self.orders.popleft()
+                cancel_tx = self.create_canel_order(oldest_tx[1:40])
+                txs.append(cancel_tx.decode("latin-1"))
+
+            requests.post(f"http://{IP}:{PORT}/api/v1/txs", json=txs)
