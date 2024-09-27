@@ -2,12 +2,13 @@ import asyncio
 import json
 import time
 from collections import deque
+from pprint import pprint
 from threading import Lock
 
 import requests
-import zellular
 from fastapi import APIRouter, HTTPException
 from loguru import logger
+from zellular import Zellular
 
 from app import zex
 from app.verify import verify
@@ -79,9 +80,10 @@ async def process_loop():
 
     app_name = "simple_app"
 
-    with open("/tmp/zellular_dev_net/nodes.json") as f:
+    with open("./nodes.json") as f:
         operators = json.load(f)
 
+    pprint(operators)
     base_url = None
     for op_id, op in operators.items():
         state = requests.get(f"{op['socket']}/node/state").json()
@@ -98,11 +100,11 @@ async def process_loop():
         operator["public_key_g2"].setStr(public_key_g2.encode("utf-8"))
         aggregated_public_key += operator["public_key_g2"]
 
-    verifier = zellular.Verifier(app_name, base_url)
+    verifier = Zellular(app_name, base_url, threshold_percent=2 / 3 * 100)
     verifier.operators = operators
     verifier.aggregated_public_key = aggregated_public_key
 
-    for batch, index in verifier.batches():
+    for batch, index in verifier.batches(after=zex.last_tx_index):
         txs: list[str] = json.loads(batch)
         # sorted_numbers = sorted([t["index"] for t in finalized_txs])
         # logger.debug(
@@ -113,7 +115,7 @@ async def process_loop():
         try:
             zex.process(finalized_txs, index)
 
-            # TODO: the for loop takes all the CPU time. the sleep gve time to other tasks to run. find a better solution
+            # TODO: the for loop takes all the CPU time. the sleep gives time to other tasks to run. find a better solution
             await asyncio.sleep(0)
         except Exception:
             logger.exception("process loop")
