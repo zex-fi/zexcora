@@ -2,15 +2,15 @@ import asyncio
 from contextlib import asynccontextmanager
 from threading import Thread
 
+import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from app import manager
+from app.api.main import api_router
 from app.api.routes.system import process_loop, transmit_tx
-
-from . import manager
-from .api.main import api_router
-from .verify import close_pool
+from app.verify import close_pool
 
 
 class StreamRequest(BaseModel):
@@ -82,3 +82,7 @@ async def websocket_endpoint(websocket: WebSocket):
         await receive_messages()
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)

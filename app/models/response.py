@@ -47,8 +47,8 @@ class UserPublicResponse(BaseModel):
 class Addresses(BaseModel):
     BTC: str
     XMR: str
-    BST: str
     HOL: str
+    BST: str
     SEP: str
 
 
@@ -102,7 +102,7 @@ class ExchangeInfoResponse(BaseModel):
 class Withdraw(BaseModel):
     chain: str
     tokenID: int
-    amount: float
+    amount: str
     user: str
     destination: str
     t: int
@@ -112,14 +112,3 @@ class Withdraw(BaseModel):
 class WithdrawNonce(BaseModel):
     chain: str
     nonce: int
-
-
-class Signature(BaseModel):
-    s: str
-    e: str
-
-
-class WithdrawSignature(BaseModel):
-    withdraw: Withdraw
-    signature: Signature
-    publicNonce: str
