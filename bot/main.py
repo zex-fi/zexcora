@@ -4,15 +4,18 @@ from threading import Lock, Thread
 
 from bot import PAIRS, ZexBot
 
+HOST = os.getenv("ZEX_HOST")
+PORT = int(os.getenv("ZEX_PORT"))
+
+assert HOST is not None and PORT is not None, "HOST or PORT is not defined"
+
+
 DEPOSIT, WITHDRAW, BUY, SELL, CANCEL = b"dwbsc"
 
 version = pack(">B", 1)
 
 private_seed = "31a84594060e103f5a63eb742bd46cf5f5900d8406e2726dedfc61c7cf43ebac"
 private_seed_int = int.from_bytes(bytearray.fromhex(private_seed), byteorder="big")
-
-ip = os.getenv("HOST")
-port = int(os.getenv("PORT"))
 
 
 def start_threads() -> list[tuple[Thread, ZexBot]]:
