@@ -10,7 +10,6 @@ from threading import Lock
 from time import time as unix_time
 from typing import IO
 
-import line_profiler
 import pandas as pd
 from loguru import logger
 
@@ -19,7 +18,7 @@ from .models.transaction import (
     WithdrawTransaction,
 )
 from .proto import zex_pb2
-from .verify import chunkify, verify
+from .verify import chunkify
 
 DEPOSIT, WITHDRAW, BUY, SELL, CANCEL, REGISTER = b"dwbscr"
 TRADES_TTL = 1000
@@ -73,7 +72,7 @@ class Zex(metaclass=SingletonMeta):
         self.depth_callback = depth_callback
         self.state_dest = state_dest
         self.light_node = light_node
-        self.save_frequency = 1_000  # save state every N transactions
+        self.save_frequency = 500  # save state every N transactions
 
         self.benchmark_mode = benchmark_mode
 
@@ -90,11 +89,11 @@ class Zex(metaclass=SingletonMeta):
 
         self.withdraws: dict[str, dict[bytes, list[WithdrawTransaction]]] = {}
         self.deposited_blocks = {
-            "BTC": 2903547,
-            "XMR": 1682486,
-            "BST": 43639612,
-            "SEP": 6644140,
-            "HOL": 2282836,
+            "BTC": 3006207,
+            "XMR": 1697341,
+            "BST": 44247324,
+            "SEP": 6770590,
+            "HOL": 2420957,
         }
         self.withdraw_nonces: dict[str, dict[bytes, int]] = {
             k: {} for k in self.deposited_blocks.keys()
@@ -301,7 +300,11 @@ class Zex(metaclass=SingletonMeta):
         }
         zex.amounts = {e.tx: e.amount for e in pb_state.amounts}
         zex.trades = {
-            e.public_key: deque(trade for trade in e.trades) for e in pb_state.trades
+            e.public_key: deque(
+                (trade.t, trade.amount, trade.pair, trade.order_type, trade.order)
+                for trade in e.trades
+            )
+            for e in pb_state.trades
         }
         zex.orders = {
             e.public_key: {order: True for order in e.orders} for e in pb_state.orders
@@ -376,9 +379,7 @@ class Zex(metaclass=SingletonMeta):
             light_node,
         )
 
-    @line_profiler.profile
     def process(self, txs: list[bytes], last_tx_index):
-        verify(txs)
         modified_pairs = set()
         for tx in txs:
             if not tx:
@@ -754,8 +755,6 @@ class Market:
                 base_token=self.base_token,
             )
             return False
-
-        self.base_token_balances[public] = balance - amount
 
         # Execute the trade
         while amount > 0 and self.buy_orders and -self.buy_orders[0][0] >= price:

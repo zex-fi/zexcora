@@ -3,15 +3,11 @@ from struct import unpack
 
 from bitcoinutils.keys import P2trAddress, PublicKey
 from bitcoinutils.utils import tweak_taproot_pubkey
-from eth_abi.packed import encode_packed
 from fastapi import APIRouter, HTTPException
-from fastecdsa import curve, keys
 from loguru import logger
 from web3 import Web3
 
 from app import (
-    BLS_PRIVATE,
-    SCHNORR_PRIVATE,
     ZEX_BTC_PUBLIC_KEY,
     ZEX_MONERO_PUBLIC_ADDRESS,
     zex,
@@ -22,7 +18,6 @@ from app.models.response import (
     BalanceResponse,
     NonceResponse,
     OrderResponse,
-    Signature,
     TradeResponse,
     TransferResponse,
     UserAddressesResponse,
@@ -30,13 +25,12 @@ from app.models.response import (
     UserPublicResponse,
     Withdraw,
     WithdrawNonce,
-    WithdrawSignature,
 )
 from app.models.transaction import Deposit, WithdrawTransaction
 from app.monero.address import Address
 from app.zex import BUY
 
-from . import DECIMALS
+from . import CHAIN_CONTRACTS, DECIMALS
 
 router = APIRouter()
 light_router = APIRouter()
@@ -229,16 +223,16 @@ def get_user_addresses(public: str) -> UserAddressesResponse:
     user_id = zex.public_to_id_lookup[user]
     taproot_address = get_taproot_address(btc_master_pubkey, user_id)
     monero_address = monero_master_address.with_payment_id(user_id)
-    bst_contract_address = "0xEca9036cFbfD61C952126F233682f9A6f97E4DBD"
-    hol_contract_address = "0x3254BEe5c12A3f5c878D0ACEF194A6d611727Df7"
-    sep_contract_address = "0xcD04Fb8a4d987dc537345267751EfD271d464F91"
+    hol_contract_address = CHAIN_CONTRACTS["HOL"]
+    bst_contract_address = CHAIN_CONTRACTS["BST"]
+    sep_contract_address = CHAIN_CONTRACTS["SEP"]
     return UserAddressesResponse(
         user=user.hex(),
         addresses=Addresses(
             BTC=taproot_address.to_string(),
             XMR=str(monero_address),
-            BST=bst_contract_address,
             HOL=hol_contract_address,
+            BST=bst_contract_address,
             SEP=sep_contract_address,
         ),
     )
@@ -283,111 +277,31 @@ def get_withdraws(public: str, chain: str) -> list[Withdraw]:
     ]
 
 
-ecurve = curve.secp256k1
-N = ecurve.q
-Half_N = ((N >> 1) % N + 1) % N
-
-
-def private_to_point(private_key):
-    return keys.get_public_key(private_key, ecurve)
-
-
-def pub_to_addr(public_key):
-    pub_key_hex = str(hex(public_key.x))[2:] + str(hex(public_key.y))[2:]
-    pub_hash = Web3.keccak(int(pub_key_hex, 16))
-    return Web3.to_checksum_address("0x" + str(pub_hash.hex())[-40:])
-
-
-def schnorr_hash(public_key, message, nonce_pub):
-    packed_data = encode_packed(
-        ["bytes32", "uint8", "bytes32", "address"],
-        [
-            public_key.x.to_bytes(32, byteorder="big"),
-            public_key.y % 2,
-            message.to_bytes(32, byteorder="big"),
-            pub_to_addr(nonce_pub),
-        ],
-    )
-    return hashlib.sha256(packed_data).digest()
-
-
-def schnorr_sign(shared_private_key, nounce_private, nounce_public, message):
-    e = int.from_bytes(
-        schnorr_hash(private_to_point(shared_private_key), message, nounce_public),
-        "big",
-    )
-    s = (nounce_private - e * shared_private_key) % N
-    return {"s": s, "e": e}
-
-
-def split_signature(string_signature: str) -> dict[str, int]:
-    raw_bytes = string_signature[2:]
-    assert len(raw_bytes) == 128, "Invalid schnorr signature string"
-    e = "0x" + raw_bytes[0:64]
-    s = "0x" + raw_bytes[64:]
-    return {"s": int(s, 16), "e": int(e, 16)}
-
-
-def schnorr_verify(public_key, message, signature, nounce_public):
-    if isinstance(signature, str):
-        signature = split_signature(signature)
-    assert signature["s"] < N, "Signature must be reduced modulo N"
-    r_v = (signature["s"] * ecurve.G) + (signature["e"] * public_key)
-    e_v = schnorr_hash(public_key, message, nounce_public)
-    return int.from_bytes(e_v, "big") == signature["e"]
-
-
-def user_withdraw_signature(public: str, chain: str, nonce: int):
+def user_withdraw(public: str, chain: str, nonce: int):
     if nonce < 0:
         raise HTTPException(400, {"error": "invalid nonce"})
 
     user = bytes.fromhex(public)
 
-    withdrawals = zex.withdraws[chain].get(user, [])
-    if nonce >= len(withdrawals):
-        logger.debug(f"invalid nonce: maximum nonce is {len(withdrawals) - 1}")
+    withdraws = zex.withdraws[chain].get(user, [])
+    if nonce >= len(withdraws):
+        logger.debug(f"invalid nonce: maximum nonce is {len(withdraws) - 1}")
         raise HTTPException(400, {"error": "invalid nonce"})
 
-    withdraw_tx = withdrawals[nonce]
+    withdraw_tx = withdraws[nonce]
 
-    packed = Web3.solidity_keccak(
-        ["uint256", "address", "uint256", "uint256", "uint256"],
-        [
-            int.from_bytes(user[1:], byteorder="big"),
-            Web3.to_checksum_address(withdraw_tx.dest),
-            withdraw_tx.token_id,
-            int(withdraw_tx.amount * (10 ** DECIMALS[withdraw_tx.token])),
-            withdraw_tx.nonce,
-        ],
-    )
-    msg = int.from_bytes(packed, byteorder="big")
-    nonce_priv = keys.gen_private_key(ecurve)
-    nonce_pub = private_to_point(nonce_priv)
-
-    sig = schnorr_sign(SCHNORR_PRIVATE, nonce_priv, nonce_pub, msg)
-
-    key_pub = private_to_point(SCHNORR_PRIVATE)
-    if not schnorr_verify(key_pub, msg, sig, nonce_pub):
-        raise HTTPException(500, {"error": "internal signature verification failed"})
-
-    return WithdrawSignature(
-        withdraw=Withdraw(
-            chain=withdraw_tx.chain,
-            tokenID=withdraw_tx.token_id,
-            amount=str(int(withdraw_tx.amount * (10 ** DECIMALS[withdraw_tx.token]))),
-            user=str(int.from_bytes(user[1:], byteorder="big")),
-            destination=Web3.to_checksum_address(withdraw_tx.dest),
-            t=withdraw_tx.time,
-            nonce=withdraw_tx.nonce,
-        ),
-        signature=Signature(s=str(sig["s"]), e=str(sig["e"])),
-        publicNonce=pub_to_addr(nonce_pub),
+    return Withdraw(
+        chain=withdraw_tx.chain,
+        tokenID=withdraw_tx.token_id,
+        amount=str(int(withdraw_tx.amount * (10 ** DECIMALS[withdraw_tx.token]))),
+        user=str(int.from_bytes(user[1:], byteorder="big")),
+        destination=Web3.to_checksum_address(withdraw_tx.dest),
+        t=withdraw_tx.time,
+        nonce=withdraw_tx.nonce,
     )
 
 
 if zex.light_node:
-    light_router.get("/user/{public}/withdraws/{chain}/{nonce}")(
-        user_withdraw_signature
-    )
+    light_router.get("/user/{public}/withdraws/{chain}/{nonce}")(user_withdraw)
 else:
-    router.get("/user/{public}/withdraws/{chain}/{nonce}")(user_withdraw_signature)
+    router.get("/user/{public}/withdraws/{chain}/{nonce}")(user_withdraw)

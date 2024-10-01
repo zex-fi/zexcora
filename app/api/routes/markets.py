@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app import zex
+from app.api.cache import timed_lru_cache
 from app.models.response import Chain, ExchangeInfoResponse, Symbol, Token
 
 from . import CHAIN_CONTRACTS, CHAIN_TYPES, DECIMALS, NAMES, SYMBOLS, TAGS, USDT_MAINNET
@@ -13,19 +14,9 @@ async def depth(symbol: str, limit: int = 500):
     return zex.get_order_book(symbol.upper(), limit)
 
 
-@router.get("/trades")
-async def trades(symbol: str, limit: int = 500):
-    raise NotImplementedError()
-
-
-@router.get("/historicalTrades")
-async def historical_trades(symbol: str, limit: int = 500, fromId: int | None = None):
-    raise NotImplementedError()
-
-
-@router.get("/exchangeInfo")
-async def exhange_info() -> ExchangeInfoResponse:
-    resp = ExchangeInfoResponse(
+@timed_lru_cache(seconds=60)
+def _exchange_info_response():
+    return ExchangeInfoResponse(
         timezone="UTC",
         symbols=[
             Symbol(
@@ -71,23 +62,16 @@ async def exhange_info() -> ExchangeInfoResponse:
             for c in zex.deposited_blocks.keys()
         ],
     )
-    return resp
+
+
+@router.get("/exchangeInfo")
+async def exhange_info() -> ExchangeInfoResponse:
+    return _exchange_info_response()
 
 
 @router.get("/pairs")
 async def pairs():
     return list(zex.markets.keys())
-
-
-@router.get("/aggTrades")
-async def agg_trades(
-    symbol: str,
-    fromId: int | None = None,
-    startTime: int | None = None,
-    endTime: int | None = None,
-    limit: int = 500,
-):
-    raise NotImplementedError()
 
 
 @router.get("/klines")
