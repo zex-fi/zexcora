@@ -12,12 +12,14 @@ from eth_hash.auto import keccak
 from secp256k1 import PrivateKey
 from websocket import WebSocket, WebSocketApp
 
+HOST = os.getenv("ZEX_HOST")
+PORT = int(os.getenv("ZEX_PORT"))
+
+assert HOST is not None and PORT is not None, "HOST or PORT is not defined"
+
 DEPOSIT, WITHDRAW, BUY, SELL, CANCEL = b"dwbsc"
 
 version = pack(">B", 1)
-
-IP = os.getenv("HOST")
-PORT = int(os.getenv("PORT") or 8000)
 
 MAX_ORDERS_COUNT = 10
 MIN_ORDER_VALUE = 50
@@ -165,7 +167,7 @@ class ZexBot:
     def run(self):
         websocket.enableTrace(False)
         self.websocket = WebSocketApp(
-            f"ws://{IP}:{PORT}/ws",
+            f"ws://{HOST}:{PORT}/ws",
             on_open=self.on_open_wrapper(),
             on_message=self.on_messsage_wrapper(),
         )
@@ -194,7 +196,7 @@ class ZexBot:
                 volume = round(self.rng.random() * 0.02, 3)
 
             resp = requests.get(
-                f"http://{IP}:{PORT}/api/v1/user/{self.pubkey.hex()}/nonce"
+                f"http://{HOST}:{PORT}/api/v1/user/{self.pubkey.hex()}/nonce"
             )
             self.nonce = resp.json()["nonce"]
             tx = self.create_order(price, volume, maker=maker)
@@ -207,4 +209,4 @@ class ZexBot:
                 cancel_tx = self.create_canel_order(oldest_tx[1:40])
                 txs.append(cancel_tx.decode("latin-1"))
 
-            requests.post(f"http://{IP}:{PORT}/api/v1/txs", json=txs)
+            requests.post(f"http://{HOST}:{PORT}/api/v1/txs", json=txs)

@@ -1,14 +1,7 @@
-import os
 from struct import pack
 from threading import Lock, Thread
 
 from bot import PAIRS, ZexBot
-
-HOST = os.getenv("ZEX_HOST")
-PORT = int(os.getenv("ZEX_PORT"))
-
-assert HOST is not None and PORT is not None, "HOST or PORT is not defined"
-
 
 DEPOSIT, WITHDRAW, BUY, SELL, CANCEL = b"dwbsc"
 
