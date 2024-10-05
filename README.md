@@ -6,12 +6,19 @@
 $ sudo apt install libgmp-dev
 ```
 
+## install
+### Poetry
+install using `poetry install` from the project root directory
+
+### pip
+`cd` into the roo of the project and install using `pip install .`
+
 In order to test the backend follow these steps:
 1. run server: `TEST_MODE=1 python app/main.py`
 2. use a websocket client like [https://hoppscotch.io/realtime/websocket](https://hoppscotch.io/realtime/websocket)
    1. connect to `ws://127.0.0.1:8000/api/v1/ws`
-   2. send the following as json body to subscribe to events:
-      1. ```json
+   2. send the following as json body to subscribe to events: 
+    ```json
     {
         "method": "SUBSCRIBE",
         "params":
