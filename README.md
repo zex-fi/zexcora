@@ -3,7 +3,7 @@
 1. install `MCL` required for fastecdsa ([follow instructions](https://github.com/herumi/mcl?tab=readme-ov-file#how-to-build-with-cmake))
 2. install libgmp4-dev
 ```bash
-$ sudo apt install libgmp4-dev
+$ sudo apt install libgmp-dev
 ```
 
 In order to test the backend follow these steps:
