@@ -46,8 +46,8 @@ class JSONMessageManager:
 # Run the broadcaster in the background
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    Thread(target=asyncio.run, args=(process_loop(),), daemon=True).start()
-    Thread(target=asyncio.run, args=(transmit_tx(),), daemon=True).start()
+    Thread(target=asyncio.run, args=(process_loop(),)).start()
+    Thread(target=asyncio.run, args=(transmit_tx(),)).start()
     yield
     t = Thread(target=close_pool)
     t.start()
@@ -85,4 +85,4 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="warning")
