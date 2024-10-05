@@ -1,6 +1,5 @@
 from struct import unpack
 
-import line_profiler
 from pydantic import BaseModel
 
 
@@ -108,7 +107,6 @@ class DepositTransaction(BaseModel):
     signature: bytes
 
     @classmethod
-    @line_profiler.profile
     def from_tx(cls, tx: bytes) -> "DepositTransaction":
         deposits = []
         deposit_count = unpack(">H", tx[21:23][0])
@@ -150,7 +148,6 @@ class WithdrawTransaction(BaseModel):
     raw_tx: bytes | None
 
     @classmethod
-    @line_profiler.profile
     def from_tx(cls, tx: bytes) -> "WithdrawTransaction":
         assert len(tx) == 150, f"invalid transaction len(tx): {len(tx)}"
         return WithdrawTransaction(

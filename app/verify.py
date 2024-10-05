@@ -1,7 +1,6 @@
 import multiprocessing
 from struct import unpack
 
-import line_profiler
 from eth_hash.auto import keccak
 from loguru import logger
 from secp256k1 import PublicKey
@@ -12,7 +11,6 @@ monitor_pub = "033452c6fa7b1ac52c14bb4ed4b592ffafdae5f2dba7f360435fd9c71428029c7
 monitor_pub = PublicKey(bytes.fromhex(monitor_pub), raw=True)
 
 
-@line_profiler.profile
 def order_msg(tx):
     msg = f"""v: {tx[0]}\nname: {"buy" if tx[1] == BUY else "sell"}\nbase token: {tx[2:5].decode("ascii")}:{unpack(">I", tx[5:9])[0]}\nquote token: {tx[9:12].decode("ascii")}:{unpack(">I", tx[12:16])[0]}\namount: {unpack(">d", tx[16:24])[0]}\nprice: {unpack(">d", tx[24:32])[0]}\nt: {unpack(">I", tx[32:36])[0]}\nnonce: {unpack(">I", tx[36:40])[0]}\npublic: {tx[40:73].hex()}\n"""
     msg = "".join(("\x19Ethereum Signed Message:\n", str(len(msg)), msg))
@@ -44,7 +42,6 @@ def cancel_msg(tx: bytes):
     return msg.encode()
 
 
-@line_profiler.profile
 def __verify(txs):
     res = [None] * len(txs)
     for i, tx in enumerate(txs):
@@ -97,7 +94,6 @@ def close_pool():
     pool.join()
 
 
-@line_profiler.profile
 def verify(txs):
     chunks = list(chunkify(txs, len(txs) // n_chunks + 1))
     results = pool.map(__verify, chunks)
