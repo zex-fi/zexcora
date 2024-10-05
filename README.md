@@ -1,21 +1,26 @@
 # Zex
+## Dependencies
+1. install `MCL` required for fastecdsa ([follow instructions](https://github.com/herumi/mcl?tab=readme-ov-file#how-to-build-with-cmake))
+2. install libgmp4-dev
+```bash
+$ sudo apt install libgmp4-dev
+```
 
 In order to test the backend follow these steps:
-1. run server: `fastapi dev server.py`
+1. run server: `TEST_MODE=1 python app/main.py`
 2. use a websocket client like [https://hoppscotch.io/realtime/websocket](https://hoppscotch.io/realtime/websocket)
-   1. connect to `ws://127.0.0.1:8000/ws`
+   1. connect to `ws://127.0.0.1:8000/api/v1/ws`
    2. send the following as json body to subscribe to events:
       1. ```json
     {
         "method": "SUBSCRIBE",
         "params":
             [
-                "eth:0-pol:0@kline_1m",
-                "eth:0-pol:0@depth"
+                "xmr:0-hol:0@kline_1m",
+                "xmr:0-hol:0@depth"
             ],
         "id": 1
     }
       ```
-3. run the `test.py` script to deposit `usdt` and `wbtc` and send buy and sell transaction to the server. transaction are sent to the `/api/tx` endpoint as list of hex strings
-4. the data for each of the subscribed channels listed inside `params` will be send as a json string according to binance websocket API
-5. to stop receiving data from a channel modify the method to `SUBSCRIBE`
+3. the data for each of the subscribed channels listed inside `params` will be send as a json string according to binance websocket API
+4. to stop receiving data from a channel modify the method to `UNSUBSCRIBE`
