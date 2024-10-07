@@ -1,0 +1,7 @@
+services:
+  zex:
+    image: zellular/zex:dev
+    build:
+      context: .
+    env_file:
+      - .envrc
