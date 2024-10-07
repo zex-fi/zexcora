@@ -1,4 +1,3 @@
-import os
 from io import BytesIO
 import os
 
@@ -9,19 +8,17 @@ from app.connection_manager import ConnectionManager
 
 from .zex import Zex
 
+ZEX_HOST = os.getenv("ZEX_HOST", "0.0.0.0")
+ZEX_PORT = int(os.getenv("ZEX_PORT", 8000))
+
 LIGHT_NODE = os.getenv("LIGHT_NODE")
 ZEX_STATE_SOURCE = os.getenv("ZEX_STATE_SOURCE")
 ZEX_STATE_DEST = os.getenv("ZEX_STATE_DEST")
-BLS_PRIVATE = os.environ.get("BLS_PRIVATE")
-SCHNORR_PRIVATE = int(os.environ.get("SCHNORR_PRIVATE"))
-ZEX_BTC_PUBLIC_KEY = os.environ.get("ZEX_BTC_PUBLIC_KEY")
-ZEX_MONERO_PUBLIC_ADDRESS = os.environ.get("ZEX_MONERO_PUBLIC_ADDRESS")
-ZEX_ETHERSCAN_API_KEY = os.environ.get("ZEX_ETHERSCAN_API_KEY")
+ZEX_BTC_PUBLIC_KEY = os.getenv("ZEX_BTC_PUBLIC_KEY")
+ZEX_MONERO_PUBLIC_ADDRESS = os.getenv("ZEX_MONERO_PUBLIC_ADDRESS")
+ZEX_ETHERSCAN_API_KEY = os.getenv("ZEX_ETHERSCAN_API_KEY")
 
 assert ZEX_STATE_DEST is not None, "ZEX_STATE_DEST must be specified"
-assert (
-    SCHNORR_PRIVATE or BLS_PRIVATE
-), "SCHNORR_PRIVATE or BLS_PRIVATE env variable need to be set"
 assert ZEX_BTC_PUBLIC_KEY, "ZEX_BTC_PUBLIC_KEY env variable is not set"
 assert ZEX_MONERO_PUBLIC_ADDRESS, "ZEX_MONERO_PUBLIC_ADDRESS env variable is not set"
 assert ZEX_ETHERSCAN_API_KEY, "ZEX_ETHERSCAN_API_KEY env variable is not set"
