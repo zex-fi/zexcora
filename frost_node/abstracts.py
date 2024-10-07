@@ -2,10 +2,10 @@ import hashlib
 import json
 import os.path as osp
 
-import requests
 from eth_abi.packed import encode_packed
 from pyfrost.network.abstract import DataManager, Validators
 from pyfrost.network.abstract import NodesInfo as BaseNodesInfo
+import requests
 
 from .config import VALIDATED_IPS
 
@@ -118,7 +118,7 @@ class NodesInfo(BaseNodesInfo):
     def lookup_node(self, node_id: str = None):
         return self.nodes.get(node_id, {})
 
-    def get_all_nodes(self, n: int = None) -> dict:
+    def get_all_nodes(self, n: int = None) -> list[str]:
         if n is None:
             n = len(self.nodes)
         return list(self.nodes.keys())[:n]

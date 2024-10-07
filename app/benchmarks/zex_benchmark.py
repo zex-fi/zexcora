@@ -1,14 +1,14 @@
+from collections import deque
 import random
 import time
-from collections import deque
 
 from colorama import init as colorama_init
 from secp256k1 import PrivateKey
 from termcolor import colored
 
 from app import zex
-from app.bot import ZexBot
 from app.zex import Market, Zex
+from bot import ZexBot
 
 colorama_init()
 

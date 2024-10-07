@@ -1,11 +1,11 @@
-import asyncio
 from contextlib import asynccontextmanager
 from threading import Thread
+import asyncio
 
-import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+import uvicorn
 
 from app import manager
 from app.api.main import api_router

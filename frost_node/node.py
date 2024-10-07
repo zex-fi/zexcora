@@ -31,7 +31,7 @@ def run_node(node_number: int) -> None:
 
     node = Node(
         data_manager,
-        str(node_number),
+        node_number,
         int.from_bytes(private_hex, byteorder="big"),
         nodes_info,
         NodeValidators.caller_validator,

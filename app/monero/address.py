@@ -1,6 +1,6 @@
+from binascii import hexlify, unhexlify
 import re
 import struct
-from binascii import hexlify, unhexlify
 
 from . import base58, const, numbers
 from .keccak import keccak_256

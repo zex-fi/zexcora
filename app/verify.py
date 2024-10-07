@@ -1,5 +1,5 @@
-import multiprocessing
 from struct import unpack
+import multiprocessing
 
 from eth_hash.auto import keccak
 from loguru import logger

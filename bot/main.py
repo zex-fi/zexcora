@@ -12,7 +12,7 @@ private_seed_int = int.from_bytes(bytearray.fromhex(private_seed), byteorder="bi
 
 
 def start_threads() -> list[tuple[Thread, ZexBot]]:
-    threads: list[Thread] = []
+    threads: list[tuple[Thread, ZexBot]] = []
     bot1_lock = Lock()
     bot2_lock = Lock()
     idx = 0

@@ -1,6 +1,6 @@
+from typing import Any
 import os
 import sqlite3
-from typing import Any
 
 
 class Direction:

@@ -1,5 +1,5 @@
-import hashlib
 from struct import unpack
+import hashlib
 
 from bitcoinutils.keys import P2trAddress, PublicKey
 from bitcoinutils.utils import tweak_taproot_pubkey
@@ -12,7 +12,6 @@ from app import (
     ZEX_MONERO_PUBLIC_ADDRESS,
     zex,
 )
-from app.api.cache import timed_lru_cache
 from app.models.response import (
     Addresses,
     BalanceResponse,

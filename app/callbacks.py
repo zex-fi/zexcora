@@ -1,7 +1,7 @@
 import time
 
-import pandas as pd
 from fastapi import WebSocket
+import pandas as pd
 
 from .connection_manager import ConnectionManager
 
@@ -63,7 +63,7 @@ def kline_event(manager: ConnectionManager):
             # Copy to avoid modification during iteration
             for ws in clients.copy():
                 if ws not in manager.active_connections:
-                    manager.disconnect()
+                    manager.disconnect(ws)
 
                 await broadcast(manager, ws, channel, message)
 
@@ -82,7 +82,7 @@ def depth_event(manager: ConnectionManager):
             # Copy to avoid modification during iteration
             for ws in clients.copy():
                 if ws not in manager.active_connections:
-                    manager.disconnect()
+                    manager.disconnect(ws)
 
                 await broadcast(
                     manager,
