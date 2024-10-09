@@ -3,15 +3,14 @@ import logging
 import os
 import sys
 
-from flask import Flask
-from pyfrost.network.node import Node
-from web3 import Account
-
-from frost_node import (
+from abstracts import (
     NodeDataManager,
     NodesInfo,
     NodeValidators,
 )
+from flask import Flask
+from pyfrost.network.node import Node
+from web3 import Account
 
 
 def run_node(node_number: int) -> None:

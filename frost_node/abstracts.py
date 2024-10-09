@@ -1,13 +1,13 @@
 import hashlib
 import json
+import os
 import os.path as osp
 
+from config import VALIDATED_IPS
 from eth_abi.packed import encode_packed
 from pyfrost.network.abstract import DataManager, Validators
 from pyfrost.network.abstract import NodesInfo as BaseNodesInfo
 import requests
-
-from .config import VALIDATED_IPS
 
 
 class NodeDataManager(DataManager):
