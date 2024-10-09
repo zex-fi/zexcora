@@ -89,7 +89,7 @@ class Zex(metaclass=SingletonMeta):
 
         self.withdraws: dict[str, dict[bytes, list[WithdrawTransaction]]] = {}
         self.deposited_blocks = {
-            "BTC": 3094796,
+            "BTC": 3096807,
             "XMR": 1705807,
             "BST": 44589022,
             "SEP": 6844977,
