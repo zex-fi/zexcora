@@ -98,17 +98,22 @@ def send_txs(txs: list[str]):
 async def transmit_tx():
     app_name = "simple_app"
 
-    with open("./nodes.json") as f:
-        operators = json.load(f)
+    if os.getenv("TEST_MODE"):
+        base_url = os.getenv("REDIS_URL")
+    else:
+        with open("./nodes.json") as f:
+            operators = json.load(f)
 
-    base_url = None
-    for op_id, op in operators.items():
-        state = requests.get(f"{op['socket']}/node/state").json()
-        if not state["data"]["sequencer"]:
-            base_url = op["socket"]
-            break
-    if not base_url:
-        raise ValueError("failed to find an operator")
+        base_url = None
+        for op_id, op in operators.items():
+            state = requests.get(f"{op['socket']}/node/state").json()
+            if not state["data"]["sequencer"]:
+                base_url = op["socket"]
+                break
+        if not base_url:
+            raise ValueError("failed to find an operator")
+
+    zellular = Zellular(app_name, base_url, threshold_percent=2 / 3 * 100)
 
     while True:
         if len(zseq_deque) == 0:
@@ -123,7 +128,7 @@ async def transmit_tx():
         verify(txs)
         txs = [x.decode("latin-1") for x in txs if x is not None]
 
-        resp = requests.put(f"{base_url}/node/{app_name}/batches", json=txs)
+        zellular.send(txs)
         await asyncio.sleep(0.1)
 
 
@@ -138,6 +143,7 @@ async def process_loop():
     pprint(operators)
     if os.getenv("TEST_MODE"):
         base_url = os.getenv("REDIS_URL")
+        verifier = Zellular(app_name, base_url, threshold_percent=2 / 3 * 100)
     else:
         base_url = None
         for op_id, op in operators.items():
@@ -148,16 +154,15 @@ async def process_loop():
         if not base_url:
             raise ValueError("failed to find an operator")
 
-    aggregated_public_key = attestation.new_zero_g2_point()
-    for address, operator in operators.items():
-        public_key_g2 = operator["public_key_g2"]
-        operator["public_key_g2"] = attestation.new_zero_g2_point()
-        operator["public_key_g2"].setStr(public_key_g2.encode("utf-8"))
-        aggregated_public_key += operator["public_key_g2"]
-
-    verifier = Zellular(app_name, base_url, threshold_percent=2 / 3 * 100)
-    verifier.operators = operators
-    verifier.aggregated_public_key = aggregated_public_key
+        aggregated_public_key = attestation.new_zero_g2_point()
+        for address, operator in operators.items():
+            public_key_g2 = operator["public_key_g2"]
+            operator["public_key_g2"] = attestation.new_zero_g2_point()
+            operator["public_key_g2"].setStr(public_key_g2.encode("utf-8"))
+            aggregated_public_key += operator["public_key_g2"]
+        verifier = Zellular(app_name, base_url, threshold_percent=2 / 3 * 100)
+        verifier.operators = operators
+        verifier.aggregated_public_key = aggregated_public_key
 
     if os.getenv("TEST_MODE"):
         while not verifier.is_connected():
