@@ -34,7 +34,6 @@ class MockZellular:
         while True:
             batches = self.r.lrange(self.app_name, after, after + 100)
             for batch in batches:
-                print(batch)
                 after += 1
                 yield batch, after
             time.sleep(0.1)
