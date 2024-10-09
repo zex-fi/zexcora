@@ -13,7 +13,10 @@ import requests
 class NodeDataManager(DataManager):
     def __init__(self) -> None:
         super().__init__()
-        self.__dkg_keys_path = "dkg.shares"
+        self.__dkg_keys_path = os.getenv("FROST_NODE_DKG_SHARES")
+        assert (
+            self.__dkg_keys_path is not None
+        ), "FROST_NODE_DKG_SHARES env variable is not set"
         try:
             if osp.getsize(self.__dkg_keys_path) == 0:
                 self.__dkg_keys = {}
