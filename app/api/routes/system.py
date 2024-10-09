@@ -5,7 +5,6 @@ import asyncio
 import json
 import os
 import time
-import urllib
 
 from fastapi import APIRouter, HTTPException
 from loguru import logger
@@ -16,12 +15,12 @@ from app.verify import verify
 
 
 class MockZellular:
-    def __init__(self, app_name, base_url, threshold_percent=67):
+    def __init__(self, app_name: str, base_url: str, threshold_percent=67):
         self.app_name = app_name
         self.base_url = base_url
         self.threshold_percent = threshold_percent
-        url = urllib.parse.urlparse(base_url)
-        self.r = redis.Redis(host=url.hostname, port=url.port, db=0)
+        host, port = base_url.split(":")
+        self.r = redis.Redis(host=host, port=port, db=0)
 
     def is_connected(self):
         try:
