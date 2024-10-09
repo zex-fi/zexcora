@@ -1,14 +1,11 @@
+from asyncio import subprocess
+from pprint import pprint
+from struct import pack
 import asyncio
 import hashlib
 import json
 import signal
-from asyncio import subprocess
-from pprint import pprint
-from struct import pack
 
-import httpx
-import requests
-import yaml
 from bitcoinrpc import BitcoinRPC, RPCError
 from bitcoinutils.keys import P2trAddress, PublicKey
 from bitcoinutils.utils import tweak_taproot_pubkey
@@ -16,6 +13,9 @@ from secp256k1 import PrivateKey
 from web3 import Web3
 from web3.contract.contract import Contract
 from web3.middleware import geth_poa_middleware
+import httpx
+import requests
+import yaml
 
 IS_RUNNING = True
 
@@ -57,7 +57,7 @@ def initialize_web3(network) -> tuple[Web3, Contract]:
 
 
 # Function to get deposits
-async def get_deposits(contract: Contract, from_block, to_block):
+async def get_deposits(web3: Web3, contract: Contract, from_block, to_block):
     step = 2500
     failed = True
     events = []
@@ -74,6 +74,10 @@ async def get_deposits(contract: Contract, from_block, to_block):
                 )
                 events.extend([dict(e["args"]) for e in logs])
             failed = False
+        except ValueError as e:
+            # TODO: this is only a workaround when we fall behind specially for BST
+            if e.args[0]["code"] == -32701:
+                from_block = web3.eth.block_number - 50000
         except Exception as e:
             print(e)
             await asyncio.sleep(5)
@@ -126,6 +130,7 @@ async def run_monitor(network: dict, api_url: str, monitor: PrivateKey):
                 continue
 
             deposits = await get_deposits(
+                web3,
                 contract,
                 processed_block + 1,
                 latest_block - blocks_confirmation,
@@ -136,7 +141,7 @@ async def run_monitor(network: dict, api_url: str, monitor: PrivateKey):
 
             if len(deposits) == 0:
                 print(
-                    f"{chain} no event from: {processed_block+1}, to: {latest_block-blocks_confirmation}"
+                    f"{chain} no event from: {processed_block + 1}, to: {latest_block - blocks_confirmation}"
                 )
                 processed_block = latest_block - blocks_confirmation
                 continue
@@ -192,7 +197,7 @@ def b_to_i(b: bytes) -> int:
 
 
 def i_to_b8(i: int) -> bytes:
-    """Converts a integer to bytes"""
+    """Converts an integer to bytes"""
     return i.to_bytes(8, byteorder="big")
 
 
@@ -427,7 +432,7 @@ async def run_monitor_xmr(network: dict, api_url: str, monitor: PrivateKey):
 
         if len(deposits) == 0:
             print(
-                f"{chain} no deposit in from block {processed_block+1} to {latest_block['height']}"
+                f"{chain} no deposit in from block {processed_block + 1} to {latest_block['height']}"
             )
             # -1 since all transaction already have 1 confirmation
             processed_block = latest_block["height"] - (blocks_confirmation - 1)
