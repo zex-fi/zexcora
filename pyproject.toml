@@ -26,6 +26,7 @@ zellular = { git = "https://github.com/zellular-xyz/zellular.py.git", rev = "mai
 eigensdk = { git = "https://github.com/zellular-xyz/eigensdk-python", rev = "main" }
 pyfrost = { git = "https://github.com/zellular-xyz/pyfrost", rev = "main" }
 web3 = "<7"
+redis = "^5.1.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.2"

@@ -3,15 +3,68 @@ from pprint import pprint
 from threading import Lock
 import asyncio
 import json
+import os
 import time
+import urllib
 
 from fastapi import APIRouter, HTTPException
 from loguru import logger
-from zellular import Zellular
 import requests
 
 from app import zex
 from app.verify import verify
+
+
+class MockZellular:
+    def __init__(self, app_name, base_url, threshold_percent=67):
+        self.app_name = app_name
+        self.base_url = base_url
+        self.threshold_percent = threshold_percent
+        url = urllib.parse.urlparse(base_url)
+        self.r = redis.Redis(host=url.hostname, port=url.port, db=0)
+
+    def is_connected(self):
+        try:
+            self.r.ping()
+            return True
+        except (ConnectionError, ConnectionRefusedError):
+            return False
+
+    def batches(self, after=0):
+        assert after >= 0, "after should be equal or bigger than 0"
+        while True:
+            batches = self.r.lrange(self.app_name, after, after + 100)
+            for batch in batches:
+                print(batch)
+                after += 1
+                yield batch, after
+            time.sleep(0.1)
+
+    def get_last_finalized(self):
+        return {"index": self.r.llen(self.app_name)}
+
+    def send(self, batch, blocking=False):
+        if blocking:
+            index = self.get_last_finalized()["index"]
+
+        self.r.rpush(self.app_name, json.dumps(batch))
+
+        if not blocking:
+            return
+
+        for received_batch, index in self.batches(after=index):
+            received_batch = json.loads(received_batch)
+            if batch == received_batch:
+                return index
+
+
+if os.getenv("TEST_MODE"):
+    from redis.exceptions import ConnectionError
+    import redis
+
+    Zellular = MockZellular
+else:
+    from zellular import Zellular
 
 zseq_lock = Lock()
 zseq_deque = deque()
@@ -84,14 +137,17 @@ async def process_loop():
         operators = json.load(f)
 
     pprint(operators)
-    base_url = None
-    for op_id, op in operators.items():
-        state = requests.get(f"{op['socket']}/node/state").json()
-        if not state["data"]["sequencer"]:
-            base_url = op["socket"]
-            break
-    if not base_url:
-        raise ValueError("failed to find an operator")
+    if os.getenv("TEST_MODE"):
+        base_url = os.getenv("REDIS_URL")
+    else:
+        base_url = None
+        for op_id, op in operators.items():
+            state = requests.get(f"{op['socket']}/node/state").json()
+            if not state["data"]["sequencer"]:
+                base_url = op["socket"]
+                break
+        if not base_url:
+            raise ValueError("failed to find an operator")
 
     aggregated_public_key = attestation.new_zero_g2_point()
     for address, operator in operators.items():
@@ -103,6 +159,11 @@ async def process_loop():
     verifier = Zellular(app_name, base_url, threshold_percent=2 / 3 * 100)
     verifier.operators = operators
     verifier.aggregated_public_key = aggregated_public_key
+
+    if os.getenv("TEST_MODE"):
+        while not verifier.is_connected():
+            print("waiting for redis...")
+            await asyncio.sleep(1)
 
     for batch, index in verifier.batches(after=zex.last_tx_index):
         txs: list[str] = json.loads(batch)
