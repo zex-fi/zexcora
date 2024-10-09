@@ -1,4 +1,5 @@
 from collections import deque
+from threading import Lock
 import random
 import time
 
@@ -45,8 +46,12 @@ def initialize() -> tuple[Zex, ZexBot, ZexBot]:
     zex.orders[public2] = {}
     zex.nonces[public2] = 0
 
-    buyer_bot = ZexBot(u1_private, "BST", 2, "BST:1-BST:2", "buy", 1)
-    seller_bot = ZexBot(u2_private, "BST", 1, "BST:1-BST:2", "sell", 2)
+    buyer_bot = ZexBot(
+        bytes.fromhex(u1_private), "XMR:0-HOL:1", "buy", 169, 171, 5, 4, Lock()
+    )
+    seller_bot = ZexBot(
+        bytes.fromhex(u2_private), "XMR:0-HOL:1", "sell", 169, 171, 5, 4, Lock()
+    )
 
     return zex, buyer_bot, seller_bot
 
@@ -76,13 +81,13 @@ def test_maker_only():
 
     print("starting place order benchmark...")
     start_time = time.time()
-    zex.process(all_txs)
+    zex.process(all_txs, last_tx_index=len(all_txs) - 1)
     end_time = time.time()
 
     total_time = end_time - start_time
 
     print(
-        f"total time {colored(total_time, 'green')} for {colored(num_transactions, attrs=['bold'])} transactions"
+        f"total time {colored(str(total_time), 'green')} for {colored(str(num_transactions), attrs=['bold'])} transactions"
     )
 
 
@@ -111,13 +116,13 @@ def test_taker_only_half_empty_order_book():
 
     print("starting half empty order book benchmark...")
     start_time = time.time()
-    zex.process(all_txs)
+    zex.process(all_txs, last_tx_index=len(all_txs) - 1)
     end_time = time.time()
 
     total_time = end_time - start_time
 
     print(
-        f"total time {colored(total_time, 'green')} for {colored(num_transactions, attrs=['bold'])} transactions"
+        f"total time {colored(str(total_time), 'green')} for {colored(str(num_transactions), attrs=['bold'])} transactions"
     )
 
 
@@ -159,13 +164,13 @@ def test_taker_only_random_volume():
     ]
     print("starting full benchmark...")
     start_time = time.time()
-    zex.process(all_txs)
+    zex.process(all_txs, last_tx_index=len(all_txs) - 1)
     end_time = time.time()
 
     total_time = end_time - start_time
 
     print(
-        f"total time {colored(total_time, 'green')} for {colored(num_transactions, attrs=['bold'])} transactions"
+        f"total time {colored(str(total_time), 'green')} for {colored(str(num_transactions), attrs=['bold'])} transactions"
     )
 
 

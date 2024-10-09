@@ -13,7 +13,7 @@ __alphabet = [
     ord(s) for s in "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 ]
 __b58base = 58
-__UINT64MAX = 2**64
+__UINT64MAX = 2 ** 64
 __encodedBlockSizes = [0, 2, 3, 5, 6, 7, 9, 10, 11]
 __fullBlockSize = 8
 __fullEncodedBlockSize = 11
@@ -22,7 +22,7 @@ __fullEncodedBlockSize = 11
 def _hexToBin(hex_):
     if len(hex_) % 2 != 0:
         raise ValueError("Hex string has invalid length: %d" % len(hex_))
-    return [int(hex_[i : i + 2], 16) for i in range(0, len(hex_), 2)]
+    return [int(hex_[i: i + 2], 16) for i in range(0, len(hex_), 2)]
 
 
 def _binToHex(bin_):
@@ -44,7 +44,7 @@ def _uint64_to_8be(num, size):
         raise ValueError("Invalid input length: %d" % size)
     res = [0] * size
 
-    twopow8 = 2**8
+    twopow8 = 2 ** 8
     for i in range(size - 1, -1, -1):
         res[i] = num % twopow8
         num = num // twopow8
@@ -81,14 +81,14 @@ def encode(hex):
     full_block_count = l_data // __fullBlockSize
     last_block_size = l_data % __fullBlockSize
     res_size = (
-        full_block_count * __fullEncodedBlockSize + __encodedBlockSizes[last_block_size]
+            full_block_count * __fullEncodedBlockSize + __encodedBlockSizes[last_block_size]
     )
 
     res = bytearray([__alphabet[0]] * res_size)
 
     for i in range(full_block_count):
         res = encode_block(
-            data[(i * __fullBlockSize) : (i * __fullBlockSize + __fullBlockSize)],
+            data[(i * __fullBlockSize): (i * __fullBlockSize + __fullBlockSize)],
             res,
             i * __fullEncodedBlockSize,
         )
@@ -96,9 +96,9 @@ def encode(hex):
     if last_block_size > 0:
         res = encode_block(
             data[
-                (full_block_count * __fullBlockSize) : (
+            (full_block_count * __fullBlockSize): (
                     full_block_count * __fullBlockSize + last_block_size
-                )
+            )
             ],
             res,
             full_block_count * __fullEncodedBlockSize,
@@ -137,7 +137,7 @@ def decode_block(data, buf, index):
         raise ValueError("Overflow: %d doesn't fit in %d bit(s)" % (res_num, res_size))
 
     tmp_buf = _uint64_to_8be(res_num, res_size)
-    buf[index : index + len(tmp_buf)] = tmp_buf
+    buf[index: index + len(tmp_buf)] = tmp_buf
 
     return buf
 
@@ -163,9 +163,9 @@ def decode(enc):
     for i in range(full_block_count):
         data = decode_block(
             enc[
-                (i * __fullEncodedBlockSize) : (
+            (i * __fullEncodedBlockSize): (
                     i * __fullEncodedBlockSize + __fullEncodedBlockSize
-                )
+            )
             ],
             data,
             i * __fullBlockSize,
@@ -174,9 +174,9 @@ def decode(enc):
     if last_block_size > 0:
         data = decode_block(
             enc[
-                (full_block_count * __fullEncodedBlockSize) : (
+            (full_block_count * __fullEncodedBlockSize): (
                     full_block_count * __fullEncodedBlockSize + last_block_size
-                )
+            )
             ],
             data,
             full_block_count * __fullBlockSize,

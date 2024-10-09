@@ -30,7 +30,7 @@ def withdraw_msg(tx):
     return msg.encode()
 
 
-def register_msg(tx: bytes):
+def register_msg():
     msg = "Welcome to ZEX."
     msg = "".join(("\x19Ethereum Signed Message:\n", str(len(msg)), msg))
     return msg.encode()
@@ -48,11 +48,11 @@ def __verify(txs):
         name = tx[1]
         if name == DEPOSIT:
             msg = tx[: -(8 + 64)]
-            sig = tx[-(8 + 64) : -8]
+            sig = tx[-(8 + 64): -8]
             verified = monitor_pub.schnorr_verify(msg, sig, bip340tag="zex")
 
         elif name == WITHDRAW:
-            msg, pubkey, sig = withdraw_msg(tx), tx[45:78], tx[78 : 78 + 64]
+            msg, pubkey, sig = withdraw_msg(tx), tx[45:78], tx[78: 78 + 64]
             logger.info(f"withdraw request pubkey: {pubkey}")
             pubkey = PublicKey(pubkey, raw=True)
             sig = pubkey.ecdsa_deserialize_compact(sig)
@@ -61,11 +61,11 @@ def __verify(txs):
 
         else:
             if name == CANCEL:
-                msg, pubkey, sig = cancel_msg(tx), tx[41:74], tx[74 : 74 + 64]
+                msg, pubkey, sig = cancel_msg(tx), tx[41:74], tx[74: 74 + 64]
             elif name in (BUY, SELL):
-                msg, pubkey, sig = order_msg(tx), tx[40:73], tx[73 : 73 + 64]
+                msg, pubkey, sig = order_msg(tx), tx[40:73], tx[73: 73 + 64]
             elif name == REGISTER:
-                msg, pubkey, sig = register_msg(tx), tx[2:35], tx[35 : 35 + 64]
+                msg, pubkey, sig = register_msg(), tx[2:35], tx[35: 35 + 64]
             else:
                 res[i] = False
                 continue
@@ -80,7 +80,7 @@ def __verify(txs):
 
 def chunkify(lst, n_chunks):
     for i in range(0, len(lst), n_chunks):
-        yield lst[i : i + n_chunks]
+        yield lst[i: i + n_chunks]
 
 
 # This is needed to prevent the verfication from crashing

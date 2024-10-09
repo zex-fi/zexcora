@@ -1,7 +1,6 @@
 from decimal import Decimal
 
 PICONERO = Decimal("0.000000000001")
-EMPTY_KEY = "0" * 64
 
 
 def to_atomic(amount):

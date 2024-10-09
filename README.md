@@ -29,5 +29,5 @@ In order to test the backend follow these steps:
         "id": 1
     }
       ```
-3. the data for each of the subscribed channels listed inside `params` will be send as a json string according to binance websocket API
+3. the data for each of the subscribed channels listed inside `params` will be sent as a json string according to binance websocket API
 4. to stop receiving data from a channel modify the method to `UNSUBSCRIBE`

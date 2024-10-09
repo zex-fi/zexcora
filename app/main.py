@@ -26,7 +26,7 @@ class StreamResponse(BaseModel):
 
 class JSONMessageManager:
     @classmethod
-    def handle(self, message, websocket: WebSocket, context: dict):
+    def handle(cls, message, websocket: WebSocket, context: dict):
         request = StreamRequest.model_validate_json(message)
         match request.method.upper():
             case "SUBSCRIBE":

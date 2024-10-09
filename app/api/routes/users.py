@@ -180,7 +180,7 @@ def b_to_i(b: bytes) -> int:
 
 
 def i_to_b8(i: int) -> bytes:
-    """Converts a integer to bytes"""
+    """Converts an integer to bytes"""
     return i.to_bytes(8, byteorder="big")
 
 

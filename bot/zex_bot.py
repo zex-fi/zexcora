@@ -31,8 +31,8 @@ class ZexBot:
         private_key: bytes,
         pair: str,
         side: str,
-        best_bid: tuple[float, float],
-        best_ask: tuple[float, float],
+        best_bid: float,
+        best_ask: float,
         volume_digits: int,
         price_digits: int,
         lock: Lock,
@@ -108,26 +108,15 @@ class ZexBot:
         maker: bool = False,
         verbose=True,
     ):
-        if self.side == "buy":
-            tx = (
-                pack(">B", BUY)
-                + self.pair[:3].encode()
-                + pack(">I", int(self.pair[4]))
-                + self.pair[6:9].encode()
-                + pack(">I", int(self.pair[10]))
-                + pack(">d", volume)
-                + pack(">d", float(price))
-            )
-        elif self.side == "sell":
-            tx = (
-                pack(">B", SELL)
-                + self.pair[:3].encode()
-                + pack(">I", int(self.pair[4]))
-                + self.pair[6:9].encode()
-                + pack(">I", int(self.pair[10]))
-                + pack(">d", volume)
-                + pack(">d", price)
-            )
+        tx = (
+            pack(">B", BUY if self.side == "buy" else SELL)
+            + self.pair[:3].encode()
+            + pack(">I", int(self.pair[4]))
+            + self.pair[6:9].encode()
+            + pack(">I", int(self.pair[10]))
+            + pack(">d", volume)
+            + pack(">d", price)
+        )
         if verbose:
             print(
                 f"pair: {self.pair}, maker: {maker}, side: {self.side}, price: {price}, vol: {volume}"

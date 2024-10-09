@@ -1,6 +1,7 @@
 import time
 
 from fastapi import WebSocket
+from starlette.websockets import WebSocketDisconnect
 import pandas as pd
 
 from .connection_manager import ConnectionManager
@@ -11,7 +12,7 @@ async def broadcast(
 ):
     try:
         await ws.send_json(message)
-    except Exception:
+    except WebSocketDisconnect:
         manager.subscriptions[channel].remove(ws)
         if not manager.subscriptions[channel]:
             del manager.subscriptions[channel]

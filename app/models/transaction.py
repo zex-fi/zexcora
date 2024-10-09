@@ -109,7 +109,7 @@ class DepositTransaction(BaseModel):
     @classmethod
     def from_tx(cls, tx: bytes) -> "DepositTransaction":
         deposits = []
-        deposit_count = unpack(">H", tx[21:23][0])
+        deposit_count = unpack(">H", tx[21:23])[0]
         for i in range(deposit_count):
             offset = 23 + i * 49
             deposits.append(

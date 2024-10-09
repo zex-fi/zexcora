@@ -89,11 +89,11 @@ class Zex(metaclass=SingletonMeta):
 
         self.withdraws: dict[str, dict[bytes, list[WithdrawTransaction]]] = {}
         self.deposited_blocks = {
-            "BTC": 3006207,
-            "XMR": 1697341,
-            "BST": 44247324,
-            "SEP": 6770590,
-            "HOL": 2420957,
+            "BTC": 3094796,
+            "XMR": 1705807,
+            "BST": 44589022,
+            "SEP": 6844977,
+            "HOL": 2499453,
         }
         self.withdraw_nonces: dict[str, dict[bytes, int]] = {
             k: {} for k in self.deposited_blocks.keys()
@@ -567,9 +567,6 @@ class Zex(metaclass=SingletonMeta):
             ],
         }
 
-    def get_order_book_all(self):
-        return [{}]
-
     def get_kline(self, pair: str) -> pd.DataFrame:
         if pair not in self.markets:
             kline = pd.DataFrame(
@@ -617,6 +614,11 @@ def get_current_1m_open_time():
     now = int(unix_time())
     open_time = now - now % 60
     return open_time * 1000
+
+
+def _parse_transaction(tx: bytes):
+    operation, amount, price, nonce, public, index = unpack(">xB14xdd4xI33s64xQ", tx)
+    return operation, amount, price, nonce, public, index
 
 
 class Market:
@@ -669,7 +671,7 @@ class Market:
         return data
 
     def match_instantly(self, tx: bytes, t: int) -> bool:
-        operation, amount, price, nonce, public, index = self._parse_transaction(tx)
+        operation, amount, price, nonce, public, index = _parse_transaction(tx)
         if price < 0 or amount < 0:
             return False
 
@@ -802,7 +804,7 @@ class Market:
         self.final_id += 1
 
     def place(self, tx: bytes) -> bool:
-        operation, amount, price, nonce, public, index = self._parse_transaction(tx)
+        operation, amount, price, nonce, public, index = _parse_transaction(tx)
 
         if operation == BUY:
             ok = self._place_buy_order(public, amount, price, index, tx)
@@ -825,7 +827,7 @@ class Market:
         for order in self.zex.orders[public]:
             if order_slice not in order:
                 continue
-            operation, _, price, nonce, public, index = self._parse_transaction(order)
+            operation, _, price, nonce, public, index = _parse_transaction(order)
             amount = self.zex.amounts.pop(order)
             del self.zex.orders[public][order]
             if operation == BUY:
@@ -901,21 +903,21 @@ class Market:
             return 0
         return ((close_price - open_price) / open_price) * 100
 
-    def get_price_change_7D_percent(self):
+    def get_price_change_7d_percent(self):
         if len(self.kline) == 0:
             return 0
         # Calculate the total time span of our data
         total_span = self.kline.index[-1] - self.kline.index[0]
 
-        ms_in_7D = 7 * 24 * 60 * 60 * 1000
-        if total_span > ms_in_7D:
+        ms_in_7d = 7 * 24 * 60 * 60 * 1000
+        if total_span > ms_in_7d:
             target_time = self.kline.index[-1] - 7 * 24 * 60 * 60 * 1000
-            prev_7D_index = self.kline.index.get_indexer(
+            prev_7d_index = self.kline.index.get_indexer(
                 [target_time],
                 method="pad",
             )[0].item()
 
-            open_price = self.kline["Open"].iloc[prev_7D_index]
+            open_price = self.kline["Open"].iloc[prev_7d_index]
             close_price = self.kline["Close"].iloc[-1]
             return (close_price - open_price) / open_price
         return self.kline["Close"].iloc[-1] - self.kline["Open"].iloc[0]
@@ -970,12 +972,6 @@ class Market:
 
             return self.kline["Low"].iloc[prev_24h_index:].min()
         return self.kline["Low"].min()
-
-    def _parse_transaction(self, tx: bytes):
-        operation, amount, price, nonce, public, index = unpack(
-            ">xB14xdd4xI33s64xQ", tx
-        )
-        return operation, amount, price, nonce, public, index
 
     def _validate_nonce(self, public: bytes, nonce: int) -> bool:
         if self.zex.nonces[public] != nonce:
