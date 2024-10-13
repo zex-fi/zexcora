@@ -7,7 +7,7 @@ from config import VALIDATED_IPS
 from eth_abi.packed import encode_packed
 from pyfrost.network.abstract import DataManager, Validators
 from pyfrost.network.abstract import NodesInfo as BaseNodesInfo
-import requests
+import httpx
 
 
 class NodeDataManager(DataManager):
@@ -68,7 +68,7 @@ class NodeValidators(Validators):
         nonce = input_data["nonce"]
 
         url = f"http://127.0.0.1:8000/api/v1/user/{public}/withdraws/{chain}/{nonce}"
-        resp = requests.get(url)
+        resp = httpx.get(url)
         resp.raise_for_status()
         zex_data = resp.json()
 

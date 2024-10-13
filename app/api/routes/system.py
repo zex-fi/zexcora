@@ -8,7 +8,7 @@ import time
 
 from fastapi import APIRouter, HTTPException
 from loguru import logger
-import requests
+import httpx
 
 from app import zex
 from app.verify import verify
@@ -104,8 +104,10 @@ async def transmit_tx():
             operators = json.load(f)
 
         base_url = None
-        for op_id, op in operators.items():
-            state = requests.get(f"{op['socket']}/node/state").json()
+        for _, op in operators.items():
+            resp = httpx.get(f"{op['socket']}/node/state")
+            resp.raise_for_status()
+            state = resp.json()
             if not state["data"]["sequencer"]:
                 base_url = op["socket"]
                 break
@@ -145,8 +147,10 @@ async def process_loop():
         verifier = Zellular(app_name, base_url, threshold_percent=2 / 3 * 100)
     else:
         base_url = None
-        for op_id, op in operators.items():
-            state = requests.get(f"{op['socket']}/node/state").json()
+        for _, op in operators.items():
+            resp = httpx.get(f"{op['socket']}/node/state")
+            resp.raise_for_status()
+            state = resp.json()
             if not state["data"]["sequencer"]:
                 base_url = op["socket"]
                 break
@@ -154,7 +158,7 @@ async def process_loop():
             raise ValueError("failed to find an operator")
 
         aggregated_public_key = attestation.new_zero_g2_point()
-        for address, operator in operators.items():
+        for _, operator in operators.items():
             public_key_g2 = operator["public_key_g2"]
             operator["public_key_g2"] = attestation.new_zero_g2_point()
             operator["public_key_g2"].setStr(public_key_g2.encode("utf-8"))

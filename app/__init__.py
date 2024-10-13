@@ -1,7 +1,7 @@
 from io import BytesIO
 import os
 
-import requests
+import httpx
 
 from app.callbacks import depth_event, kline_event
 from app.connection_manager import ConnectionManager
@@ -27,7 +27,7 @@ manager = ConnectionManager()
 
 
 if ZEX_STATE_SOURCE:
-    response = requests.get(ZEX_STATE_SOURCE)
+    response = httpx.get(ZEX_STATE_SOURCE)
     response.raise_for_status()
     data = BytesIO(response.content)
     zex = Zex.load_state(

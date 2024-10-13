@@ -1,16 +1,16 @@
+from collections import deque
+from struct import pack, unpack
+from threading import Lock, Thread
 import json
 import os
 import random
 import time
-from collections import deque
-from struct import pack, unpack
-from threading import Lock, Thread
 
-import requests
-import websocket
 from eth_hash.auto import keccak
 from secp256k1 import PrivateKey
 from websocket import WebSocket, WebSocketApp
+import httpx
+import websocket
 
 HOST = os.getenv("ZEX_HOST")
 PORT = int(os.getenv("ZEX_PORT"))
@@ -184,7 +184,7 @@ class ZexBot:
             while volume < 0.001:
                 volume = round(self.rng.random() * 0.02, 3)
 
-            resp = requests.get(
+            resp = httpx.get(
                 f"http://{HOST}:{PORT}/api/v1/user/{self.pubkey.hex()}/nonce"
             )
             self.nonce = resp.json()["nonce"]
@@ -198,4 +198,4 @@ class ZexBot:
                 cancel_tx = self.create_canel_order(oldest_tx[1:40])
                 txs.append(cancel_tx.decode("latin-1"))
 
-            requests.post(f"http://{HOST}:{PORT}/api/v1/txs", json=txs)
+            httpx.post(f"http://{HOST}:{PORT}/api/v1/txs", json=txs)

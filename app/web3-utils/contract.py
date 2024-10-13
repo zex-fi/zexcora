@@ -1,12 +1,14 @@
-import requests
 from web3 import Web3
 from web3.contract.contract import Contract
+import httpx
 
 
 def get_contract_abi(base_url: str, address: str, api_key: str):
     url = f"{base_url}/api?module=contract&action=getabi&address={address}&apikey={api_key}"
-    resp = requests.get(url).json()
-    return resp["status"]
+    resp = httpx.get(url)
+    resp.raise_for_status()
+    data = resp.json()
+    return data["status"]
 
 
 def get_contract(
