@@ -1,4 +1,5 @@
 from fastapi import WebSocket
+from loguru import logger
 
 from app.zex import SingletonMeta
 
@@ -12,8 +13,13 @@ class ConnectionManager(metaclass=SingletonMeta):
         await websocket.accept()
         self.active_connections.add(websocket)
 
-    def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
+    def remove(self, websocket: WebSocket):
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+
+        for _, connections in self.subscriptions.items():
+            if websocket in connections:
+                connections.remove(websocket)
 
     def subscribe(self, websocket: WebSocket, channel: str):
         if channel not in self.subscriptions:

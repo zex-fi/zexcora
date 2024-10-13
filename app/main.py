@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from threading import Thread
 import asyncio
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
@@ -77,11 +77,12 @@ async def websocket_endpoint(websocket: WebSocket):
         async for message in websocket.iter_text():
             response = JSONMessageManager.handle(message, websocket, context={})
             await websocket.send_text(response.model_dump_json())
+        manager.remove(websocket)
 
     try:
         await receive_messages()
-    except WebSocketDisconnect:
-        manager.disconnect(websocket)
+    except Exception as e:
+        logger.exception(e)
 
 
 if __name__ == "__main__":

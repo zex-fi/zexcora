@@ -6,17 +6,6 @@ import pandas as pd
 from .connection_manager import ConnectionManager
 
 
-async def broadcast(
-    manager: ConnectionManager, ws: WebSocket, channel: str, message: dict
-):
-    try:
-        await ws.send_json(message)
-    except Exception:
-        manager.subscriptions[channel].remove(ws)
-        if not manager.subscriptions[channel]:
-            del manager.subscriptions[channel]
-
-
 def kline_event(manager: ConnectionManager):
     async def f(kline_symbol: str, kline: pd.DataFrame):
         if len(kline) == 0:
@@ -63,9 +52,9 @@ def kline_event(manager: ConnectionManager):
             # Copy to avoid modification during iteration
             for ws in clients.copy():
                 if ws not in manager.active_connections:
-                    manager.disconnect(ws)
-
-                await broadcast(manager, ws, channel, message)
+                    manager.remove(ws)
+                    continue
+                await ws.send_json(message)
 
     return f
 
@@ -82,13 +71,8 @@ def depth_event(manager: ConnectionManager):
             # Copy to avoid modification during iteration
             for ws in clients.copy():
                 if ws not in manager.active_connections:
-                    manager.disconnect(ws)
-
-                await broadcast(
-                    manager,
-                    ws,
-                    channel,
-                    {"stream": channel, "data": depth},
-                )
+                    manager.remove(ws)
+                    continue
+                await ws.send_json({"stream": channel, "data": depth})
 
     return f
