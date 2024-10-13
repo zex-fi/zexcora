@@ -1,4 +1,5 @@
 from io import BytesIO
+from threading import Event
 import os
 
 import httpx
@@ -24,6 +25,9 @@ assert ZEX_MONERO_PUBLIC_ADDRESS, "ZEX_MONERO_PUBLIC_ADDRESS env variable is not
 assert ZEX_ETHERSCAN_API_KEY, "ZEX_ETHERSCAN_API_KEY env variable is not set"
 
 manager = ConnectionManager()
+
+# Global stop event
+stop_event = Event()
 
 
 if ZEX_STATE_SOURCE:

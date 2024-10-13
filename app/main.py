@@ -4,13 +4,13 @@ import asyncio
 
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
+from loguru import logger
 from pydantic import BaseModel
 import uvicorn
 
-from app import manager
+from app import ZEX_HOST, ZEX_PORT, manager, stop_event
 from app.api.main import api_router
 from app.api.routes.system import process_loop, transmit_tx
-from app.verify import close_pool
 
 
 class StreamRequest(BaseModel):
@@ -46,11 +46,21 @@ class JSONMessageManager:
 # Run the broadcaster in the background
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    Thread(target=asyncio.run, args=(process_loop(),)).start()
-    Thread(target=asyncio.run, args=(transmit_tx(),)).start()
+    t1 = Thread(
+        target=asyncio.run,
+        args=(process_loop(),),
+    )
+    t2 = Thread(
+        target=asyncio.run,
+        args=(transmit_tx(),),
+    )
+
+    t1.start()
+    t2.start()
     yield
-    t = Thread(target=close_pool)
-    t.start()
+
+    # Signal the threads to stop
+    stop_event.set()
 
 
 app = FastAPI(
@@ -86,4 +96,4 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="warning")
+    uvicorn.run(app, host=ZEX_HOST, port=ZEX_PORT, log_level="warning")

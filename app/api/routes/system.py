@@ -1,5 +1,4 @@
 from collections import deque
-from pprint import pprint
 from threading import Lock
 import asyncio
 import json
@@ -10,7 +9,7 @@ from fastapi import APIRouter, HTTPException
 from loguru import logger
 import httpx
 
-from app import zex
+from app import stop_event, zex
 from app.verify import verify
 
 
@@ -42,18 +41,15 @@ class MockZellular:
         return {"index": self.r.llen(self.app_name)}
 
     def send(self, batch, blocking=False):
-        if blocking:
-            index = self.get_last_finalized()["index"]
-
         self.r.rpush(self.app_name, json.dumps(batch))
-
         if not blocking:
             return
+        index = self.get_last_finalized()["index"]
 
-        for received_batch, index in self.batches(after=index):
+        for received_batch, idx in self.batches(after=index):
             received_batch = json.loads(received_batch)
             if batch == received_batch:
-                return index
+                return idx
 
 
 if os.getenv("TEST_MODE"):
@@ -116,21 +112,27 @@ async def transmit_tx():
 
     zellular = Zellular(app_name, base_url, threshold_percent=2 / 3 * 100)
 
-    while True:
-        if len(zseq_deque) == 0:
+    try:
+        while not stop_event.is_set():
+            if len(zseq_deque) == 0:
+                await asyncio.sleep(0.1)
+                continue
+
+            with zseq_lock:
+                txs = [
+                    zseq_deque.popleft().encode("latin-1")
+                    for _ in range(len(zseq_deque))
+                ]
+
+            verify(txs)
+            txs = [x.decode("latin-1") for x in txs if x is not None]
+
+            zellular.send(txs)
             await asyncio.sleep(0.1)
-            continue
-
-        with zseq_lock:
-            txs = [
-                zseq_deque.popleft().encode("latin-1") for _ in range(len(zseq_deque))
-            ]
-
-        verify(txs)
-        txs = [x.decode("latin-1") for x in txs if x is not None]
-
-        zellular.send(txs)
-        await asyncio.sleep(0.1)
+    except asyncio.CancelledError:
+        logger.warning("Transmit loop was cancelled")
+    finally:
+        logger.warning("Transmit loop is shutting down")
 
 
 async def process_loop():
@@ -141,7 +143,6 @@ async def process_loop():
     with open("./nodes.json") as f:
         operators = json.load(f)
 
-    pprint(operators)
     if os.getenv("TEST_MODE"):
         base_url = os.getenv("REDIS_URL")
         verifier = Zellular(app_name, base_url, threshold_percent=2 / 3 * 100)
@@ -169,21 +170,19 @@ async def process_loop():
 
     if os.getenv("TEST_MODE"):
         while not verifier.is_connected():
-            print("waiting for redis...")
+            logger.warning("waiting for redis...")
             await asyncio.sleep(1)
 
     for batch, index in verifier.batches(after=zex.last_tx_index):
         txs: list[str] = json.loads(batch)
-        # sorted_numbers = sorted([t["index"] for t in finalized_txs])
-        # logger.debug(
-        #     f"\nreceive finalized indexes: [{sorted_numbers[0]}, ..., {sorted_numbers[-1]}]",
-        # )
-
         finalized_txs = [x.encode("latin-1") for x in txs]
         try:
             zex.process(finalized_txs, index)
 
             # TODO: the for loop takes all the CPU time. the sleep gives time to other tasks to run. find a better solution
             await asyncio.sleep(0)
-        except Exception:
-            logger.exception("process loop")
+        except ValueError as e:
+            logger.exception(e)
+
+        if stop_event.is_set():
+            break

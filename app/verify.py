@@ -85,18 +85,12 @@ def chunkify(lst, n_chunks):
 
 # This is needed to prevent the verfication from crashing
 n_chunks = multiprocessing.cpu_count()
-pool = multiprocessing.Pool(processes=n_chunks)
-
-
-def close_pool():
-    pool.close()
-    pool.terminate()
-    pool.join()
 
 
 def verify(txs):
     chunks = list(chunkify(txs, len(txs) // n_chunks + 1))
-    results = pool.map(__verify, chunks)
+    with multiprocessing.Pool(processes=n_chunks) as pool:
+        results = pool.map(__verify, chunks)
     # results = [__verify(x) for x in chunks]
 
     i = 0
