@@ -77,6 +77,7 @@ class Zex(metaclass=SingletonMeta):
         self.benchmark_mode = benchmark_mode
 
         self.last_tx_index = 0
+        self.saved_state_index = 0
         self.save_state_tx_index_threshold = self.save_frequency
         self.markets: dict[str, Market] = {}
         self.balances = {}
@@ -89,11 +90,11 @@ class Zex(metaclass=SingletonMeta):
 
         self.withdraws: dict[str, dict[bytes, list[WithdrawTransaction]]] = {}
         self.deposited_blocks = {
-            "BTC": 3096807,
-            "XMR": 1705807,
-            "BST": 44589022,
-            "SEP": 6844977,
-            "HOL": 2499453,
+            "BTC": 3127558,
+            "XMR": 1708764,
+            "BST": 44706615,
+            "SEP": 6869557,
+            "HOL": 2526360,
         }
         self.withdraw_nonces: dict[str, dict[bytes, int]] = {
             k: {} for k in self.deposited_blocks.keys()
@@ -433,13 +434,9 @@ class Zex(metaclass=SingletonMeta):
             )
         self.last_tx_index = last_tx_index
 
-        if self.save_state_tx_index_threshold < self.last_tx_index:
+        if self.saved_state_index + 500 < self.last_tx_index:
+            self.saved_state_index = self.last_tx_index
             self.save_state()
-            self.save_state_tx_index_threshold = (
-                self.last_tx_index
-                - (self.last_tx_index % self.save_frequency)
-                + self.save_frequency
-            )
 
     def deposit(self, tx: bytes):
         chain = tx[2:5].upper().decode()
