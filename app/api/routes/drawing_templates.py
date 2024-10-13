@@ -28,7 +28,7 @@ def delete_templates(
     tool: str | None = Query("", alias="tool"),
 ):
     if name is None:
-        raise HTTPException("Wrong template id")
+        raise HTTPException(404, "Wrong template id")
     else:
         return remove_template(client_id, user_id, tool, name)
 
@@ -59,7 +59,7 @@ def get_template(client_id, user_id, tool, name):
     }
     found = drawing_collection.find_one(_filter)
     if not found:
-        raise HTTPException("StudyTemplate not found")
+        raise HTTPException(404, "StudyTemplate not found")
     return {"status": "ok", "data": {"name": name, "content": found["content"]}}
 
 
@@ -70,9 +70,7 @@ def remove_template(client_id, user_id, tool, name):
         "tool": tool,
         "name": name,
     }
-    result = drawing_collection.delete_one(_filter)
-    # if not result.deleted_count:
-    #     raise HTTPException('DrawingTemplate not found')
+    drawing_collection.delete_one(_filter)
     return {"status": "ok"}
 
 

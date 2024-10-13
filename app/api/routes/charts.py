@@ -28,7 +28,7 @@ def delete_charts(
     chart_id: str | None = Query(None, alias="chart"),
 ):
     if chart_id is None:
-        raise HTTPException("Wrong chart id")
+        raise HTTPException(404, "Wrong chart id")
     else:
         return remove_chart(client_id, user_id, chart_id)
 
@@ -66,7 +66,7 @@ def get_chart_content(client_id, user_id, chart_id):
     projection = ["id", "name", "timestamp", "content"]
     found_chart: dict = charts_collection.find_one(_filter, projection)
     if not found_chart:
-        raise HTTPException("Chart not found")
+        raise HTTPException(404, "Chart not found")
 
     found_chart["id"] = str(found_chart["id"])
 
@@ -75,9 +75,7 @@ def get_chart_content(client_id, user_id, chart_id):
 
 def remove_chart(client_id, user_id, chart_id):
     _filter = {"id": int(chart_id), "owner_source": client_id, "owner_id": user_id}
-    result = charts_collection.delete_one(_filter)
-    # if not result.deleted_count:
-    #     raise HTTPException('Chart not found')
+    charts_collection.delete_one(_filter)
     return {"status": "ok"}
 
 

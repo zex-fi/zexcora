@@ -24,7 +24,6 @@ class Entity:
                     self.exe_query(query)
 
     def exe_query(self, query, params=()):
-        # print(query)
         con_obj = sqlite3.connect(self.db_path)
         courser = con_obj.execute(query, params)
         res = courser.fetchall()
