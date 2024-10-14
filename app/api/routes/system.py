@@ -5,9 +5,13 @@ import json
 import os
 import time
 
+from eigensdk.crypto.bls import attestation
 from fastapi import APIRouter, HTTPException
 from loguru import logger
+from redis.exceptions import ConnectionError
+from zellular import Zellular
 import httpx
+import redis
 
 from app import stop_event, zex
 from app.verify import verify
@@ -52,13 +56,41 @@ class MockZellular:
                 return idx
 
 
-if os.getenv("TEST_MODE"):
-    from redis.exceptions import ConnectionError
-    import redis
+def create_mock_zellular_insance(app_name: str):
+    base_url = os.getenv("REDIS_URL")
+    zellular = MockZellular(app_name, base_url, threshold_percent=2 / 3 * 100)
 
-    Zellular = MockZellular
-else:
-    from zellular import Zellular
+    while not zellular.is_connected():
+        logger.warning("waiting for redis...")
+        time.sleep(1)
+
+    return zellular
+
+
+def create_real_zellular_instance(app_name: str):
+    with open("./nodes.json") as f:
+        operators = json.load(f)
+
+    base_url = None
+    for _, op in operators.items():
+        resp = httpx.get(f"{op['socket']}/node/state")
+        resp.raise_for_status()
+        state = resp.json()
+        if not state["data"]["sequencer"]:
+            base_url = op["socket"]
+            break
+    if not base_url:
+        raise ValueError("failed to find an operator")
+
+    return Zellular(app_name, base_url, threshold_percent=2 / 3 * 100)
+
+
+def create_zellular_instance():
+    app_name = "zex"
+    if os.getenv("USE_REDIS"):
+        return create_mock_zellular_insance(app_name)
+    return create_real_zellular_instance(app_name)
+
 
 zseq_lock = Lock()
 zseq_deque = deque()
@@ -91,26 +123,7 @@ def send_txs(txs: list[str]):
 
 
 async def transmit_tx():
-    app_name = "simple_app"
-
-    if os.getenv("TEST_MODE"):
-        base_url = os.getenv("REDIS_URL")
-    else:
-        with open("./nodes.json") as f:
-            operators = json.load(f)
-
-        base_url = None
-        for _, op in operators.items():
-            resp = httpx.get(f"{op['socket']}/node/state")
-            resp.raise_for_status()
-            state = resp.json()
-            if not state["data"]["sequencer"]:
-                base_url = op["socket"]
-                break
-        if not base_url:
-            raise ValueError("failed to find an operator")
-
-    zellular = Zellular(app_name, base_url, threshold_percent=2 / 3 * 100)
+    zellular = create_zellular_instance()
 
     try:
         while not stop_event.is_set():
@@ -136,42 +149,18 @@ async def transmit_tx():
 
 
 async def process_loop():
-    from eigensdk.crypto.bls import attestation
-
-    app_name = "simple_app"
+    verifier = create_zellular_instance()
 
     with open("./nodes.json") as f:
         operators = json.load(f)
-
-    if os.getenv("TEST_MODE"):
-        base_url = os.getenv("REDIS_URL")
-        verifier = Zellular(app_name, base_url, threshold_percent=2 / 3 * 100)
-    else:
-        base_url = None
-        for _, op in operators.items():
-            resp = httpx.get(f"{op['socket']}/node/state")
-            resp.raise_for_status()
-            state = resp.json()
-            if not state["data"]["sequencer"]:
-                base_url = op["socket"]
-                break
-        if not base_url:
-            raise ValueError("failed to find an operator")
-
-        aggregated_public_key = attestation.new_zero_g2_point()
-        for _, operator in operators.items():
-            public_key_g2 = operator["public_key_g2"]
-            operator["public_key_g2"] = attestation.new_zero_g2_point()
-            operator["public_key_g2"].setStr(public_key_g2.encode("utf-8"))
-            aggregated_public_key += operator["public_key_g2"]
-        verifier = Zellular(app_name, base_url, threshold_percent=2 / 3 * 100)
-        verifier.operators = operators
-        verifier.aggregated_public_key = aggregated_public_key
-
-    if os.getenv("TEST_MODE"):
-        while not verifier.is_connected():
-            logger.warning("waiting for redis...")
-            await asyncio.sleep(1)
+    aggregated_public_key = attestation.new_zero_g2_point()
+    for _, operator in operators.items():
+        public_key_g2 = operator["public_key_g2"]
+        operator["public_key_g2"] = attestation.new_zero_g2_point()
+        operator["public_key_g2"].setStr(public_key_g2.encode("utf-8"))
+        aggregated_public_key += operator["public_key_g2"]
+    verifier.operators = operators
+    verifier.aggregated_public_key = aggregated_public_key
 
     for batch, index in verifier.batches(after=zex.last_tx_index):
         try:
