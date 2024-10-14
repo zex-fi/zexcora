@@ -174,13 +174,15 @@ async def process_loop():
             await asyncio.sleep(1)
 
     for batch, index in verifier.batches(after=zex.last_tx_index):
-        txs: list[str] = json.loads(batch)
-        finalized_txs = [x.encode("latin-1") for x in txs]
         try:
+            txs: list[str] = json.loads(batch)
+            finalized_txs = [x.encode("latin-1") for x in txs]
             zex.process(finalized_txs, index)
 
             # TODO: the for loop takes all the CPU time. the sleep gives time to other tasks to run. find a better solution
             await asyncio.sleep(0)
+        except json.JSONDecodeError as e:
+            logger.exception(e)
         except ValueError as e:
             logger.exception(e)
 
