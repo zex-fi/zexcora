@@ -162,7 +162,11 @@ async def process_loop():
     verifier.operators = operators
     verifier.aggregated_public_key = aggregated_public_key
 
+    verbose = True if os.getenv("TEST_MODE") else False
+
     for batch, index in verifier.batches(after=zex.last_tx_index):
+        if verbose:
+            logger.critical(f"index {index} received from redis")
         try:
             txs: list[str] = json.loads(batch)
             finalized_txs = [x.encode("latin-1") for x in txs]
