@@ -23,7 +23,9 @@ class MockZellular:
         self.base_url = base_url
         self.threshold_percent = threshold_percent
         host, port = base_url.split(":")
-        self.r = redis.Redis(host=host, port=port, db=0)
+        self.r = redis.Redis(
+            host=host, port=port, db=0, password=os.getenv("REDIS_PASSWORD", None)
+        )
 
     def is_connected(self):
         try:
