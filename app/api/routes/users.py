@@ -3,6 +3,7 @@ import hashlib
 
 from bitcoinutils.keys import P2trAddress, PublicKey
 from bitcoinutils.utils import tweak_taproot_pubkey
+from eth_utils import keccak, to_checksum_address
 from fastapi import APIRouter, HTTPException
 from loguru import logger
 from web3 import Web3
@@ -29,7 +30,7 @@ from app.models.transaction import Deposit, WithdrawTransaction
 from app.monero.address import Address
 from app.zex import BUY
 
-from . import CHAIN_CONTRACTS, DECIMALS
+from . import BYTE_CODE_HASH, DECIMALS, DEPLOYER_ADDRESS
 
 router = APIRouter()
 light_router = APIRouter()
@@ -210,6 +211,55 @@ def get_taproot_address(master_public: PublicKey, user_id: int) -> P2trAddress:
     return P2trAddress(witness_program=pubkey.hex(), is_odd=is_odd)
 
 
+def get_create2_address(deployer_address: str, salt: int, bytecode_hash: str) -> str:
+    """
+    Computes the CREATE2 address for a contract deployment.
+
+    :param deployer_address: The address of the deploying contract (factory).
+    :param salt: A bytes32 value used as the salt in the CREATE2 computation.
+    :param bytecode_hash: The bytecode hash of the contract to deploy.
+    :return: The computed deployment address as a checksum address.
+    """
+    # Ensure deployer_address is in bytes format
+    if isinstance(deployer_address, str):
+        deployer_address = Web3.to_bytes(hexstr=deployer_address)
+    elif isinstance(deployer_address, bytes):
+        deployer_address = deployer_address
+    else:
+        raise TypeError("deployer_address must be a string or bytes.")
+
+    if len(deployer_address) != 20:
+        raise ValueError("Invalid deployer address length; must be 20 bytes.")
+
+    # Ensure salt is a 32-byte value
+    if isinstance(salt, int):
+        salt = salt.to_bytes(32, "big")
+    elif isinstance(salt, str):
+        salt = Web3.to_bytes(hexstr=salt)
+    elif isinstance(salt, bytes):
+        salt = salt
+    else:
+        raise TypeError("salt must be an int, string, or bytes.")
+
+    if len(salt) != 32:
+        raise ValueError("Invalid salt length; must be 32 bytes.")
+
+    # Ensure bytecode is in bytes format
+    if isinstance(bytecode_hash, str):
+        bytecode_hash = Web3.to_bytes(hexstr=bytecode_hash)
+    else:
+        raise TypeError("bytecode must be a string or bytes.")
+
+    # Prepare the data as per the CREATE2 formula
+    data = b"\xff" + deployer_address + salt + bytecode_hash
+
+    # Compute the keccak256 hash of the data
+    address_bytes = keccak(data)[12:]  # Take the last 20 bytes
+
+    # Return the address in checksummed format
+    return to_checksum_address(address_bytes)
+
+
 btc_master_pubkey = PublicKey(ZEX_BTC_PUBLIC_KEY)
 monero_master_address = Address(ZEX_MONERO_PUBLIC_ADDRESS)
 
@@ -222,17 +272,13 @@ def get_user_addresses(public: str) -> UserAddressesResponse:
     user_id = zex.public_to_id_lookup[user]
     taproot_address = get_taproot_address(btc_master_pubkey, user_id)
     monero_address = monero_master_address.with_payment_id(user_id)
-    hol_contract_address = CHAIN_CONTRACTS["HOL"]
-    bst_contract_address = CHAIN_CONTRACTS["BST"]
-    sep_contract_address = CHAIN_CONTRACTS["SEP"]
+    evm_address = get_create2_address(DEPLOYER_ADDRESS, user_id, BYTE_CODE_HASH)
     return UserAddressesResponse(
         user=user.hex(),
         addresses=Addresses(
             BTC=taproot_address.to_string(),
             XMR=str(monero_address),
-            HOL=hol_contract_address,
-            BST=bst_contract_address,
-            SEP=sep_contract_address,
+            EVM=evm_address,
         ),
     )
 

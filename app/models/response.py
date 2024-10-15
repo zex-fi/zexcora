@@ -47,9 +47,7 @@ class UserPublicResponse(BaseModel):
 class Addresses(BaseModel):
     BTC: str
     XMR: str
-    HOL: str
-    BST: str
-    SEP: str
+    EVM: str
 
 
 class UserAddressesResponse(BaseModel):
@@ -89,7 +87,6 @@ class Token(BaseModel):
 class Chain(BaseModel):
     chain: str
     chainType: str
-    contractAddress: str | None
 
 
 class ExchangeInfoResponse(BaseModel):

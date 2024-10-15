@@ -34,18 +34,15 @@ TAGS = {
     "SEP:4": "link",
 }
 
+DEPLOYER_ADDRESS = "0x6e3a82048ac57F48Ee2b9B64a1F59b34088563aB"
+BYTE_CODE_HASH = "0x1da4127a1bcc03e9ba1a325da5efede3a1ff657804f8e49a1bea118f8dfe65bb"
+
 CHAIN_TYPES = {
     "BTC": "native_only",
     "XMR": "native_only",
     "HOL": "evm",
     "BST": "evm",
     "SEP": "evm",
-}
-
-CHAIN_CONTRACTS = {
-    "HOL": "0x9390FFB9dCEDf897b5fd5C5Da9dc6aBBb96f22ce",
-    "BST": "0x27b4A3c6306C3177576411429EF572b2BD860298",
-    "SEP": "0xaca4F448D910548293d9Bc0636CFDF2b40813439",
 }
 
 NAMES = {

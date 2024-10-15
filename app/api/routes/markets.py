@@ -4,7 +4,7 @@ from app import zex
 from app.api.cache import timed_lru_cache
 from app.models.response import Chain, ExchangeInfoResponse, Symbol, Token
 
-from . import CHAIN_CONTRACTS, CHAIN_TYPES, DECIMALS, NAMES, SYMBOLS, TAGS, USDT_MAINNET
+from . import CHAIN_TYPES, DECIMALS, NAMES, SYMBOLS, TAGS, USDT_MAINNET
 
 router = APIRouter()
 
@@ -57,7 +57,6 @@ def _exchange_info_response():
             Chain(
                 chain=c,
                 chainType=CHAIN_TYPES[c],
-                contractAddress=CHAIN_CONTRACTS.get(c, None),
             )
             for c in zex.deposited_blocks.keys()
         ],
