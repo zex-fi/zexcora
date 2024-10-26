@@ -65,9 +65,9 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     lifespan=lifespan,
-    docs_url="/api/v1/docs",
-    redoc_url="/api/v1/redoc",
-    openapi_url="/api/v1/openapi.json",
+    docs_url="/v1/docs",
+    redoc_url="/v1/redoc",
+    openapi_url="/v1/openapi.json",
 )
 app.add_middleware(
     CORSMiddleware,
@@ -76,7 +76,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(api_router, prefix="/api/v1")
+app.include_router(api_router, prefix="/v1")
 
 
 @app.websocket("/ws")
