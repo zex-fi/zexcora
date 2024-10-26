@@ -118,6 +118,13 @@ def get_latest_deposited_block(chain: str):
     return {"block": zex.deposited_blocks[chain]}
 
 
+@router.post("/register")
+def register(txs: list[str]):
+    with zseq_lock:
+        zseq_deque.extend(txs)
+    return {"success": True}
+
+
 @router.post("/order")
 def new_order(txs: list[str]):
     with zseq_lock:
