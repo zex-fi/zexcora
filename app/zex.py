@@ -80,7 +80,7 @@ class Zex(metaclass=SingletonMeta):
         self.saved_state_index = 0
         self.save_state_tx_index_threshold = self.save_frequency
         self.markets: dict[str, Market] = {}
-        self.balances = {}
+        self.assets = {}
         self.amounts = {}
         self.trades = {}
         self.orders = {}
@@ -139,12 +139,12 @@ class Zex(metaclass=SingletonMeta):
 
                 for chain, token_ids in TOKENS.items():
                     for token_id in token_ids:
-                        if f"{chain}:{token_id}" not in self.balances:
-                            self.balances[f"{chain}:{token_id}"] = {}
-                        self.balances[f"{chain}:{token_id}"][bot_pub] = (
+                        if f"{chain}:{token_id}" not in self.assets:
+                            self.assets[f"{chain}:{token_id}"] = {}
+                        self.assets[f"{chain}:{token_id}"][bot_pub] = (
                             9_000_000_000_000 + i
                         )
-                        self.balances[f"{chain}:{token_id}"][client_pub] = 1_000_000
+                        self.assets[f"{chain}:{token_id}"][client_pub] = 1_000_000
 
     def to_protobuf(self) -> zex_pb2.ZexState:
         state = zex_pb2.ZexState()
@@ -182,7 +182,7 @@ class Zex(metaclass=SingletonMeta):
             market.kline.to_pickle(buffer)
             pb_market.kline = buffer.getvalue()
 
-        for token, balances in self.balances.items():
+        for token, balances in self.assets.items():
             pb_balance = state.balances[token]
             for public, amount in balances.items():
                 entry = pb_balance.balances.add()
@@ -295,7 +295,7 @@ class Zex(metaclass=SingletonMeta):
             market.kline = pd.read_pickle(BytesIO(pb_market.kline))
             zex.markets[pair] = market
 
-        zex.balances = {
+        zex.assets = {
             token: {e.public_key: e.amount for e in pb_balance.balances}
             for token, pb_balance in pb_state.balances.items()
         }
@@ -401,10 +401,10 @@ class Zex(metaclass=SingletonMeta):
 
                 if pair not in self.markets:
                     self.markets[pair] = Market(base_token, quote_token, self)
-                    if base_token not in self.balances:
-                        self.balances[base_token] = {}
-                    if quote_token not in self.balances:
-                        self.balances[quote_token] = {}
+                    if base_token not in self.assets:
+                        self.assets[base_token] = {}
+                    if quote_token not in self.assets:
+                        self.assets[quote_token] = {}
                 t = unpack(">I", tx[32:36])[0]
                 # fast route check for instant match
                 if self.markets[pair].match_instantly(tx, t):
@@ -450,15 +450,16 @@ class Zex(metaclass=SingletonMeta):
 
         # chunk_size = 49
         # deposits = [tx[i : i + chunk_size] for i in range(0, len(tx), chunk_size)]
-        deposits = list(chunkify(tx[23 : 23 + 49 * count], 49))
+        deposits = list(chunkify(tx[23 : 23 + 24 * count], 24))
         for chunk in deposits:
-            token_index, amount, t = unpack(">IdI", chunk[:16])
+            token_index, amount, t, user_id = unpack(">IdII", chunk[:24])
             token = f"{chain}:{token_index}"
-            public = chunk[16:49]
-            if token not in self.balances:
-                self.balances[token] = {}
-            if public not in self.balances[token]:
-                self.balances[token][public] = 0
+            public = self.id_to_public_lookup[user_id]
+
+            if token not in self.assets:
+                self.assets[token] = {}
+            if public not in self.assets[token]:
+                self.assets[token][public] = 0
 
             if public not in self.deposits:
                 self.deposits[public] = []
@@ -470,7 +471,7 @@ class Zex(metaclass=SingletonMeta):
                     time=t,
                 )
             )
-            self.balances[token][public] += amount
+            self.assets[token][public] += amount
 
             if public not in self.trades:
                 self.trades[public] = deque()
@@ -492,7 +493,7 @@ class Zex(metaclass=SingletonMeta):
             logger.debug(f"invalid nonce: {self.nonces[tx.public]} != {tx.nonce}")
             return
 
-        balance = self.balances[tx.token].get(tx.public, 0)
+        balance = self.assets[tx.token].get(tx.public, 0)
         if balance < tx.amount:
             logger.debug("balance not enough")
             return
@@ -500,7 +501,7 @@ class Zex(metaclass=SingletonMeta):
         if tx.public not in self.withdraw_nonces[tx.chain]:
             self.withdraw_nonces[tx.chain][tx.public] = 0
 
-        self.balances[tx.token][tx.public] = balance - tx.amount
+        self.assets[tx.token][tx.public] = balance - tx.amount
 
         if tx.chain not in self.withdraws:
             self.withdraws[tx.chain] = {}
@@ -650,8 +651,8 @@ class Market:
             ]
         ).set_index("OpenTime")
 
-        self.base_token_balances = zex.balances[base_token]
-        self.quote_token_balances = zex.balances[quote_token]
+        self.base_token_balances = zex.assets[base_token]
+        self.quote_token_balances = zex.assets[quote_token]
 
     def get_order_book_update(self):
         with self.order_book_lock:

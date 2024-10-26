@@ -31,12 +31,13 @@ class MockZellular:
         try:
             self.r.ping()
             return True
-        except (ConnectionError, ConnectionRefusedError):
+        except (ConnectionError, ConnectionRefusedError) as e:
+            logger.exception(e)
             return False
 
     def batches(self, after=0):
         assert after >= 0, "after should be equal or bigger than 0"
-        while True:
+        while not stop_event.is_set():
             batches = self.r.lrange(self.app_name, after, after + 100)
             for batch in batches:
                 after += 1
@@ -110,15 +111,36 @@ async def server_time():
     return {"serverTime": int(time.time() * 1000)}
 
 
-@router.get("/{chain}/block/latest")
+@router.get("/block/latest")
 def get_latest_deposited_block(chain: str):
     if chain not in zex.deposited_blocks:
         raise HTTPException(404, {"error": "chain not found"})
     return {"block": zex.deposited_blocks[chain]}
 
 
-@router.post("/txs")
+@router.post("/order")
+def new_order(txs: list[str]):
+    with zseq_lock:
+        zseq_deque.extend(txs)
+    return {"success": True}
+
+
+@router.delete("/order")
+def cancel_order(txs: list[str]):
+    with zseq_lock:
+        zseq_deque.extend(txs)
+    return {"success": True}
+
+
+@router.post("/deposit")
 def send_txs(txs: list[str]):
+    with zseq_lock:
+        zseq_deque.extend(txs)
+    return {"success": True}
+
+
+@router.post("/withdraw")
+def new_withdraw(txs: list[str]):
     with zseq_lock:
         zseq_deque.extend(txs)
     return {"success": True}

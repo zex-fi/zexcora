@@ -51,7 +51,7 @@ def _exchange_info_response():
                 symbol=SYMBOLS[token],
                 tag=TAGS[token],
             )
-            for token in zex.balances.keys()
+            for token in zex.assets.keys()
         ],
         chains=[
             Chain(

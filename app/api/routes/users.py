@@ -15,12 +15,12 @@ from app import (
 )
 from app.models.response import (
     Addresses,
-    BalanceResponse,
     NonceResponse,
     OrderResponse,
     TradeResponse,
     TransferResponse,
     UserAddressesResponse,
+    UserAssetResponse,
     UserIDResponse,
     UserPublicResponse,
     Withdraw,
@@ -39,32 +39,35 @@ USDT_MAINNET = "HOL:1"
 
 
 # @timed_lru_cache(seconds=10)
-def _user_balances(user: bytes) -> list[BalanceResponse]:
+def _user_assets(user: bytes) -> list[UserAssetResponse]:
     result = []
-    for token in zex.balances:
-        if zex.balances[token].get(user, 0) == 0:
+    for token in zex.assets:
+        if zex.assets[token].get(user, 0) == 0:
             continue
 
-        balance = zex.balances[token][user]
+        balance = zex.assets[token][user]
         result.append(
-            BalanceResponse(
+            UserAssetResponse(
                 chain=token[0:3],
                 token=int(token[4]),
-                balance=str(balance),
+                free=str(balance),
+                locked="0",
+                freeze="0",
+                withdrawing="0",
             )
         )
     return result
 
 
-@router.get("/user/{public}/balances")
-def user_balances(public: str) -> list[BalanceResponse]:
-    user = bytes.fromhex(public)
-    return _user_balances(user)
+@router.get("/asset/getUserAsset")
+def user_balances(id: int) -> list[UserAssetResponse]:
+    user = zex.id_to_public_lookup[id]
+    return _user_assets(user)
 
 
-@router.get("/user/{public}/trades")
-def user_trades(public: str) -> list[TradeResponse]:
-    user = bytes.fromhex(public)
+@router.get("/user/trades")
+def user_trades(id: int) -> list[TradeResponse]:
+    user = zex.id_to_public_lookup[id]
     trades = zex.trades.get(user, [])
     resp = {}
     for time, amount, pair, name, tx in trades:
@@ -88,9 +91,9 @@ def user_trades(public: str) -> list[TradeResponse]:
     return [value for _, value in sorted(resp.items(), key=lambda x: x[0])]
 
 
-@router.get("/user/{public}/orders")
-def user_orders(public: str) -> list[OrderResponse]:
-    user = bytes.fromhex(public)
+@router.get("/user/orders")
+def user_orders(id: int) -> list[OrderResponse]:
+    user = zex.id_to_public_lookup[id]
     orders = zex.orders.get(user, {})
     resp = []
     order: bytes
@@ -112,13 +115,13 @@ def user_orders(public: str) -> list[OrderResponse]:
     return resp
 
 
-@router.get("/user/{public}/nonce")
-def user_nonce(public: str) -> NonceResponse:
-    user = bytes.fromhex(public)
+@router.get("/user/nonce")
+def user_nonce(id: int) -> NonceResponse:
+    user = zex.id_to_public_lookup[id]
     return NonceResponse(nonce=zex.nonces.get(user, 0))
 
 
-@router.get("/user/{public}/id")
+@router.get("/user/id")
 def user_id(public: str):
     user = bytes.fromhex(public)
     if user not in zex.public_to_id_lookup:
@@ -128,9 +131,9 @@ def user_id(public: str):
     return UserIDResponse(id=user_id)
 
 
-@router.get("/user/{public}/transfers")
-def user_transfers(public: str) -> list[TransferResponse]:
-    user = bytes.fromhex(public)
+@router.get("/user/transfers")
+def user_transfers(id: int) -> list[TransferResponse]:
+    user = zex.id_to_public_lookup[id]
     if user not in zex.deposits:
         return []
     all_deposits = zex.deposits.get(user, []).copy()
@@ -151,7 +154,7 @@ def user_transfers(public: str) -> list[TransferResponse]:
     ]
 
 
-@router.get("/user/{id}/public")
+@router.get("/user/public")
 def get_user_public(id: int) -> UserPublicResponse:
     if id not in zex.id_to_public_lookup:
         raise HTTPException(404, {"error": "user not found"})
@@ -264,15 +267,15 @@ btc_master_pubkey = PublicKey(ZEX_BTC_PUBLIC_KEY)
 monero_master_address = Address(ZEX_MONERO_PUBLIC_ADDRESS)
 
 
-@router.get("/user/{public}/addresses")
-def get_user_addresses(public: str) -> UserAddressesResponse:
-    user = bytes.fromhex(public)
+@router.get("/capital/deposit/address/list")
+def get_user_addresses(id: int) -> UserAddressesResponse:
+    user = zex.id_to_public_lookup[id]
     if user not in zex.public_to_id_lookup:
         raise HTTPException(404, {"error": "user not found"})
-    user_id = zex.public_to_id_lookup[user]
-    taproot_address = get_taproot_address(btc_master_pubkey, user_id)
-    monero_address = monero_master_address.with_payment_id(user_id)
-    evm_address = get_create2_address(DEPLOYER_ADDRESS, user_id, BYTE_CODE_HASH)
+    id = zex.public_to_id_lookup[user]
+    taproot_address = get_taproot_address(btc_master_pubkey, id)
+    monero_address = monero_master_address.with_payment_id(id)
+    evm_address = get_create2_address(DEPLOYER_ADDRESS, id, BYTE_CODE_HASH)
     return UserAddressesResponse(
         user=user.hex(),
         addresses=Addresses(
@@ -288,9 +291,9 @@ def get_latest_user_id():
     return UserIDResponse(id=zex.last_user_id)
 
 
-@router.get("/user/{public}/withdraws/{chain}/nonce")
-def get_withdraw_nonce(public: str, chain: str) -> WithdrawNonce:
-    user = bytes.fromhex(public)
+@router.get("/user/withdraws/nonce")
+def get_withdraw_nonce(id: int, chain: str) -> WithdrawNonce:
+    user = zex.id_to_public_lookup[id]
     chain = chain.upper()
     if chain not in zex.withdraw_nonces:
         raise HTTPException(404, {"error": f"{chain} not found"})
@@ -300,53 +303,51 @@ def get_withdraw_nonce(public: str, chain: str) -> WithdrawNonce:
     )
 
 
-@router.get("/user/{public}/withdraws/{chain}")
-def get_withdraws(public: str, chain: str) -> list[Withdraw]:
-    user = bytes.fromhex(public)
+def get_withdraw(id: int, chain: str, nonce: int | None) -> Withdraw | list[Withdraw]:
+    if nonce and nonce < 0:
+        raise HTTPException(400, {"error": "invalid nonce"})
+
+    user = zex.id_to_public_lookup[id]
     chain = chain.upper()
     if chain not in zex.withdraws:
         raise HTTPException(404, {"error": f"{chain} not found"})
     if user not in zex.withdraws[chain]:
         return []
-    return [
-        Withdraw(
-            chain=w.chain,
-            tokenID=w.token_id,
-            amount=str(w.amount),
-            user=str(int.from_bytes(user[1:], byteorder="big")),
-            destination=w.dest,
-            t=w.time,
-            nonce=w.nonce,
-        )
-        for w in zex.withdraws[chain][user]
-    ]
-
-
-def user_withdraw(public: str, chain: str, nonce: int):
-    if nonce < 0:
-        raise HTTPException(400, {"error": "invalid nonce"})
-
-    user = bytes.fromhex(public)
 
     withdraws = zex.withdraws[chain].get(user, [])
-    if nonce >= len(withdraws):
+    if nonce and nonce >= len(withdraws):
         logger.debug(f"invalid nonce: maximum nonce is {len(withdraws) - 1}")
         raise HTTPException(400, {"error": "invalid nonce"})
 
-    withdraw_tx = withdraws[nonce]
+    if nonce:
+        withdraw_tx = withdraws[nonce]
 
-    return Withdraw(
-        chain=withdraw_tx.chain,
-        tokenID=withdraw_tx.token_id,
-        amount=str(int(withdraw_tx.amount * (10 ** DECIMALS[withdraw_tx.token]))),
-        user=str(int.from_bytes(user[1:], byteorder="big")),
-        destination=Web3.to_checksum_address(withdraw_tx.dest),
-        t=withdraw_tx.time,
-        nonce=withdraw_tx.nonce,
-    )
+        return Withdraw(
+            chain=withdraw_tx.chain,
+            tokenID=withdraw_tx.token_id,
+            amount=str(int(withdraw_tx.amount * (10 ** DECIMALS[withdraw_tx.token]))),
+            user=str(int.from_bytes(user[1:], byteorder="big")),
+            destination=Web3.to_checksum_address(withdraw_tx.dest),
+            t=withdraw_tx.time,
+            nonce=withdraw_tx.nonce,
+        )
+    else:
+        return [
+            Withdraw(
+                chain=w.chain,
+                tokenID=w.token_id,
+                amount=str(w.amount),
+                user=str(int.from_bytes(user[1:], byteorder="big")),
+                destination=w.dest,
+                t=w.time,
+                nonce=w.nonce,
+            )
+            for w in zex.withdraws[chain][user]
+            if nonce is None or w.nonce == nonce
+        ]
 
 
 if zex.light_node:
-    light_router.get("/user/{public}/withdraws/{chain}/{nonce}")(user_withdraw)
+    light_router.get("/user/withdraws")(get_withdraw)
 else:
-    router.get("/user/{public}/withdraws/{chain}/{nonce}")(user_withdraw)
+    router.get("/user/withdraws")(get_withdraw)

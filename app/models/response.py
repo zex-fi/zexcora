@@ -1,10 +1,13 @@
 from pydantic import BaseModel
 
 
-class BalanceResponse(BaseModel):
+class UserAssetResponse(BaseModel):
     chain: str
     token: int
-    balance: str
+    free: str
+    locked: str
+    freeze: str
+    withdrawing: str
 
 
 class TradeResponse(BaseModel):

@@ -31,10 +31,10 @@ def initialize() -> tuple[Zex, ZexBot, ZexBot]:
 
     zex.benchmark_mode = True
 
-    zex.balances["BST:1"] = {}
-    zex.balances["BST:1"][public2] = 150000000000000
-    zex.balances["BST:2"] = {}
-    zex.balances["BST:2"][public1] = 200000000000000
+    zex.assets["BST:1"] = {}
+    zex.assets["BST:1"][public2] = 150000000000000
+    zex.assets["BST:2"] = {}
+    zex.assets["BST:2"][public1] = 200000000000000
     order_book = Market("BST:1", "BST:2", zex)
     zex.markets["BST:1-BST:2"] = order_book
 

@@ -5,7 +5,7 @@ description = ""
 authors = []
 
 [tool.poetry.dependencies]
-python = ">=3.10, <3.12"
+python = ">=3.11, <3.13"
 secp256k1 = "^0.14.0"
 fastapi = "^0.111.0"
 pydantic = ">2.0"
@@ -25,13 +25,15 @@ flask = "^3.0.0"
 zellular = { git = "https://github.com/zellular-xyz/zellular.py.git", rev = "main" }
 eigensdk = { git = "https://github.com/zellular-xyz/eigensdk-python", rev = "main" }
 pyfrost = { git = "https://github.com/zellular-xyz/pyfrost", rev = "main" }
-web3 = "<7"
+web3 = "^7.4.0"
 redis = "^5.1.1"
+protobuf = "^5.28.3"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.2"
 ruff = "^0.4.9"
 colorama = "^0.4.6"
+fakeredis = "^2.25.1"
 
 [build-system]
 requires = ["poetry-core"]
