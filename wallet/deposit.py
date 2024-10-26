@@ -14,7 +14,6 @@ from web3 import Web3
 from web3.contract.contract import Contract
 from web3.middleware import geth_poa_middleware
 import httpx
-import requests
 import yaml
 
 IS_RUNNING = True
@@ -119,7 +118,7 @@ async def run_monitor(network: dict, api_url: str, monitor: PrivateKey):
     blocks_confirmation = network["blocks_confirmation"]
     block_duration = network["block_duration"]
     chain = network["chain"]
-    sent_block = requests.get(f"{api_url}/{chain}/block/latest").json()["block"]
+    sent_block = httpx.get(f"{api_url}/{chain}/block/latest").json()["block"]
     processed_block = sent_block
 
     try:
@@ -156,16 +155,16 @@ async def run_monitor(network: dict, api_url: str, monitor: PrivateKey):
                 block["timestamp"],
                 monitor,
             )
-            requests.post(f"{api_url}/txs", json=[tx.decode("latin-1")])
+            httpx.post(f"{api_url}/txs", json=[tx.decode("latin-1")])
 
-            sent_block = requests.get(f"{api_url}/{chain}/block/latest").json()["block"]
+            sent_block = httpx.get(f"{api_url}/{chain}/block/latest").json()["block"]
             while sent_block != processed_block and IS_RUNNING:
                 print(
                     f"{chain} deposit is not yet applied, server desposited block: {sent_block}, script processed block: {processed_block}"
                 )
                 await asyncio.sleep(2)
 
-                sent_block = requests.get(f"{api_url}/{chain}/block/latest").json()[
+                sent_block = httpx.get(f"{api_url}/{chain}/block/latest").json()[
                     "block"
                 ]
                 continue
@@ -231,7 +230,7 @@ async def run_monitor_btc(network: dict, api_url: str, monitor: PrivateKey):
     blocks_confirmation = network["blocks_confirmation"]
     block_duration = network["block_duration"]
     chain = network["chain"]
-    sent_block = requests.get(f"{api_url}/{chain}/block/latest").json()["block"]
+    sent_block = httpx.get(f"{api_url}/{chain}/block/latest").json()["block"]
     processed_block = sent_block
 
     rpc = BitcoinRPC.from_config(network["node_url"], None)
@@ -254,14 +253,14 @@ async def run_monitor_btc(network: dict, api_url: str, monitor: PrivateKey):
                 await asyncio.sleep(block_duration)
                 continue
 
-            new_latest_user_id = requests.get(f"{api_url}/users/latest-id").json()["id"]
+            new_latest_user_id = httpx.get(f"{api_url}/users/latest-id").json()["id"]
             if latest_user_id != new_latest_user_id:
                 for i in range(latest_user_id + 1, new_latest_user_id + 1):
                     taproot_pub = get_taproot_address(master_pub, i)
 
                     if i == 1:
                         print(f"God user taproot address: {taproot_pub.to_string()}")
-                    public = requests.get(f"{api_url}/user/{i}/public").json()["public"]
+                    public = httpx.get(f"{api_url}/user/{i}/public").json()["public"]
                     all_taproot_addresses[taproot_pub.to_string()] = public
 
                 latest_user_id = new_latest_user_id
@@ -313,17 +312,17 @@ async def run_monitor_btc(network: dict, api_url: str, monitor: PrivateKey):
                 latest_block["time"],
                 monitor,
             )
-            requests.post(f"{api_url}/txs", json=[tx.decode("latin-1")])
+            httpx.post(f"{api_url}/txs", json=[tx.decode("latin-1")])
             # to check if request is applied, query latest processed block from zex
 
-            sent_block = requests.get(f"{api_url}/{chain}/block/latest").json()["block"]
+            sent_block = httpx.get(f"{api_url}/{chain}/block/latest").json()["block"]
             while sent_block != processed_block and IS_RUNNING:
                 print(
                     f"{chain} deposit is not yet applied, server desposited block: {sent_block}, script processed block: {processed_block}"
                 )
                 await asyncio.sleep(2)
 
-                sent_block = requests.get(f"{api_url}/{chain}/block/latest").json()[
+                sent_block = httpx.get(f"{api_url}/{chain}/block/latest").json()[
                     "block"
                 ]
                 continue
@@ -391,7 +390,7 @@ async def run_monitor_xmr(network: dict, api_url: str, monitor: PrivateKey):
     blocks_confirmation = network["blocks_confirmation"]
     block_duration = network["block_duration"]
     chain = network["chain"]
-    sent_block = requests.get(f"{api_url}/{chain}/block/latest").json()["block"]
+    sent_block = httpx.get(f"{api_url}/{chain}/block/latest").json()["block"]
     processed_block = sent_block
 
     while IS_RUNNING:
@@ -417,7 +416,7 @@ async def run_monitor_xmr(network: dict, api_url: str, monitor: PrivateKey):
             if "paymentId" not in tx["tx"]:
                 continue
             user_id = int(tx["tx"]["paymentId"], 16)
-            resp = requests.get(f"{api_url}/user/{user_id}/public")
+            resp = httpx.get(f"{api_url}/user/{user_id}/public")
             if resp.status_code != 200:
                 print(f"{chain} deposit for not registered user with id={user_id}")
                 continue
@@ -447,17 +446,17 @@ async def run_monitor_xmr(network: dict, api_url: str, monitor: PrivateKey):
             latest_block["block"]["timestamp"],
             monitor,
         )
-        requests.post(f"{api_url}/txs", json=[tx.decode("latin-1")])
+        httpx.post(f"{api_url}/txs", json=[tx.decode("latin-1")])
         # to check if request is applied, query latest processed block from zex
 
-        sent_block = requests.get(f"{api_url}/{chain}/block/latest").json()["block"]
+        sent_block = httpx.get(f"{api_url}/{chain}/block/latest").json()["block"]
         while sent_block != processed_block and IS_RUNNING:
             print(
                 f"{chain} deposit is not yet applied, server desposited block: {sent_block}, script processed block: {processed_block}"
             )
             await asyncio.sleep(2)
 
-            sent_block = requests.get(f"{api_url}/{chain}/block/latest").json()["block"]
+            sent_block = httpx.get(f"{api_url}/{chain}/block/latest").json()["block"]
             continue
 
     return network
