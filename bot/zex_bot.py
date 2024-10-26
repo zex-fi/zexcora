@@ -48,6 +48,9 @@ class ZexBot:
         self.rng = random.Random(seed)
 
         self.pubkey = self.privkey.pubkey.serialize()
+        self.user_id = httpx.get(
+            f"http://{HOST}:{PORT}/v1/user/id?public={self.pubkey.hex()}"
+        ).json()["id"]
         self.nonce = -1
         self.counter = 0
         self.orders = deque()
@@ -184,9 +187,7 @@ class ZexBot:
             while volume < 0.001:
                 volume = round(self.rng.random() * 0.02, 3)
 
-            resp = httpx.get(
-                f"http://{HOST}:{PORT}/api/v1/user/{self.pubkey.hex()}/nonce"
-            )
+            resp = httpx.get(f"http://{HOST}:{PORT}/v1/user/nonce?id={self.user_id}")
             self.nonce = resp.json()["nonce"]
             tx = self.create_order(price, volume, maker=maker)
             self.orders.append(tx)
@@ -198,4 +199,4 @@ class ZexBot:
                 cancel_tx = self.create_canel_order(oldest_tx[1:40])
                 txs.append(cancel_tx.decode("latin-1"))
 
-            httpx.post(f"http://{HOST}:{PORT}/api/v1/txs", json=txs)
+            httpx.post(f"http://{HOST}:{PORT}/v1/order", json=txs)
