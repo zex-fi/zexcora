@@ -1,5 +1,6 @@
 from collections import deque
 from threading import Lock
+from urllib.parse import urlparse
 import asyncio
 import json
 import os
@@ -76,7 +77,9 @@ def create_real_zellular_instance(app_name: str):
 
     base_url = None
     for _, op in operators.items():
-        resp = httpx.get(f"{op['socket']}/node/state")
+        sequencer_port = 15781
+        result = urlparse(op["socket"])
+        resp = httpx.get(f"{result.hostname}:{sequencer_port}/node/state")
         resp.raise_for_status()
         state = resp.json()
         if not state["data"]["sequencer"]:
