@@ -36,3 +36,4 @@ In order to test the backend follow these steps:
 1. Sequencer: 15781
 2. Zex: 15782
 3. FROST Node: 15783
+4. FROST Signature Aggregator: 15784
