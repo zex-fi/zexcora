@@ -31,3 +31,8 @@ In order to test the backend follow these steps:
       ```
 3. the data for each of the subscribed channels listed inside `params` will be sent as a json string according to binance websocket API
 4. to stop receiving data from a channel modify the method to `UNSUBSCRIBE`
+
+## Ports
+1. Sequencer: 15781
+2. Zex: 15782
+3. FROST Node: 15783

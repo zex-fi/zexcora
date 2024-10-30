@@ -34,7 +34,9 @@ def _exchange_info_response():
             Token(
                 chain=token[:3],
                 id=int(token[4:]),
-                address=None,  # TODO: implement
+                address=zex.token_id_to_contract_on_chain_lookup.get(token[:3], {}).get(
+                    int(token[4:]), None
+                ),
                 chainType="evm" if token[:3] not in ["BTC", "XMR"] else "native_only",
                 decimals=DECIMALS[token],
                 price=zex.markets[f"{token}-{USDT_MAINNET}"].get_last_price()

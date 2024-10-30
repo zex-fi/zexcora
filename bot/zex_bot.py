@@ -146,7 +146,7 @@ class ZexBot:
         self.counter += 1
         return tx
 
-    def create_canel_order(self, order: bytes):
+    def create_cancel_order(self, order: bytes):
         tx = version + pack(">B", CANCEL) + order + self.pubkey
         msg = f"""v: {tx[0]}\nname: cancel\nslice: {tx[2:41].hex()}\npublic: {tx[41:74].hex()}\n"""
         msg = "".join(("\x19Ethereum Signed Message:\n", str(len(msg)), msg))

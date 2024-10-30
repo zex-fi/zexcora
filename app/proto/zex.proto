@@ -15,6 +15,9 @@ message ZexState {
     repeated DepositEntry deposits = 12;
     repeated IDLookupEntry public_to_id_lookup = 13;
     map<uint64, bytes> id_to_public_lookup = 14;
+    repeated ContractToIDOnChainEntry contract_to_token_id_on_chain_lookup = 15;
+    repeated IDToContractOnChainEntry token_id_to_contract_on_chain_lookup = 16;
+    map<string, uint64> last_token_id_on_chain = 17;
 }
 
 message Market {
@@ -117,4 +120,14 @@ message PairLookupEntry {
 message IDLookupEntry {
     bytes public_key = 1;
     uint64 user_id = 2;
+}
+
+message ContractToIDOnChainEntry {
+    string chain = 1;
+    map<string, uint64> contract_to_id = 2;
+}
+
+message IDToContractOnChainEntry {
+    string chain = 1;
+    map<uint64, string> id_to_contract = 2;
 }

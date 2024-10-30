@@ -81,6 +81,9 @@ class Zex(metaclass=SingletonMeta):
         self.save_state_tx_index_threshold = self.save_frequency
         self.markets: dict[str, Market] = {}
         self.assets = {}
+        self.contract_to_token_id_on_chain_lookup: dict[str, dict[str, int]] = {}
+        self.token_id_to_contract_on_chain_lookup: dict[str, dict[int, str]] = {}
+        self.last_token_id: dict[str, int] = {}
         self.amounts = {}
         self.trades = {}
         self.orders = {}
@@ -124,11 +127,26 @@ class Zex(metaclass=SingletonMeta):
             )
 
             TOKENS = {
-                "BTC": [0],
-                "XMR": [0],
-                "HOL": [1, 2, 3, 4],
-                "BST": [1, 2, 3, 4],
-                "SEP": [1, 2, 3, 4],
+                "BTC": [(0, None)],
+                "XMR": [(0, None)],
+                "HOL": [
+                    (1, "0xC6c9871A95A3f22Ba49E84B1F0d3957713178979"),
+                    (2, "0x5cC60C66B23202063d485b150E43C5cAE2DE7718"),
+                    (3, "0x86BA5E8667FDeC8CFB632DBd92F762dBC992C3D7"),
+                    (4, "0xB584ca7E791738d9AFDc66B7e460C15Cc361122f"),
+                ],
+                "BST": [
+                    (1, "0x86BA5E8667FDeC8CFB632DBd92F762dBC992C3D7"),
+                    (2, "0x5cC60C66B23202063d485b150E43C5cAE2DE7718"),
+                    (3, "0xC6c9871A95A3f22Ba49E84B1F0d3957713178979"),
+                    (4, "0x84b9B910527Ad5C03A9Ca831909E21e236EA7b06"),
+                ],
+                "SEP": [
+                    (1, "0xC6c9871A95A3f22Ba49E84B1F0d3957713178979"),
+                    (2, "0x86BA5E8667FDeC8CFB632DBd92F762dBC992C3D7"),
+                    (3, "0x5cC60C66B23202063d485b150E43C5cAE2DE7718"),
+                    (4, "0x779877A7B0D9E8603169DdbD7836e478b4624789"),
+                ],
             }
 
             for i in range(100):
@@ -138,7 +156,24 @@ class Zex(metaclass=SingletonMeta):
                 self.register_pub(bot_pub)
 
                 for chain, token_ids in TOKENS.items():
-                    for token_id in token_ids:
+                    for token_id, contract_address in token_ids:
+                        if chain not in self.last_token_id:
+                            self.last_token_id[chain] = 0
+                        if chain not in self.contract_to_token_id_on_chain_lookup:
+                            self.contract_to_token_id_on_chain_lookup[chain] = {}
+                        if chain not in self.token_id_to_contract_on_chain_lookup:
+                            self.token_id_to_contract_on_chain_lookup[chain] = {}
+                        if (
+                            contract_address
+                            not in self.contract_to_token_id_on_chain_lookup[chain]
+                        ):
+                            self.contract_to_token_id_on_chain_lookup[chain][
+                                contract_address
+                            ] = token_id
+                            self.token_id_to_contract_on_chain_lookup[chain][
+                                token_id
+                            ] = contract_address
+                            self.last_token_id[chain] += 1
                         if f"{chain}:{token_id}" not in self.assets:
                             self.assets[f"{chain}:{token_id}"] = {}
                         self.assets[f"{chain}:{token_id}"][bot_pub] = (
@@ -255,6 +290,16 @@ class Zex(metaclass=SingletonMeta):
             entry.user_id = user_id
         state.id_to_public_lookup.update(self.id_to_public_lookup)
 
+        for chain, details in self.contract_to_token_id_on_chain_lookup.items():
+            entry = state.contract_to_token_id_on_chain_lookup.add()
+            entry.chain = chain
+            entry.contract_to_id.update(details)
+        for chain, details in self.token_id_to_contract_on_chain_lookup.items():
+            entry = state.token_id_to_contract_on_chain_lookup.add()
+            entry.chain = chain
+            entry.id_to_contract.update(details)
+        state.last_token_id_on_chain.update(self.last_token_id)
+
         return state
 
     @classmethod
@@ -354,6 +399,16 @@ class Zex(metaclass=SingletonMeta):
             max(zex.public_to_id_lookup.values()) if zex.public_to_id_lookup else 0
         )
 
+        zex.contract_to_token_id_on_chain_lookup = {
+            entry.chain: dict(entry.contract_to_id)
+            for entry in pb_state.contract_to_token_id_on_chain_lookup
+        }
+        zex.token_id_to_contract_on_chain_lookup = {
+            entry.chain: dict(entry.id_to_contract)
+            for entry in pb_state.token_id_to_contract_on_chain_lookup
+        }
+        zex.last_token_id = dict(pb_state.last_token_id_on_chain)
+
         return zex
 
     def save_state(self):
@@ -447,13 +502,28 @@ class Zex(metaclass=SingletonMeta):
             )
             return
         self.deposited_blocks[chain] = to_block
+        if chain not in self.contract_to_token_id_on_chain_lookup:
+            self.contract_to_token_id_on_chain_lookup[chain] = {}
+        if chain not in self.last_token_id:
+            self.last_token_id[chain] = 0
 
-        # chunk_size = 49
-        # deposits = [tx[i : i + chunk_size] for i in range(0, len(tx), chunk_size)]
-        deposits = list(chunkify(tx[23 : 23 + 24 * count], 24))
+        deposits = list(chunkify(tx[23 : 23 + 62 * count], 62))
         for chunk in deposits:
-            token_index, amount, t, user_id = unpack(">IdII", chunk[:24])
-            token = f"{chain}:{token_index}"
+            token_contract, amount, t, user_id = unpack(">42sdII", chunk[:62])
+            if token_contract not in self.contract_to_token_id_on_chain_lookup:
+                self.last_token_id[chain] += 1
+                token_id = self.last_token_id[chain]
+                self.contract_to_token_id_on_chain_lookup[chain][token_contract] = (
+                    token_id
+                )
+                self.token_id_to_contract_on_chain_lookup[chain][token_id] = (
+                    token_contract
+                )
+            else:
+                token_id = self.contract_to_token_id_on_chain_lookup[chain][
+                    token_contract
+                ]
+            token = f"{chain}:{token_id}"
             public = self.id_to_public_lookup[user_id]
 
             if token not in self.assets:
