@@ -196,7 +196,7 @@ class ZexBot:
 
             if len(self.orders) >= MAX_ORDERS_COUNT:
                 oldest_tx = self.orders.popleft()
-                cancel_tx = self.create_canel_order(oldest_tx[1:40])
+                cancel_tx = self.create_cancel_order(oldest_tx[1:40])
                 txs.append(cancel_tx.decode("latin-1"))
 
             httpx.post(f"http://{HOST}:{PORT}/v1/order", json=txs)
