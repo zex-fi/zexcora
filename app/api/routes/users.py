@@ -321,7 +321,7 @@ def get_withdraw(
         logger.debug(f"invalid nonce: maximum nonce is {len(withdraws) - 1}")
         raise HTTPException(400, {"error": "invalid nonce"})
 
-    if nonce:
+    if nonce is not None:
         withdraw_tx = withdraws[nonce]
 
         return Withdraw(
