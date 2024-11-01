@@ -303,7 +303,9 @@ def get_withdraw_nonce(id: int, chain: str) -> WithdrawNonce:
     )
 
 
-def get_withdraw(id: int, chain: str, nonce: int | None) -> Withdraw | list[Withdraw]:
+def get_withdraw(
+    id: int, chain: str, nonce: int | None = None
+) -> Withdraw | list[Withdraw]:
     if nonce and nonce < 0:
         raise HTTPException(400, {"error": "invalid nonce"})
 
