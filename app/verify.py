@@ -5,10 +5,11 @@ from eth_hash.auto import keccak
 from loguru import logger
 from secp256k1 import PublicKey
 
+from . import DEPOSIT_MONITOR_PUB_KEY
+
 DEPOSIT, WITHDRAW, BUY, SELL, CANCEL, REGISTER = b"dwbscr"
 
-monitor_pub = "033452c6fa7b1ac52c14bb4ed4b592ffafdae5f2dba7f360435fd9c71428029c71"
-monitor_pub = PublicKey(bytes.fromhex(monitor_pub), raw=True)
+monitor_pub = PublicKey(bytes.fromhex(DEPOSIT_MONITOR_PUB_KEY), raw=True)
 
 
 def order_msg(tx):

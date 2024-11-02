@@ -18,11 +18,13 @@ ZEX_STATE_DEST = os.getenv("ZEX_STATE_DEST")
 ZEX_BTC_PUBLIC_KEY = os.getenv("ZEX_BTC_PUBLIC_KEY")
 ZEX_MONERO_PUBLIC_ADDRESS = os.getenv("ZEX_MONERO_PUBLIC_ADDRESS")
 ZEX_ETHERSCAN_API_KEY = os.getenv("ZEX_ETHERSCAN_API_KEY")
+DEPOSIT_MONITOR_PUB_KEY = os.getenv("DEPOSIT_MONITOR_PUB_KEY")
 
 assert ZEX_STATE_DEST is not None, "ZEX_STATE_DEST must be specified"
 assert ZEX_BTC_PUBLIC_KEY, "ZEX_BTC_PUBLIC_KEY env variable is not set"
 assert ZEX_MONERO_PUBLIC_ADDRESS, "ZEX_MONERO_PUBLIC_ADDRESS env variable is not set"
 assert ZEX_ETHERSCAN_API_KEY, "ZEX_ETHERSCAN_API_KEY env variable is not set"
+assert DEPOSIT_MONITOR_PUB_KEY, "DEPOSIT_MONITOR_PUB_KEY env variable is not set"
 
 manager = ConnectionManager()
 
