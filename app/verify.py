@@ -1,14 +1,14 @@
 from struct import unpack
 import multiprocessing
+import os
 
 from eth_hash.auto import keccak
 from loguru import logger
 from secp256k1 import PublicKey
 
-from . import DEPOSIT_MONITOR_PUB_KEY
-
 DEPOSIT, WITHDRAW, BUY, SELL, CANCEL, REGISTER = b"dwbscr"
 
+DEPOSIT_MONITOR_PUB_KEY = os.getenv("DEPOSIT_MONITOR_PUB_KEY")
 monitor_pub = PublicKey(bytes.fromhex(DEPOSIT_MONITOR_PUB_KEY), raw=True)
 
 
