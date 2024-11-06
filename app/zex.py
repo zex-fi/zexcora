@@ -96,7 +96,7 @@ class Zex(metaclass=SingletonMeta):
             "BTC": 3345902,
             "XMR": 1725818,
             "BST": 45382742,
-            "SEP": 7024153,
+            "SEP": 7024151,
             "HOL": 2682526,
         }
         self.withdraw_nonces: dict[str, dict[bytes, int]] = {
@@ -497,7 +497,7 @@ class Zex(metaclass=SingletonMeta):
         header_format = ">xx3sQQH"
         header_size = struct.calcsize(header_format)
         chain, from_block, to_block, count = struct.unpack(
-            header_format, tx[header_size]
+            header_format, tx[:header_size]
         )
         chain = chain.upper().decode()
 
