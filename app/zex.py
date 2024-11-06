@@ -2,13 +2,13 @@ from collections import defaultdict, deque
 from collections.abc import Callable
 from copy import deepcopy
 from io import BytesIO
-from struct import unpack
 from threading import Lock
 from time import time as unix_time
 from typing import IO
 import asyncio
 import heapq
 import os
+import struct
 
 from loguru import logger
 import pandas as pd
@@ -93,11 +93,11 @@ class Zex(metaclass=SingletonMeta):
 
         self.withdraws: dict[str, dict[bytes, list[WithdrawTransaction]]] = {}
         self.deposited_blocks = {
-            "BTC": 3127558,
-            "XMR": 1708764,
-            "BST": 44706615,
-            "SEP": 6869557,
-            "HOL": 2526360,
+            "BTC": 3345902,
+            "XMR": 1725818,
+            "BST": 45382742,
+            "SEP": 7018846,
+            "HOL": 2682526,
         }
         self.withdraw_nonces: dict[str, dict[bytes, int]] = {
             k: {} for k in self.deposited_blocks.keys()
@@ -460,7 +460,7 @@ class Zex(metaclass=SingletonMeta):
                         self.assets[base_token] = {}
                     if quote_token not in self.assets:
                         self.assets[quote_token] = {}
-                t = unpack(">I", tx[32:36])[0]
+                t = struct.unpack(">I", tx[32:36])[0]
                 # fast route check for instant match
                 if self.markets[pair].match_instantly(tx, t):
                     modified_pairs.add(pair)
@@ -494,8 +494,13 @@ class Zex(metaclass=SingletonMeta):
             self.save_state()
 
     def deposit(self, tx: bytes):
-        chain = tx[2:5].upper().decode()
-        from_block, to_block, count = unpack(">QQH", tx[5:23])
+        header_format = ">xx3sQQH"
+        header_size = struct.calcsize(header_format)
+        chain, from_block, to_block, count = struct.unpack(
+            header_format, tx[header_size]
+        )
+        chain = chain.upper().decode()
+
         if self.deposited_blocks[chain] != from_block - 1:
             logger.error(
                 f"invalid from block. self.deposited_blocks[chain]: {self.deposited_blocks[chain]}, from_block - 1: {from_block - 1}"
@@ -507,9 +512,16 @@ class Zex(metaclass=SingletonMeta):
         if chain not in self.last_token_id:
             self.last_token_id[chain] = 0
 
-        deposits = list(chunkify(tx[23 : 23 + 62 * count], 62))
+        deposit_format = ">42sdIQ"
+        deposit_size = struct.calcsize(deposit_format)
+
+        deposits = list(
+            chunkify(tx[header_size : header_size + deposit_size * count], deposit_size)
+        )
         for chunk in deposits:
-            token_contract, amount, t, user_id = unpack(">42sdII", chunk[:62])
+            token_contract, amount, t, user_id = struct.unpack(
+                deposit_format, chunk[:deposit_size]
+            )
             if token_contract not in self.contract_to_token_id_on_chain_lookup:
                 self.last_token_id[chain] += 1
                 token_id = self.last_token_id[chain]
@@ -655,8 +667,8 @@ class Zex(metaclass=SingletonMeta):
     def _get_tx_pair(self, tx: bytes):
         if tx[2:16] in self.pair_lookup:
             return self.pair_lookup[tx[2:16]]
-        base_token = f"{tx[2:5].upper().decode()}:{unpack('>I', tx[5:9])[0]}"
-        quote_token = f"{tx[9:12].upper().decode()}:{unpack('>I', tx[12:16])[0]}"
+        base_token = f"{tx[2:5].upper().decode()}:{struct.unpack('>I', tx[5:9])[0]}"
+        quote_token = f"{tx[9:12].upper().decode()}:{struct.unpack('>I', tx[12:16])[0]}"
         pair = f"{base_token}-{quote_token}"
         self.pair_lookup[tx[2:16]] = (base_token, quote_token, pair)
         return base_token, quote_token, pair
@@ -685,7 +697,9 @@ def get_current_1m_open_time():
 
 
 def _parse_transaction(tx: bytes):
-    operation, amount, price, nonce, public, index = unpack(">xB14xdd4xI33s64xQ", tx)
+    operation, amount, price, nonce, public, index = struct.unpack(
+        ">xB14xdd4xI33s64xQ", tx
+    )
     return operation, amount, price, nonce, public, index
 
 

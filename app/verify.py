@@ -1,15 +1,20 @@
+from hashlib import sha256
 from struct import unpack
 import multiprocessing
 import os
 
 from eth_hash.auto import keccak
 from loguru import logger
+from pyfrost.frost import (
+    code_to_pub,
+    pub_compress,
+    verify_group_signature,
+)
 from secp256k1 import PublicKey
 
 DEPOSIT, WITHDRAW, BUY, SELL, CANCEL, REGISTER = b"dwbscr"
 
 DEPOSIT_MONITOR_PUB_KEY = os.getenv("DEPOSIT_MONITOR_PUB_KEY")
-monitor_pub = PublicKey(bytes.fromhex(DEPOSIT_MONITOR_PUB_KEY), raw=True)
 
 
 def order_msg(tx):
@@ -48,12 +53,24 @@ def __verify(txs):
     for i, tx in enumerate(txs):
         name = tx[1]
         if name == DEPOSIT:
-            msg = tx[: -(8 + 64)]
-            sig = tx[-(8 + 64): -8]
-            verified = monitor_pub.schnorr_verify(msg, sig, bip340tag="zex")
+            msg: bytes = tx[:-74]
+            msg_hash = sha256(msg).hexdigest()
+            nonce, sig = unpack(">42s32s", tx[-74:])
+
+            verified = verify_group_signature(
+                {
+                    "key_type": "ETH",
+                    "public_key": pub_compress(
+                        code_to_pub(int(DEPOSIT_MONITOR_PUB_KEY))
+                    ),
+                    "message": msg_hash,
+                    "signature": int.from_bytes(sig, "big"),
+                    "nonce": nonce.decode(),
+                }
+            )
 
         elif name == WITHDRAW:
-            msg, pubkey, sig = withdraw_msg(tx), tx[45:78], tx[78: 78 + 64]
+            msg, pubkey, sig = withdraw_msg(tx), tx[45:78], tx[78 : 78 + 64]
             logger.info(f"withdraw request pubkey: {pubkey}")
             pubkey = PublicKey(pubkey, raw=True)
             sig = pubkey.ecdsa_deserialize_compact(sig)
@@ -62,11 +79,11 @@ def __verify(txs):
 
         else:
             if name == CANCEL:
-                msg, pubkey, sig = cancel_msg(tx), tx[41:74], tx[74: 74 + 64]
+                msg, pubkey, sig = cancel_msg(tx), tx[41:74], tx[74 : 74 + 64]
             elif name in (BUY, SELL):
-                msg, pubkey, sig = order_msg(tx), tx[40:73], tx[73: 73 + 64]
+                msg, pubkey, sig = order_msg(tx), tx[40:73], tx[73 : 73 + 64]
             elif name == REGISTER:
-                msg, pubkey, sig = register_msg(), tx[2:35], tx[35: 35 + 64]
+                msg, pubkey, sig = register_msg(), tx[2:35], tx[35 : 35 + 64]
             else:
                 res[i] = False
                 continue
@@ -81,12 +98,13 @@ def __verify(txs):
 
 def chunkify(lst, n_chunks):
     for i in range(0, len(lst), n_chunks):
-        yield lst[i: i + n_chunks]
+        yield lst[i : i + n_chunks]
 
 
-# This is needed to prevent the verfication from crashing
+# This is needed to prevent the verification from crashing
 n_chunks = multiprocessing.cpu_count()
 pool = multiprocessing.Pool(processes=n_chunks)
+
 
 def verify(txs):
     chunks = list(chunkify(txs, len(txs) // n_chunks + 1))
