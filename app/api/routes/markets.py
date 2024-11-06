@@ -31,6 +31,7 @@ def _exchange_info_response():
             for name, market in zex.markets.items()
         ],
         tokens=[
+            # TODO: this should become dynamic
             Token(
                 chain=token[:3],
                 id=int(token[4:]),
@@ -38,7 +39,7 @@ def _exchange_info_response():
                     int(token[4:]), None
                 ),
                 chainType="evm" if token[:3] not in ["BTC", "XMR"] else "native_only",
-                decimals=DECIMALS[token],
+                decimals=DECIMALS.get(token, 8),
                 price=zex.markets[f"{token}-{USDT_MAINNET}"].get_last_price()
                 if f"{token}-{USDT_MAINNET}" in zex.markets
                 else 0
@@ -49,9 +50,9 @@ def _exchange_info_response():
                 ].get_price_change_24h_percent()
                 if token != USDT_MAINNET and f"{token}-{USDT_MAINNET}" in zex.markets
                 else 0,
-                name=NAMES[token],
-                symbol=SYMBOLS[token],
-                tag=TAGS[token],
+                name=NAMES.get(token, token),
+                symbol=SYMBOLS.get(token, token),
+                tag=TAGS.get(token, token),
             )
             for token in zex.assets.keys()
         ],
