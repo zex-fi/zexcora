@@ -96,7 +96,7 @@ class Zex(metaclass=SingletonMeta):
             "BTC": 3345902,
             "XMR": 1725818,
             "BST": 45382742,
-            "SEP": 7018846,
+            "SEP": 7024153,
             "HOL": 2682526,
         }
         self.withdraw_nonces: dict[str, dict[bytes, int]] = {
