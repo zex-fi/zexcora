@@ -1,6 +1,6 @@
 import time
 
-from fastapi import WebSocket
+from loguru import logger
 import pandas as pd
 
 from .connection_manager import ConnectionManager
@@ -54,7 +54,11 @@ def kline_event(manager: ConnectionManager):
                 if ws not in manager.active_connections:
                     manager.remove(ws)
                     continue
-                await ws.send_json(message)
+                try:
+                    await ws.send_json(message)
+                except Exception as e:
+                    manager.remove(ws)
+                    logger.exception(e)
 
     return f
 
@@ -73,6 +77,10 @@ def depth_event(manager: ConnectionManager):
                 if ws not in manager.active_connections:
                     manager.remove(ws)
                     continue
-                await ws.send_json({"stream": channel, "data": depth})
+                try:
+                    await ws.send_json({"stream": channel, "data": depth})
+                except Exception as e:
+                    manager.remove(ws)
+                    logger.exception(e)
 
     return f
