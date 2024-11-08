@@ -513,16 +513,18 @@ class Zex(metaclass=SingletonMeta):
         if chain not in self.last_token_id:
             self.last_token_id[chain] = 0
 
-        deposit_format = ">42sdIQ"
+        deposit_format = ">42sdsIQ"
         deposit_size = struct.calcsize(deposit_format)
 
         deposits = list(
             chunkify(tx[header_size : header_size + deposit_size * count], deposit_size)
         )
         for chunk in deposits:
-            token_contract, amount, t, user_id = struct.unpack(
+            token_contract, amount, decimal, t, user_id = struct.unpack(
                 deposit_format, chunk[:deposit_size]
             )
+            amount /= 10**decimal
+
             token_contract = token_contract.decode()
             if token_contract not in self.contract_to_token_id_on_chain_lookup[chain]:
                 self.last_token_id[chain] += 1
@@ -538,8 +540,6 @@ class Zex(metaclass=SingletonMeta):
                     token_contract
                 ]
             token = f"{chain}:{token_id}"
-            amount /= 10 ** DECIMALS.get(token, 8)
-
             public = self.id_to_public_lookup[user_id]
 
             if token not in self.assets:
