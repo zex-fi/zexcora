@@ -13,6 +13,7 @@ import struct
 from loguru import logger
 import pandas as pd
 
+from .api.routes import DECIMALS
 from .models.transaction import (
     Deposit,
     WithdrawTransaction,
@@ -97,7 +98,7 @@ class Zex(metaclass=SingletonMeta):
             "XMR": 1725818,
             "BST": 45382742,
             "SEP": 7024151,
-            "HOL": 2682526,
+            "HOL": 2691659,
         }
         self.withdraw_nonces: dict[str, dict[bytes, int]] = {
             k: {} for k in self.deposited_blocks.keys()
@@ -522,7 +523,8 @@ class Zex(metaclass=SingletonMeta):
             token_contract, amount, t, user_id = struct.unpack(
                 deposit_format, chunk[:deposit_size]
             )
-            if token_contract not in self.contract_to_token_id_on_chain_lookup:
+            token_contract = token_contract.decode()
+            if token_contract not in self.contract_to_token_id_on_chain_lookup[chain]:
                 self.last_token_id[chain] += 1
                 token_id = self.last_token_id[chain]
                 self.contract_to_token_id_on_chain_lookup[chain][token_contract] = (
@@ -536,6 +538,8 @@ class Zex(metaclass=SingletonMeta):
                     token_contract
                 ]
             token = f"{chain}:{token_id}"
+            amount /= 10 ** DECIMALS.get(token, 8)
+
             public = self.id_to_public_lookup[user_id]
 
             if token not in self.assets:
