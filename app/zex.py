@@ -96,9 +96,9 @@ class Zex(metaclass=SingletonMeta):
         self.deposited_blocks = {
             "BTC": 3345902,
             "XMR": 1725818,
-            "BST": 45382742,
-            "SEP": 7024151,
-            "HOL": 2691659,
+            "BST": 45451553,
+            "SEP": 7036883,
+            "HOL": 2698614,
         }
         self.withdraw_nonces: dict[str, dict[bytes, int]] = {
             k: {} for k in self.deposited_blocks.keys()
@@ -495,7 +495,7 @@ class Zex(metaclass=SingletonMeta):
             self.save_state()
 
     def deposit(self, tx: bytes):
-        header_format = ">xx3sQQH"
+        header_format = ">xx 3s Q Q H"
         header_size = struct.calcsize(header_format)
         chain, from_block, to_block, count = struct.unpack(
             header_format, tx[:header_size]
@@ -513,7 +513,7 @@ class Zex(metaclass=SingletonMeta):
         if chain not in self.last_token_id:
             self.last_token_id[chain] = 0
 
-        deposit_format = ">42sdsIQ"
+        deposit_format = ">42s d B I Q"
         deposit_size = struct.calcsize(deposit_format)
 
         deposits = list(
