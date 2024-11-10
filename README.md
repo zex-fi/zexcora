@@ -33,7 +33,8 @@ In order to test the backend follow these steps:
 4. to stop receiving data from a channel modify the method to `UNSUBSCRIBE`
 
 ## Ports
-1. Sequencer: 15781
-2. Zex: 15782
-3. FROST Node: 15783
-4. FROST Signature Aggregator: 15784
+1. Sequencer:                   15781
+2. Zex:                         15782
+3. FROST Node:                  15783
+4. FROST Signature Aggregator:  15784
+5. Zex State Source:            15785

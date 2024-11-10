@@ -1,15 +1,15 @@
-QUOTES = {"BTC": [0], "HOL": [1, 2]}
+QUOTES = {"BTC": [0], "POL": [1, 2]}
 TOKENS = {
     "BTC": [0],
     "XMR": [0],
-    "HOL": [1, 2, 3, 4],
-    "BST": [1, 2, 3, 4],
-    "SEP": [1, 2, 3, 4],
+    "POL": [1, 2, 3, 4],
+    "BSC": [1, 2, 3, 4],
+    "ARB": [1, 2, 3, 4],
 }
 PAIRS = {
-    "HOL": {
+    "POL": {
         2: {  # USDC
-            "HOL": {
+            "POL": {
                 1: {
                     "bid": 0.9999,
                     "ask": 1.0000,
@@ -19,16 +19,16 @@ PAIRS = {
             },
         },
         3: {  # WBTC
-            "HOL": {
+            "POL": {
                 1: {
-                    "bid": 58000,
-                    "ask": 58000,
+                    "bid": 79500,
+                    "ask": 79500,
                     "price_digits": 2,
                     "volume_digits": 6,
                 },
                 2: {
-                    "bid": 58100,
-                    "ask": 58100,
+                    "bid": 79500,
+                    "ask": 79500,
                     "price_digits": 2,
                     "volume_digits": 6,
                 },
@@ -43,7 +43,7 @@ PAIRS = {
             },
         },
         4: {  # Link
-            "HOL": {
+            "POL": {
                 1: {
                     "bid": 9.7,
                     "ask": 9.7,
@@ -69,16 +69,16 @@ PAIRS = {
     },
     "BTC": {
         0: {  # BTC
-            "HOL": {
+            "POL": {
                 1: {
-                    "bid": 58000,
-                    "ask": 58000,
+                    "bid": 79500,
+                    "ask": 79500,
                     "price_digits": 2,
                     "volume_digits": 6,
                 },
                 2: {
-                    "bid": 58100,
-                    "ask": 58100,
+                    "bid": 79500,
+                    "ask": 79500,
                     "price_digits": 2,
                     "volume_digits": 6,
                 },
@@ -87,7 +87,7 @@ PAIRS = {
     },
     "XMR": {
         0: {  # XMR
-            "HOL": {
+            "POL": {
                 1: {
                     "bid": 170,
                     "ask": 171,
@@ -111,9 +111,9 @@ PAIRS = {
             },
         },
     },
-    "BST": {
+    "BSC": {
         1: {  # USDT
-            "HOL": {
+            "POL": {
                 1: {
                     "bid": 0.9999,
                     "ask": 1.0000,
@@ -137,7 +137,7 @@ PAIRS = {
             },
         },
         2: {  # USDC
-            "HOL": {
+            "POL": {
                 1: {
                     "bid": 0.9999,
                     "ask": 1.0000,
@@ -161,16 +161,16 @@ PAIRS = {
             },
         },
         3: {  # WBTC
-            "HOL": {
+            "POL": {
                 1: {
-                    "bid": 58000,
-                    "ask": 58000,
+                    "bid": 79500,
+                    "ask": 79500,
                     "price_digits": 2,
                     "volume_digits": 6,
                 },
                 2: {
-                    "bid": 58100,
-                    "ask": 58100,
+                    "bid": 79500,
+                    "ask": 79500,
                     "price_digits": 2,
                     "volume_digits": 6,
                 },
@@ -185,7 +185,7 @@ PAIRS = {
             },
         },
         4: {  # Link
-            "HOL": {
+            "POL": {
                 1: {
                     "bid": 9.7,
                     "ask": 9.7,
@@ -209,9 +209,9 @@ PAIRS = {
             },
         },
     },
-    "SEP": {
+    "ARB": {
         1: {  # USDT
-            "HOL": {
+            "POL": {
                 1: {
                     "bid": 0.9999,
                     "ask": 1.0000,
@@ -235,7 +235,7 @@ PAIRS = {
             },
         },
         2: {  # USDC
-            "HOL": {
+            "POL": {
                 1: {
                     "bid": 0.9999,
                     "ask": 1.0000,
@@ -259,16 +259,16 @@ PAIRS = {
             },
         },
         3: {  # WBTC
-            "HOL": {
+            "POL": {
                 1: {
-                    "bid": 58000,
-                    "ask": 58000,
+                    "bid": 79500,
+                    "ask": 79500,
                     "price_digits": 2,
                     "volume_digits": 6,
                 },
                 2: {
-                    "bid": 58100,
-                    "ask": 58100,
+                    "bid": 79500,
+                    "ask": 79500,
                     "price_digits": 2,
                     "volume_digits": 6,
                 },
@@ -283,7 +283,7 @@ PAIRS = {
             },
         },
         4: {  # Link
-            "HOL": {
+            "POL": {
                 1: {
                     "bid": 9.7,
                     "ask": 9.7,

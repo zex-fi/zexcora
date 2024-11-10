@@ -24,66 +24,7 @@ TOKENS = {
         # 0: 1e8,
     },
     "XMR": {0: 1e12},
-    "BST": {
-        1: 1e6,
-        2: 1e6,
-        3: 1e8,
-        4: 1e18,
-    },
-    "SEP": {
-        1: 1e6,
-        2: 1e6,
-        3: 1e8,
-        4: 1e18,
-    },
-    "HOL": {
-        1: 1e6,
-        2: 1e6,
-        3: 1e8,
-        4: 1e18,
-    },
 }
-
-
-# Function to initialize Web3 instance for each network
-def initialize_web3(network) -> tuple[Web3, Contract]:
-    web3 = Web3(Web3.HTTPProvider(network["node_url"]))
-    web3.middleware_onion.inject(geth_poa_middleware, layer=0)
-    with open(network["contract_abi"]) as f:
-        abi = f.read()
-    contract = web3.eth.contract(address=network["contract_address"], abi=abi)
-    return web3, contract
-
-
-# Function to get deposits
-async def get_deposits(web3: Web3, contract: Contract, from_block, to_block):
-    step = 2500
-    failed = True
-    events = []
-    while failed and IS_RUNNING:
-        try:
-            for x in range(from_block + step, to_block, step):
-                logs = contract.events.Deposit.get_logs(fromBlock=from_block, toBlock=x)
-                events.extend([dict(e["args"]) for e in logs])
-                from_block = x + 1
-                await asyncio.sleep(1)
-            if from_block <= to_block:
-                logs = contract.events.Deposit.get_logs(
-                    fromBlock=from_block, toBlock=to_block
-                )
-                events.extend([dict(e["args"]) for e in logs])
-            failed = False
-        except ValueError as e:
-            # TODO: this is only a workaround when we fall behind specially for BST
-            if e.args[0]["code"] == -32701:
-                from_block = web3.eth.block_number - 50000
-        except Exception as e:
-            print(e)
-            await asyncio.sleep(5)
-            continue
-    if failed:
-        return None
-    return events
 
 
 def create_tx(
@@ -111,67 +52,6 @@ def create_tx(
     counter = 0
     tx += pack(">Q", counter)
     return tx
-
-
-async def run_monitor(network: dict, api_url: str, monitor: PrivateKey):
-    web3, contract = initialize_web3(network)
-    blocks_confirmation = network["blocks_confirmation"]
-    block_duration = network["block_duration"]
-    chain = network["chain"]
-    sent_block = httpx.get(f"{api_url}/{chain}/block/latest").json()["block"]
-    processed_block = sent_block
-
-    try:
-        while IS_RUNNING:
-            latest_block = web3.eth.block_number
-            if processed_block >= latest_block - blocks_confirmation:
-                await asyncio.sleep(block_duration)
-                continue
-
-            deposits = await get_deposits(
-                web3,
-                contract,
-                processed_block + 1,
-                latest_block - blocks_confirmation,
-            )
-            if deposits is None:
-                print(f"{chain} failed to get_logs from contract")
-                continue
-
-            if len(deposits) == 0:
-                print(
-                    f"{chain} no event from: {processed_block + 1}, to: {latest_block - blocks_confirmation}"
-                )
-                processed_block = latest_block - blocks_confirmation
-                continue
-            processed_block = latest_block - blocks_confirmation
-
-            block = web3.eth.get_block(processed_block)
-            tx = create_tx(
-                deposits,
-                chain,
-                sent_block + 1,
-                processed_block,
-                block["timestamp"],
-                monitor,
-            )
-            httpx.post(f"{api_url}/txs", json=[tx.decode("latin-1")])
-
-            sent_block = httpx.get(f"{api_url}/{chain}/block/latest").json()["block"]
-            while sent_block != processed_block and IS_RUNNING:
-                print(
-                    f"{chain} deposit is not yet applied, server desposited block: {sent_block}, script processed block: {processed_block}"
-                )
-                await asyncio.sleep(2)
-
-                sent_block = httpx.get(f"{api_url}/{chain}/block/latest").json()[
-                    "block"
-                ]
-                continue
-    except asyncio.CancelledError:
-        pass
-
-    return network
 
 
 def tagged_hash(data: bytes, tag: str) -> bytes:
@@ -490,7 +370,8 @@ async def main():
         elif network["name"] == "monero":
             t = asyncio.create_task(run_monitor_xmr(network, api_url, monitor))
         else:
-            t = asyncio.create_task(run_monitor(network, api_url, monitor))
+            print("invalid network")
+            continue
         tasks.append(t)
 
     try:

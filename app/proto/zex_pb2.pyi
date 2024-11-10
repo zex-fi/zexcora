@@ -6,7 +6,7 @@ from typing import ClassVar as _ClassVar, Iterable as _Iterable, Mapping as _Map
 DESCRIPTOR: _descriptor.FileDescriptor
 
 class ZexState(_message.Message):
-    __slots__ = ["markets", "balances", "amounts", "trades", "orders", "withdraws", "withdraw_nonces", "deposited_blocks", "nonces", "pair_lookup", "last_tx_index", "deposits", "public_to_id_lookup", "id_to_public_lookup", "contract_to_token_id_on_chain_lookup", "token_id_to_contract_on_chain_lookup", "last_token_id_on_chain"]
+    __slots__ = ["markets", "balances", "amounts", "trades", "orders", "withdraws", "withdraw_nonces", "deposited_blocks", "nonces", "pair_lookup", "last_tx_index", "deposits", "public_to_id_lookup", "id_to_public_lookup", "contract_to_token_id_on_chain_lookup", "token_id_to_contract_on_chain_lookup", "token_decimal_on_chain_lookup", "last_token_id_on_chain"]
     class MarketsEntry(_message.Message):
         __slots__ = ["key", "value"]
         KEY_FIELD_NUMBER: _ClassVar[int]
@@ -72,6 +72,7 @@ class ZexState(_message.Message):
     ID_TO_PUBLIC_LOOKUP_FIELD_NUMBER: _ClassVar[int]
     CONTRACT_TO_TOKEN_ID_ON_CHAIN_LOOKUP_FIELD_NUMBER: _ClassVar[int]
     TOKEN_ID_TO_CONTRACT_ON_CHAIN_LOOKUP_FIELD_NUMBER: _ClassVar[int]
+    TOKEN_DECIMAL_ON_CHAIN_LOOKUP_FIELD_NUMBER: _ClassVar[int]
     LAST_TOKEN_ID_ON_CHAIN_FIELD_NUMBER: _ClassVar[int]
     markets: _containers.MessageMap[str, Market]
     balances: _containers.MessageMap[str, Balance]
@@ -89,8 +90,9 @@ class ZexState(_message.Message):
     id_to_public_lookup: _containers.ScalarMap[int, bytes]
     contract_to_token_id_on_chain_lookup: _containers.RepeatedCompositeFieldContainer[ContractToIDOnChainEntry]
     token_id_to_contract_on_chain_lookup: _containers.RepeatedCompositeFieldContainer[IDToContractOnChainEntry]
+    token_decimal_on_chain_lookup: _containers.RepeatedCompositeFieldContainer[TokenToDecimalOnChainEntry]
     last_token_id_on_chain: _containers.ScalarMap[str, int]
-    def __init__(self, markets: _Optional[_Mapping[str, Market]] = ..., balances: _Optional[_Mapping[str, Balance]] = ..., amounts: _Optional[_Iterable[_Union[AmountEntry, _Mapping]]] = ..., trades: _Optional[_Iterable[_Union[TradeEntry, _Mapping]]] = ..., orders: _Optional[_Iterable[_Union[OrderEntry, _Mapping]]] = ..., withdraws: _Optional[_Mapping[str, Withdraws]] = ..., withdraw_nonces: _Optional[_Mapping[str, WithdrawNonces]] = ..., deposited_blocks: _Optional[_Mapping[str, int]] = ..., nonces: _Optional[_Iterable[_Union[NonceEntry, _Mapping]]] = ..., pair_lookup: _Optional[_Iterable[_Union[PairLookupEntry, _Mapping]]] = ..., last_tx_index: _Optional[int] = ..., deposits: _Optional[_Iterable[_Union[DepositEntry, _Mapping]]] = ..., public_to_id_lookup: _Optional[_Iterable[_Union[IDLookupEntry, _Mapping]]] = ..., id_to_public_lookup: _Optional[_Mapping[int, bytes]] = ..., contract_to_token_id_on_chain_lookup: _Optional[_Iterable[_Union[ContractToIDOnChainEntry, _Mapping]]] = ..., token_id_to_contract_on_chain_lookup: _Optional[_Iterable[_Union[IDToContractOnChainEntry, _Mapping]]] = ..., last_token_id_on_chain: _Optional[_Mapping[str, int]] = ...) -> None: ...
+    def __init__(self, markets: _Optional[_Mapping[str, Market]] = ..., balances: _Optional[_Mapping[str, Balance]] = ..., amounts: _Optional[_Iterable[_Union[AmountEntry, _Mapping]]] = ..., trades: _Optional[_Iterable[_Union[TradeEntry, _Mapping]]] = ..., orders: _Optional[_Iterable[_Union[OrderEntry, _Mapping]]] = ..., withdraws: _Optional[_Mapping[str, Withdraws]] = ..., withdraw_nonces: _Optional[_Mapping[str, WithdrawNonces]] = ..., deposited_blocks: _Optional[_Mapping[str, int]] = ..., nonces: _Optional[_Iterable[_Union[NonceEntry, _Mapping]]] = ..., pair_lookup: _Optional[_Iterable[_Union[PairLookupEntry, _Mapping]]] = ..., last_tx_index: _Optional[int] = ..., deposits: _Optional[_Iterable[_Union[DepositEntry, _Mapping]]] = ..., public_to_id_lookup: _Optional[_Iterable[_Union[IDLookupEntry, _Mapping]]] = ..., id_to_public_lookup: _Optional[_Mapping[int, bytes]] = ..., contract_to_token_id_on_chain_lookup: _Optional[_Iterable[_Union[ContractToIDOnChainEntry, _Mapping]]] = ..., token_id_to_contract_on_chain_lookup: _Optional[_Iterable[_Union[IDToContractOnChainEntry, _Mapping]]] = ..., token_decimal_on_chain_lookup: _Optional[_Iterable[_Union[TokenToDecimalOnChainEntry, _Mapping]]] = ..., last_token_id_on_chain: _Optional[_Mapping[str, int]] = ...) -> None: ...
 
 class Market(_message.Message):
     __slots__ = ["base_token", "quote_token", "buy_orders", "sell_orders", "bids_order_book", "asks_order_book", "first_id", "final_id", "last_update_id", "kline"]
@@ -289,3 +291,18 @@ class IDToContractOnChainEntry(_message.Message):
     chain: str
     id_to_contract: _containers.ScalarMap[int, str]
     def __init__(self, chain: _Optional[str] = ..., id_to_contract: _Optional[_Mapping[int, str]] = ...) -> None: ...
+
+class TokenToDecimalOnChainEntry(_message.Message):
+    __slots__ = ["chain", "contract_to_decimal"]
+    class ContractToDecimalEntry(_message.Message):
+        __slots__ = ["key", "value"]
+        KEY_FIELD_NUMBER: _ClassVar[int]
+        VALUE_FIELD_NUMBER: _ClassVar[int]
+        key: str
+        value: int
+        def __init__(self, key: _Optional[str] = ..., value: _Optional[int] = ...) -> None: ...
+    CHAIN_FIELD_NUMBER: _ClassVar[int]
+    CONTRACT_TO_DECIMAL_FIELD_NUMBER: _ClassVar[int]
+    chain: str
+    contract_to_decimal: _containers.ScalarMap[str, int]
+    def __init__(self, chain: _Optional[str] = ..., contract_to_decimal: _Optional[_Mapping[str, int]] = ...) -> None: ...
