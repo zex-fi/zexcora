@@ -116,8 +116,8 @@ pool = multiprocessing.Pool(processes=n_chunks)
 
 def verify(txs):
     chunks = list(chunkify(txs, len(txs) // n_chunks + 1))
-    # results = pool.map(__verify, chunks)
-    results = [__verify(x) for x in chunks]
+    results = pool.map(__verify, chunks)
+    # results = [__verify(x) for x in chunks]
 
     i = 0
     for sublist in results:
