@@ -204,6 +204,7 @@ async def process_loop():
         try:
             txs: list[str] = json.loads(batch)
             finalized_txs = [x.encode("latin-1") for x in txs]
+            verify(finalized_txs)
             zex.process(finalized_txs, index)
 
             # TODO: the for loop takes all the CPU time. the sleep gives time to other tasks to run. find a better solution

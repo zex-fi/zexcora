@@ -30,7 +30,7 @@ from app.models.transaction import Deposit, WithdrawTransaction
 from app.monero.address import Address
 from app.zex import BUY
 
-from . import BYTE_CODE_HASH, DECIMALS, DEPLOYER_ADDRESS
+from . import BYTE_CODE_HASH, DEPLOYER_ADDRESS
 
 router = APIRouter()
 light_router = APIRouter()
@@ -123,7 +123,10 @@ def user_nonce(id: int) -> NonceResponse:
 
 @router.get("/user/id")
 def user_id(public: str):
-    user = bytes.fromhex(public)
+    try:
+        user = bytes.fromhex(public)
+    except ValueError:
+        return HTTPException(400, {"error": "invalid public"})
     if user not in zex.public_to_id_lookup:
         return HTTPException(404, {"error": "user not found"})
 
@@ -327,7 +330,17 @@ def get_withdraw(
         return Withdraw(
             chain=withdraw_tx.chain,
             tokenID=withdraw_tx.token_id,
-            amount=str(int(withdraw_tx.amount * (10 ** DECIMALS[withdraw_tx.token]))),
+            amount=str(
+                int(
+                    withdraw_tx.amount
+                    * (
+                        10
+                        ** zex.token_decimal_on_chain_lookup[withdraw_tx.chain][
+                            withdraw_tx.token
+                        ]
+                    )
+                )
+            ),
             user=str(int.from_bytes(user[1:], byteorder="big")),
             destination=Web3.to_checksum_address(withdraw_tx.dest),
             t=withdraw_tx.time,

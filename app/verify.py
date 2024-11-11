@@ -12,9 +12,13 @@ from pyfrost.frost import (
 )
 from secp256k1 import PublicKey
 
-DEPOSIT, WITHDRAW, BUY, SELL, CANCEL, REGISTER = b"dwbscr"
+BTC_XMR_DEPOSIT, DEPOSIT, WITHDRAW, BUY, SELL, CANCEL, REGISTER = b"xdwbscr"
 
 DEPOSIT_MONITOR_PUB_KEY = os.getenv("DEPOSIT_MONITOR_PUB_KEY")
+BTC_XMR_DEPOSIT_MONITOR_PUB_KEY = os.getenv("BTC_XMR_DEPOSIT_MONITOR_PUB_KEY")
+btc_xmr_monitor_pub = PublicKey(
+    bytes.fromhex(BTC_XMR_DEPOSIT_MONITOR_PUB_KEY), raw=True
+)
 
 
 def order_msg(tx):
@@ -68,6 +72,10 @@ def __verify(txs):
                     "nonce": nonce.decode(),
                 }
             )
+        elif name == BTC_XMR_DEPOSIT:
+            msg = tx[:-64]
+            sig = tx[-64:]
+            verified = btc_xmr_monitor_pub.schnorr_verify(msg, sig, bip340tag="zex")
 
         elif name == WITHDRAW:
             msg, pubkey, sig = withdraw_msg(tx), tx[45:78], tx[78 : 78 + 64]
@@ -108,8 +116,8 @@ pool = multiprocessing.Pool(processes=n_chunks)
 
 def verify(txs):
     chunks = list(chunkify(txs, len(txs) // n_chunks + 1))
-    results = pool.map(__verify, chunks)
-    # results = [__verify(x) for x in chunks]
+    # results = pool.map(__verify, chunks)
+    results = [__verify(x) for x in chunks]
 
     i = 0
     for sublist in results:

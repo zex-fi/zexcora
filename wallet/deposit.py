@@ -4,53 +4,61 @@ from struct import pack
 import asyncio
 import hashlib
 import json
+import os
 import signal
 
 from bitcoinrpc import BitcoinRPC, RPCError
 from bitcoinutils.keys import P2trAddress, PublicKey
+from bitcoinutils.setup import setup
 from bitcoinutils.utils import tweak_taproot_pubkey
 from secp256k1 import PrivateKey
-from web3 import Web3
-from web3.contract.contract import Contract
-from web3.middleware import geth_poa_middleware
 import httpx
 import yaml
+
+setup("mainnet")
+
 
 IS_RUNNING = True
 
 TOKENS = {
     "BTC": {
-        0: 1,  # value is already in BTC
-        # 0: 1e8,
+        # 0: 1,  # value is already in BTC
+        "0x" + "0" * 40: 8,
     },
-    "XMR": {0: 1e12},
+    "XMR": {
+        "0x" + "0" * 40: 12,
+    },
 }
 
 
 def create_tx(
     deposits, chain: str, from_block, to_block, timestamp, monitor: PrivateKey
 ):
-    version = pack(">B", 1)
+    header_format = ">B B 3s Q Q H"
+    version = 1
     chain: bytes = chain.encode()
-    block_range = pack(">QQ", from_block, to_block)
-    tx = version + b"d" + chain + block_range + pack(">H", len(deposits))
+
+    tx = pack(
+        header_format,
+        version,
+        int.from_bytes(b"x", "big"),
+        chain,
+        from_block,
+        to_block,
+        len(deposits),
+    )
     for deposit in deposits:
-        if "public" in deposit:
-            public = bytes.fromhex(deposit["public"])
-        else:
-            prefix = "02" if deposit["pubKeyYParity"] == 0 else "03"
-            pubKeyX = f"{deposit['pubKeyX']:#0{32}x}"[2:]
-            public = bytes.fromhex(prefix + pubKeyX)
-        token_id = deposit["tokenIndex"]
-        amount = deposit["amount"] / TOKENS[chain.decode()].get(token_id, 1e18)
+        user_id = deposit["user_id"]
+        token_id = "0x" + "0" * 40
+        amount = deposit["amount"]
+        decimal = int(TOKENS[chain.decode()].get(token_id, 18))
 
-        print(token_id, amount, timestamp, "t")
+        print(token_id, amount, decimal, timestamp)
 
-        tx += pack(">IdI", token_id, amount, timestamp)
-        tx += public
+        tx += pack(
+            ">42s Q B I Q", token_id.encode(), amount, decimal, timestamp, user_id
+        )
     tx += monitor.schnorr_sign(tx, bip340tag="zex")
-    counter = 0
-    tx += pack(">Q", counter)
     return tx
 
 
@@ -110,7 +118,7 @@ async def run_monitor_btc(network: dict, api_url: str, monitor: PrivateKey):
     blocks_confirmation = network["blocks_confirmation"]
     block_duration = network["block_duration"]
     chain = network["chain"]
-    sent_block = httpx.get(f"{api_url}/{chain}/block/latest").json()["block"]
+    sent_block = httpx.get(f"{api_url}/block/latest?chain={chain}").json()["block"]
     processed_block = sent_block
 
     rpc = BitcoinRPC.from_config(network["node_url"], None)
@@ -118,7 +126,7 @@ async def run_monitor_btc(network: dict, api_url: str, monitor: PrivateKey):
     master_pub = PublicKey.from_hex(network["public_key"])
 
     latest_user_id = 0
-    all_taproot_addresses: dict[str, str] = {}
+    all_taproot_addresses: dict[str, int] = {}
 
     try:
         while IS_RUNNING:
@@ -140,8 +148,7 @@ async def run_monitor_btc(network: dict, api_url: str, monitor: PrivateKey):
 
                     if i == 1:
                         print(f"God user taproot address: {taproot_pub.to_string()}")
-                    public = httpx.get(f"{api_url}/user/{i}/public").json()["public"]
-                    all_taproot_addresses[taproot_pub.to_string()] = public
+                    all_taproot_addresses[taproot_pub.to_string()] = i
 
                 latest_user_id = new_latest_user_id
 
@@ -171,9 +178,12 @@ async def run_monitor_btc(network: dict, api_url: str, monitor: PrivateKey):
                     if address in all_taproot_addresses:
                         deposits.append(
                             {
-                                "public": all_taproot_addresses[address],
-                                "tokenIndex": 0,
-                                "amount": out["value"],
+                                "user_id": all_taproot_addresses[address],
+                                "tokenIndex": "0x" + "0" * 40,
+                                "amount": int(
+                                    out["value"]
+                                    * (10 ** TOKENS["BTC"]["0x" + "0" * 40])
+                                ),
                             }
                         )
                         print(f"found deposit to address: {address}")
@@ -182,7 +192,6 @@ async def run_monitor_btc(network: dict, api_url: str, monitor: PrivateKey):
             processed_block += 1
             if len(deposits) == 0:
                 print(f"{chain} no deposit in block: {processed_block}")
-                continue
 
             tx = create_tx(
                 deposits,
@@ -192,17 +201,19 @@ async def run_monitor_btc(network: dict, api_url: str, monitor: PrivateKey):
                 latest_block["time"],
                 monitor,
             )
-            httpx.post(f"{api_url}/txs", json=[tx.decode("latin-1")])
+            httpx.post(f"{api_url}/deposit", json=[tx.decode("latin-1")])
             # to check if request is applied, query latest processed block from zex
 
-            sent_block = httpx.get(f"{api_url}/{chain}/block/latest").json()["block"]
+            sent_block = httpx.get(f"{api_url}/block/latest?chain={chain}").json()[
+                "block"
+            ]
             while sent_block != processed_block and IS_RUNNING:
                 print(
                     f"{chain} deposit is not yet applied, server desposited block: {sent_block}, script processed block: {processed_block}"
                 )
                 await asyncio.sleep(2)
 
-                sent_block = httpx.get(f"{api_url}/{chain}/block/latest").json()[
+                sent_block = httpx.get(f"{api_url}/block/latest?chain={chain}").json()[
                     "block"
                 ]
                 continue
@@ -270,7 +281,7 @@ async def run_monitor_xmr(network: dict, api_url: str, monitor: PrivateKey):
     blocks_confirmation = network["blocks_confirmation"]
     block_duration = network["block_duration"]
     chain = network["chain"]
-    sent_block = httpx.get(f"{api_url}/{chain}/block/latest").json()["block"]
+    sent_block = httpx.get(f"{api_url}/block/latest?chain={chain}").json()["block"]
     processed_block = sent_block
 
     while IS_RUNNING:
@@ -296,15 +307,14 @@ async def run_monitor_xmr(network: dict, api_url: str, monitor: PrivateKey):
             if "paymentId" not in tx["tx"]:
                 continue
             user_id = int(tx["tx"]["paymentId"], 16)
-            resp = httpx.get(f"{api_url}/user/{user_id}/public")
+            resp = httpx.get(f"{api_url}/user/public?id={user_id}")
             if resp.status_code != 200:
                 print(f"{chain} deposit for not registered user with id={user_id}")
                 continue
-            user_public = resp.json()["public"]
             deposits.append(
                 {
-                    "public": user_public,
-                    "tokenIndex": 0,
+                    "user_id": user_id,
+                    "tokenIndex": b"\x00" * 42,
                     "amount": int(tx["amount"]),
                 }
             )
@@ -313,9 +323,6 @@ async def run_monitor_xmr(network: dict, api_url: str, monitor: PrivateKey):
             print(
                 f"{chain} no deposit in from block {processed_block + 1} to {latest_block['height']}"
             )
-            # -1 since all transaction already have 1 confirmation
-            processed_block = latest_block["height"] - (blocks_confirmation - 1)
-            continue
         processed_block = latest_block["height"] - (blocks_confirmation - 1)
 
         tx = create_tx(
@@ -326,17 +333,19 @@ async def run_monitor_xmr(network: dict, api_url: str, monitor: PrivateKey):
             latest_block["block"]["timestamp"],
             monitor,
         )
-        httpx.post(f"{api_url}/txs", json=[tx.decode("latin-1")])
+        httpx.post(f"{api_url}/deposit", json=[tx.decode("latin-1")])
         # to check if request is applied, query latest processed block from zex
 
-        sent_block = httpx.get(f"{api_url}/{chain}/block/latest").json()["block"]
+        sent_block = httpx.get(f"{api_url}/block/latest?chain={chain}").json()["block"]
         while sent_block != processed_block and IS_RUNNING:
             print(
                 f"{chain} deposit is not yet applied, server desposited block: {sent_block}, script processed block: {processed_block}"
             )
             await asyncio.sleep(2)
 
-            sent_block = httpx.get(f"{api_url}/{chain}/block/latest").json()["block"]
+            sent_block = httpx.get(f"{api_url}/block/latest?chain={chain}").json()[
+                "block"
+            ]
             continue
 
     return network

@@ -20,7 +20,7 @@ from .models.transaction import (
 from .proto import zex_pb2
 from .verify import chunkify
 
-DEPOSIT, WITHDRAW, BUY, SELL, CANCEL, REGISTER = b"dwbscr"
+BTC_XMR_DEPOSIT, DEPOSIT, WITHDRAW, BUY, SELL, CANCEL, REGISTER = b"xdwbscr"
 TRADES_TTL = 1000
 
 
@@ -83,7 +83,32 @@ class Zex(metaclass=SingletonMeta):
         self.assets = {}
         self.contract_to_token_id_on_chain_lookup: dict[str, dict[str, int]] = {}
         self.token_id_to_contract_on_chain_lookup: dict[str, dict[int, str]] = {}
-        self.token_decimal_on_chain_lookup: dict[str, dict[str, int]] = {}
+        self.token_decimal_on_chain_lookup: dict[str, dict[str, int]] = {
+            "BTC": {
+                "0x" + "0" * 40: 8,
+            },
+            "XMR": {
+                "0x" + "0" * 40: 8,
+            },
+            "POL": {
+                "0xc2132D05D31c914a87C6611C10748AEb04B58e8F": 6,
+                "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359": 6,
+                "0x1BFD67037B42Cf73acF2047067bd4F2C47D9BfD6": 8,
+                "0x53E0bca35eC356BD5ddDFebbD1Fc0fD03FaBad39": 18,
+            },
+            "BSC": {
+                "0x55d398326f99059fF775485246999027B3197955": 6,
+                "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d": 6,
+                "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c": 8,
+                "0xF8A0BF9cF54Bb92F17374d9e9A321E6a111a51bD": 18,
+            },
+            "ARB": {
+                "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9": 6,
+                "0xaf88d065e77c8cC2239327C5EDb3A432268e5831": 6,
+                "0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f": 8,
+                "0xf97f4df75117a78c1A5a0DBb814Af92458539FB4": 18,
+            },
+        }
         self.last_token_id: dict[str, int] = {}
         self.amounts = {}
         self.trades = {}
@@ -94,7 +119,7 @@ class Zex(metaclass=SingletonMeta):
 
         self.withdraws: dict[str, dict[bytes, list[WithdrawTransaction]]] = {}
         self.deposited_blocks = {
-            "BTC": 869746,
+            "BTC": 869815,
             "XMR": 3278511,
             "POL": 64122219,
             "BSC": 43892677,
@@ -128,8 +153,8 @@ class Zex(metaclass=SingletonMeta):
             )
 
             TOKENS = {
-                "BTC": [(0, "")],
-                "XMR": [(0, "")],
+                "BTC": [(0, "0x" + "0" * 40)],
+                "XMR": [(0, "0x" + "0" * 40)],
                 "POL": [
                     (1, "0xc2132D05D31c914a87C6611C10748AEb04B58e8F"),
                     (2, "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"),
@@ -454,7 +479,7 @@ class Zex(metaclass=SingletonMeta):
                 logger.error("invalid verion", version=v)
                 continue
 
-            if name == DEPOSIT:
+            if name == DEPOSIT or name == BTC_XMR_DEPOSIT:
                 self.deposit(tx)
             elif name == WITHDRAW:
                 tx += b"00000001"
@@ -521,7 +546,7 @@ class Zex(metaclass=SingletonMeta):
         if chain not in self.last_token_id:
             self.last_token_id[chain] = 0
 
-        deposit_format = ">42s d B I Q"
+        deposit_format = ">42s Q B I Q"
         deposit_size = struct.calcsize(deposit_format)
 
         deposits = list(
@@ -533,6 +558,8 @@ class Zex(metaclass=SingletonMeta):
             )
             if chain not in self.token_decimal_on_chain_lookup:
                 self.token_decimal_on_chain_lookup[chain] = {}
+
+            token_contract = token_contract.decode()
             if token_contract not in self.token_decimal_on_chain_lookup[chain]:
                 self.token_decimal_on_chain_lookup[chain][token_contract] = decimal
 
@@ -543,7 +570,6 @@ class Zex(metaclass=SingletonMeta):
                 self.token_decimal_on_chain_lookup[chain][token_contract] = decimal
             amount /= 10**decimal
 
-            token_contract = token_contract.decode()
             if token_contract not in self.contract_to_token_id_on_chain_lookup[chain]:
                 self.last_token_id[chain] += 1
                 token_id = self.last_token_id[chain]

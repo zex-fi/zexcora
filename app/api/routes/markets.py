@@ -17,7 +17,9 @@ async def depth(symbol: str, limit: int = 500):
 def get_token_info(token) -> Token:
     chain = token[:3]
     id = int(token[4:])
-    address = zex.token_id_to_contract_on_chain_lookup.get(chain, {}).get(id, None)
+    address = zex.token_id_to_contract_on_chain_lookup.get(chain, {}).get(
+        id, "0x" + "0" * 40
+    )
     t = Token(
         chain=chain,
         id=id,

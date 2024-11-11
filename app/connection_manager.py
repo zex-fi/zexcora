@@ -1,5 +1,4 @@
 from fastapi import WebSocket
-from loguru import logger
 
 from app.zex import SingletonMeta
 
