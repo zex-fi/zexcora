@@ -88,7 +88,7 @@ class Zex(metaclass=SingletonMeta):
                 "0x" + "0" * 40: 8,
             },
             "XMR": {
-                "0x" + "0" * 40: 8,
+                "0x" + "0" * 40: 12,
             },
             "POL": {
                 "0xc2132D05D31c914a87C6611C10748AEb04B58e8F": 6,
@@ -121,9 +121,9 @@ class Zex(metaclass=SingletonMeta):
         self.deposited_blocks = {
             "BTC": 869815,
             "XMR": 3278511,
-            "POL": 64122219,
-            "BSC": 43892677,
-            "ARB": 273078242,
+            "POL": 64229117,
+            "BSC": 43969265,
+            "ARB": 273985934,
         }
         self.withdraw_nonces: dict[str, dict[bytes, int]] = {
             k: {} for k in self.deposited_blocks.keys()

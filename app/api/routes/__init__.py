@@ -1,22 +1,5 @@
 USDT_MAINNET = "POL:1"
 
-DECIMALS = {
-    "BTC:0": 8,
-    "XMR:0": 12,
-    "POL:1": 6,
-    "POL:2": 6,
-    "POL:3": 8,
-    "POL:4": 18,
-    "BSC:1": 6,
-    "BSC:2": 6,
-    "BSC:3": 8,
-    "BSC:4": 18,
-    "ARB:1": 6,
-    "ARB:2": 6,
-    "ARB:3": 8,
-    "ARB:4": 18,
-}
-
 TAGS = {
     "BTC:0": "btc",
     "XMR:0": "xmr",
@@ -34,8 +17,8 @@ TAGS = {
     "ARB:4": "link",
 }
 
-DEPLOYER_ADDRESS = "0x639C21E0cC0Dd0B7eAd073F263Bd22EE4c061510"
-BYTE_CODE_HASH = "0x570246b6d53a7087d6aa38ba11ebcbd7c247a4b5155b411609081bbd6fe44482"
+DEPLOYER_ADDRESS = "0xd3Fc9A776594140761D7149aDA0115499dD4B865"
+BYTE_CODE_HASH = "0x787586668300c34b70a9e19d74296b330a0f5672f620aac041906321555af911"
 
 CHAIN_TYPES = {
     "BTC": "native_only",
