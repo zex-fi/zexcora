@@ -202,10 +202,8 @@ class Zex(metaclass=SingletonMeta):
                             self.last_token_id[chain] += 1
                         if f"{chain}:{token_id}" not in self.assets:
                             self.assets[f"{chain}:{token_id}"] = {}
-                        self.assets[f"{chain}:{token_id}"][bot_pub] = (
-                            9_000_000_000_000 + i
-                        )
-                        self.assets[f"{chain}:{token_id}"][client_pub] = 1_000_000
+                        self.assets[f"{chain}:{token_id}"][bot_pub] = 9_000_000 + i
+                        self.assets[f"{chain}:{token_id}"][client_pub] = 1_000
 
     def to_protobuf(self) -> zex_pb2.ZexState:
         state = zex_pb2.ZexState()
@@ -840,8 +838,9 @@ class Market:
         balance = self.quote_token_balances.get(public, 0)
         if balance < required:
             logger.debug(
-                "Insufficient balance, current balance: {current_balance}, quote token: {quote_token}",
+                "Insufficient balance, current balance: {current_balance}, side: buy, base token: {base_token}, quote token: {quote_token}",
                 current_balance=balance,
+                base_token=self.base_token,
                 quote_token=self.quote_token,
             )
             return False
@@ -882,9 +881,10 @@ class Market:
         balance = self.base_token_balances.get(public, 0)
         if balance < amount:
             logger.debug(
-                "Insufficient balance, current balance: {current_balance}, base token: {base_token}",
+                "Insufficient balance, current balance: {current_balance}, side: sell, base token: {base_token}, quote token: {quote_token}",
                 current_balance=balance,
                 base_token=self.base_token,
+                quote_token=self.quote_token,
             )
             return False
 
@@ -1121,8 +1121,9 @@ class Market:
         balance = self.quote_token_balances.get(public, 0)
         if balance < required:
             logger.debug(
-                "Insufficient balance, current balance: {current_balance}, quote token: {quote_token}",
+                "Insufficient balance, current balance: {current_balance}, side: buy, base token: {base_token}, quote token: {quote_token}",
                 current_balance=balance,
+                base_token=self.base_token,
                 quote_token=self.quote_token,
             )
             return False
@@ -1141,9 +1142,10 @@ class Market:
         balance = self.base_token_balances.get(public, 0)
         if balance < amount:
             logger.debug(
-                "Insufficient balance, current balance: {current_balance}, base token: {base_token}",
+                "Insufficient balance, current balance: {current_balance}, side: sell, base token: {base_token}, quote token: {quote_token}",
                 current_balance=balance,
                 base_token=self.base_token,
+                quote_token=self.quote_token,
             )
             return False
 

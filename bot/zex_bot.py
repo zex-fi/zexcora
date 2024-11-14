@@ -22,7 +22,7 @@ DEPOSIT, WITHDRAW, BUY, SELL, CANCEL = b"dwbsc"
 version = pack(">B", 1)
 
 MAX_ORDERS_COUNT = 10
-MIN_ORDER_VALUE = 50
+MIN_ORDER_VALUE = 1
 
 
 class ZexBot:
@@ -184,8 +184,8 @@ class ZexBot:
                 self.base_volume + self.rng.random() * self.base_volume / 2,
                 self.volume_digits,
             )
-            while volume < 0.001:
-                volume = round(self.rng.random() * 0.02, 3)
+            if volume < self.base_volume * 0.001:
+                volume = round(self.base_volume, self.volume_digits)
 
             resp = httpx.get(f"http://{HOST}:{PORT}/v1/user/nonce?id={self.user_id}")
             self.nonce = resp.json()["nonce"]
