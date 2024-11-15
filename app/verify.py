@@ -80,7 +80,7 @@ def _verify_single_tx(
     elif name == BTC_XMR_DEPOSIT:
         msg = tx[:-64]
         sig = tx[-64:]
-        pubkey = PublicKey(btc_xmr_monitor_pub)
+        pubkey = PublicKey(btc_xmr_monitor_pub, raw=True)
         return pubkey.schnorr_verify(msg, sig, bip340tag="zex")
 
     elif name == WITHDRAW:
