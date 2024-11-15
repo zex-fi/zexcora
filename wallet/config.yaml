@@ -7,9 +7,9 @@ networks:
     block_duration: 60
   - name: monero
     chain: XMR
-    mainnet: false
+    mainnet: true
     node_url: "https://node.xmr.agor.ist:443"
-    wallet_path: "monero/wallets/zex_wallet_view"
+    wallet_path: "monero/wallets/zex-mainnet_view"
     wallet_pass: ""
     blocks_confirmation: 1
     block_duration: 60
