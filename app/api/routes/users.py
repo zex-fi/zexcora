@@ -262,7 +262,7 @@ def get_create2_address(deployer_address: str, salt: int, bytecode_hash: str) ->
     # Compute the keccak256 hash of the data
     address_bytes = keccak(data)[12:]  # Take the last 20 bytes
 
-    # Return the address in checksummed format
+    # Return the address in checksum format
     return to_checksum_address(address_bytes)
 
 

@@ -17,7 +17,6 @@ import yaml
 
 setup("mainnet")
 
-
 IS_RUNNING = True
 
 TOKENS = {
@@ -32,7 +31,7 @@ TOKENS = {
 
 
 def create_tx(
-    deposits, chain: str, from_block, to_block, timestamp, monitor: PrivateKey
+        deposits, chain: str, from_block, to_block, timestamp, monitor: PrivateKey
 ):
     header_format = ">B B 3s Q Q H"
     version = 1
@@ -209,7 +208,7 @@ async def run_monitor_btc(network: dict, api_url: str, monitor: PrivateKey):
             ]
             while sent_block != processed_block and IS_RUNNING:
                 print(
-                    f"{chain} deposit is not yet applied, server desposited block: {sent_block}, script processed block: {processed_block}"
+                    f"{chain} deposit is not yet applied, server deposited block: {sent_block}, script processed block: {processed_block}"
                 )
                 await asyncio.sleep(2)
 
@@ -223,18 +222,8 @@ async def run_monitor_btc(network: dict, api_url: str, monitor: PrivateKey):
     return network
 
 
-async def get_xmr_last_block(network: dict):
-    process = await subprocess.create_subprocess_exec(
-        "node",
-        "monero/get-height.js",
-        f"rpc={network['node_url']}",
-        f"network={0 if network['mainnet'] else 2}",
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    # Wait for the subprocess to finish and capture output
+async def decode_process_output(network, process):
     stdout, stderr = await process.communicate()
-
     # Decode and strip the output
     output = stdout.decode().strip()
     error = stderr.decode().strip()
@@ -246,6 +235,19 @@ async def get_xmr_last_block(network: dict):
     except json.JSONDecodeError as e:
         print(f"{network['chain']} decode error: {e}")
         return None
+
+
+async def get_xmr_last_block(network: dict):
+    process = await subprocess.create_subprocess_exec(
+        "node",
+        "monero/get-height.js",
+        f"rpc={network['node_url']}",
+        f"network={0 if network['mainnet'] else 2}",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    # Wait for the subprocess to finish and capture output
+    return await decode_process_output(network, process)
 
 
 async def get_xmr_transactions(network: dict, from_block, to_block):
@@ -262,19 +264,7 @@ async def get_xmr_transactions(network: dict, from_block, to_block):
         stderr=asyncio.subprocess.PIPE,
     )
     # Wait for the subprocess to finish and capture output
-    stdout, stderr = await process.communicate()
-
-    # Decode and strip the output
-    output = stdout.decode().strip()
-    error = stderr.decode().strip()
-    if error:
-        print(f"{network['chain']} exec error: {error}")
-        return None
-    try:
-        return json.loads(output)
-    except json.JSONDecodeError as e:
-        print(f"{network['chain']} decode error: {e}")
-        return None
+    return await decode_process_output(network, process)
 
 
 async def run_monitor_xmr(network: dict, api_url: str, monitor: PrivateKey):
@@ -339,7 +329,7 @@ async def run_monitor_xmr(network: dict, api_url: str, monitor: PrivateKey):
         sent_block = httpx.get(f"{api_url}/block/latest?chain={chain}").json()["block"]
         while sent_block != processed_block and IS_RUNNING:
             print(
-                f"{chain} deposit is not yet applied, server desposited block: {sent_block}, script processed block: {processed_block}"
+                f"{chain} deposit is not yet applied, server deposited block: {sent_block}, script processed block: {processed_block}"
             )
             await asyncio.sleep(2)
 
@@ -352,9 +342,6 @@ async def run_monitor_xmr(network: dict, api_url: str, monitor: PrivateKey):
 
 
 async def main():
-    # processed_block = web3.eth.block_number - BLOCKS_CONFIRMATION # should be queried from zex
-    # print(processed_block)
-    # Set up signal handler
     def signal_handler():
         global IS_RUNNING
         IS_RUNNING = False

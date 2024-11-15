@@ -11,6 +11,7 @@ import uvicorn
 from app import ZEX_HOST, ZEX_PORT, manager, stop_event
 from app.api.main import api_router
 from app.api.routes.system import process_loop, transmit_tx
+from app.verify import TransactionVerifier
 
 
 class StreamRequest(BaseModel):
@@ -46,13 +47,14 @@ class JSONMessageManager:
 # Run the broadcaster in the background
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    verifier = TransactionVerifier(num_processes=4)
     t1 = Thread(
         target=asyncio.run,
-        args=(process_loop(),),
+        args=(transmit_tx(verifier),),
     )
     t2 = Thread(
         target=asyncio.run,
-        args=(transmit_tx(),),
+        args=(process_loop(verifier),),
     )
 
     t1.start()
@@ -61,6 +63,9 @@ async def lifespan(_: FastAPI):
 
     # Signal the threads to stop
     stop_event.set()
+    verifier.cleanup()
+    t1.join(1)
+    t2.join(1)
 
 
 app = FastAPI(
@@ -96,4 +101,4 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host=ZEX_HOST, port=ZEX_PORT, log_level="warning")
+    uvicorn.run(app, host=ZEX_HOST, port=ZEX_PORT, log_level="debug")

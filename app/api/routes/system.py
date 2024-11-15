@@ -15,17 +15,20 @@ import httpx
 import redis
 
 from app import stop_event, zex
-from app.verify import verify
+from app.verify import TransactionVerifier
 
 
 class MockZellular:
-    def __init__(self, app_name: str, base_url: str, threshold_percent=67):
+    def __init__(self, app_name: str, base_url: str, threshold_percent: float = 67):
         self.app_name = app_name
         self.base_url = base_url
         self.threshold_percent = threshold_percent
         host, port = base_url.split(":")
         self.r = redis.Redis(
-            host=host, port=port, db=0, password=os.getenv("REDIS_PASSWORD", None)
+            host=host,
+            port=port,
+            db=0,
+            password=os.getenv("REDIS_PASSWORD", "zex_super_secure_password"),
         )
 
     def is_connected(self):
@@ -60,7 +63,7 @@ class MockZellular:
                 return idx
 
 
-def create_mock_zellular_insance(app_name: str):
+def create_mock_zellular_instance(app_name: str):
     base_url = os.getenv("REDIS_URL")
     zellular = MockZellular(app_name, base_url, threshold_percent=2 / 3 * 100)
 
@@ -94,7 +97,7 @@ def create_real_zellular_instance(app_name: str):
 def create_zellular_instance():
     app_name = "zex"
     if os.getenv("USE_REDIS"):
-        return create_mock_zellular_insance(app_name)
+        return create_mock_zellular_instance(app_name)
     return create_real_zellular_instance(app_name)
 
 
@@ -156,7 +159,7 @@ def new_withdraw(txs: list[str]):
     return {"success": True}
 
 
-async def transmit_tx():
+async def transmit_tx(tx_verifier: TransactionVerifier):
     zellular = create_zellular_instance()
 
     try:
@@ -171,8 +174,8 @@ async def transmit_tx():
                     for _ in range(len(zseq_deque))
                 ]
 
-            verify(txs)
-            txs = [x.decode("latin-1") for x in txs if x is not None]
+            verified_txs = tx_verifier.verify(txs)
+            txs = [x.decode("latin-1") for x in verified_txs]
 
             zellular.send(txs)
             await asyncio.sleep(0.1)
@@ -182,7 +185,7 @@ async def transmit_tx():
         logger.warning("Transmit loop is shutting down")
 
 
-async def process_loop():
+async def process_loop(tx_verifier: TransactionVerifier):
     verifier = create_zellular_instance()
 
     with open("./nodes.json") as f:
@@ -204,8 +207,8 @@ async def process_loop():
         try:
             txs: list[str] = json.loads(batch)
             finalized_txs = [x.encode("latin-1") for x in txs]
-            verify(finalized_txs)
-            zex.process(finalized_txs, index)
+            verified_txs = tx_verifier.verify(finalized_txs)
+            zex.process(verified_txs, index)
 
             # TODO: the for loop takes all the CPU time. the sleep gives time to other tasks to run. find a better solution
             await asyncio.sleep(0)

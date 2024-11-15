@@ -1,5 +1,5 @@
 from struct import pack
-from threading import Lock, Thread
+from threading import Thread
 
 from bot import PAIRS, ZexBot
 
@@ -13,8 +13,6 @@ private_seed_int = int.from_bytes(bytearray.fromhex(private_seed), byteorder="bi
 
 def start_threads() -> list[tuple[Thread, ZexBot]]:
     threads: list[tuple[Thread, ZexBot]] = []
-    bot1_lock = Lock()
-    bot2_lock = Lock()
     idx = 0
     for base_chain, x in PAIRS.items():
         for base_token_id, y in x.items():
@@ -28,7 +26,6 @@ def start_threads() -> list[tuple[Thread, ZexBot]]:
                         best_ask=bid_ask_digits["ask"],
                         volume_digits=bid_ask_digits["volume_digits"],
                         price_digits=bid_ask_digits["price_digits"],
-                        lock=bot1_lock,
                         seed=idx,
                     )
                     seller_bot = ZexBot(
@@ -39,7 +36,6 @@ def start_threads() -> list[tuple[Thread, ZexBot]]:
                         best_ask=bid_ask_digits["ask"],
                         volume_digits=bid_ask_digits["volume_digits"],
                         price_digits=bid_ask_digits["price_digits"],
-                        lock=bot2_lock,
                         seed=idx + 1,
                     )
                     print(

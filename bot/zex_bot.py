@@ -1,6 +1,6 @@
 from collections import deque
 from struct import pack, unpack
-from threading import Lock, Thread
+from threading import Thread
 import json
 import os
 import random
@@ -10,6 +10,7 @@ from eth_hash.auto import keccak
 from secp256k1 import PrivateKey
 from websocket import WebSocket, WebSocketApp
 import httpx
+import numpy as np
 import websocket
 
 HOST = os.getenv("ZEX_HOST")
@@ -35,13 +36,11 @@ class ZexBot:
         best_ask: float,
         volume_digits: int,
         price_digits: int,
-        lock: Lock,
         seed: int | None = 1,
     ) -> None:
         self.privkey = PrivateKey(private_key, raw=True)
         self.pair = pair
         self.side = side
-        self.send_tx_lock = lock
         self.is_running = False
         self.volume_digits = volume_digits
         self.price_digits = price_digits
@@ -79,7 +78,7 @@ class ZexBot:
 
         return on_open
 
-    def on_messsage_wrapper(self):
+    def on_message_wrapper(self):
         def on_message(_, msg):
             data = json.loads(msg)
             if "id" in data:
@@ -132,8 +131,8 @@ class ZexBot:
         msg += f'name: {"buy" if name == BUY else "sell"}\n'
         msg += f'base token: {tx[2:5].decode("ascii")}:{unpack(">I", tx[5:9])[0]}\n'
         msg += f'quote token: {tx[9:12].decode("ascii")}:{unpack(">I", tx[12:16])[0]}\n'
-        msg += f'amount: {unpack(">d", tx[16:24])[0]}\n'
-        msg += f'price: {unpack(">d", tx[24:32])[0]}\n'
+        msg += f'amount: {np.format_float_positional(unpack(">d", tx[16:24])[0], trim="0")}\n'
+        msg += f'price: {np.format_float_positional(unpack(">d", tx[24:32])[0], trim="0")}\n'
         msg += f"t: {t}\n"
         msg += f"nonce: {self.nonce}\n"
         msg += f"public: {self.pubkey.hex()}\n"
@@ -161,7 +160,7 @@ class ZexBot:
         self.websocket = WebSocketApp(
             f"ws://{HOST}:{PORT}/ws",
             on_open=self.on_open_wrapper(),
-            on_message=self.on_messsage_wrapper(),
+            on_message=self.on_message_wrapper(),
         )
         Thread(target=self.websocket.run_forever, kwargs={"reconnect": 5}).start()
         self.is_running = True

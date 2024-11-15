@@ -47,10 +47,10 @@ def initialize() -> tuple[Zex, ZexBot, ZexBot]:
     zex.nonces[public2] = 0
 
     buyer_bot = ZexBot(
-        bytes.fromhex(u1_private), "XMR:0-HOL:1", "buy", 169, 171, 5, 4, Lock()
+        bytes.fromhex(u1_private), "XMR:0-HOL:1", "buy", 169, 171, 5, 4
     )
     seller_bot = ZexBot(
-        bytes.fromhex(u2_private), "XMR:0-HOL:1", "sell", 169, 171, 5, 4, Lock()
+        bytes.fromhex(u2_private), "XMR:0-HOL:1", "sell", 169, 171, 5, 4
     )
 
     return zex, buyer_bot, seller_bot

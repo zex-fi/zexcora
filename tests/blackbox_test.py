@@ -5,16 +5,17 @@ import os
 import time
 
 from eth_hash.auto import keccak
-from fakeredis import TcpFakeServer
 from fastapi.testclient import TestClient
 from secp256k1 import PrivateKey
+import numpy as np
 import pytest
 
-from app import manager, stop_event
+from app import stop_event
 
 # Import your FastAPI app
 from app.api.routes.system import process_loop, transmit_tx
 from app.main import app
+from app.verify import TransactionVerifier
 from app.zex import Zex
 
 DEPOSIT, WITHDRAW, BUY, SELL, CANCEL = b"dwbsc"
@@ -64,8 +65,12 @@ def create_order(
     msg += f'name: {"buy" if name == BUY else "sell"}\n'
     msg += f'base token: {tx[2:5].decode("ascii")}:{unpack(">I", tx[5:9])[0]}\n'
     msg += f'quote token: {tx[9:12].decode("ascii")}:{unpack(">I", tx[12:16])[0]}\n'
-    msg += f'amount: {unpack(">d", tx[16:24])[0]}\n'
-    msg += f'price: {unpack(">d", tx[24:32])[0]}\n'
+    msg += (
+        f'amount: {np.format_float_positional(unpack(">d", tx[16:24])[0], trim="0")}\n'
+    )
+    msg += (
+        f'price: {np.format_float_positional(unpack(">d", tx[24:32])[0], trim="0")}\n'
+    )
     msg += f"t: {t}\n"
     msg += f"nonce: {nonce}\n"
     msg += f"public: {pubkey.hex()}\n"
@@ -77,7 +82,7 @@ def create_order(
     return tx
 
 
-def create_canel_order(privkey: PrivateKey, pubkey: bytes, order: bytes):
+def create_cancel_order(privkey: PrivateKey, pubkey: bytes, order: bytes):
     tx = version + pack(">B", CANCEL) + order + pubkey
     msg = f"""v: {tx[0]}\nname: cancel\nslice: {tx[2:41].hex()}\npublic: {tx[41:74].hex()}\n"""
     msg = "".join(("\x19Ethereum Signed Message:\n", str(len(msg)), msg))
@@ -94,9 +99,13 @@ def redis_client(request):
 
     redis_client = Redis(
         os.getenv("REDIS_HOST", "127.0.0.1"),
-        os.getenv("REDIS_PORT", "6379"),
+        int(os.getenv("REDIS_PORT", "7379")),
         db=0,
+        password=os.getenv("REDIS_PASSWORD", "zex_super_secure_password"),
     )
+    for _ in range(5):
+        redis_client.ping()
+        time.sleep(1)
     redis_client.flushall()
     return redis_client
 
@@ -105,20 +114,22 @@ def redis_client(request):
 def zex_instance():
     zex = Zex()
 
-    server = TcpFakeServer(
-        (os.getenv("REDIS_HOST", "127.0.0.1"), int(os.getenv("REDIS_PORT", "6379")))
-    )
-    t1 = Thread(target=server.serve_forever, daemon=True)
+    verifier = TransactionVerifier(num_processes=4)
+
+    # server = TcpFakeServer(
+    #     (os.getenv("REDIS_HOST", "127.0.0.1"), int(os.getenv("REDIS_PORT", "6379")))
+    # )
+    # t1 = Thread(target=server.serve_forever, daemon=True)
     t2 = Thread(
         target=asyncio.run,
-        args=(process_loop(),),
+        args=(transmit_tx(verifier),),
     )
     t3 = Thread(
         target=asyncio.run,
-        args=(transmit_tx(),),
+        args=(process_loop(verifier),),
     )
 
-    t1.start()
+    # t1.start()
     t2.start()
     t3.start()
 
@@ -126,14 +137,15 @@ def zex_instance():
 
     stop_event.set()
 
-    server.shutdown()
-    t1.join()
+    # server.shutdown()
+    verifier.cleanup()
+    # t1.join()
     t2.join()
     t3.join()
 
 
-def test_get_exchange_info(zex_instance):
-    response = client.get("/api/v1/exchangeInfo")
+def test_get_exchange_info(zex_instance, redis_client):
+    response = client.get("/v1/exchangeInfo")
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, dict)
@@ -149,13 +161,13 @@ def test_new_market_order(zex_instance: Zex, redis_client):
     offset = 0
     private_key = (private_seed_int + offset).to_bytes(32, "big")
     privkey = PrivateKey(private_key, raw=True)
-    xmr_usdt = "XMR:0-HOL:1"
+    xmr_usdt = "XMR:0-POL:1"
     tx = create_order(
         privkey, xmr_usdt, "buy", 170.2, 0.1, nonce=0, counter=0, verbose=False
     )
-    response = client.post("/api/v1/order", json=[tx.decode("latin-1")])
+    response = client.post("/v1/order", json=[tx.decode("latin-1")])
     assert response.status_code == 200
     assert response.json() == {"success": True}
-    time.sleep(1)
+    time.sleep(5)
 
     assert redis_client.llen(app_name) == 1

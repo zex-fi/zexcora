@@ -14,5 +14,5 @@ networks:
     blocks_confirmation: 1
     block_duration: 60
 
-api_url: http://localhost:8000/v1
+api_url: http://127.0.0.1:15782/v1
 monitor_private: "cd7d94cd90d25d8722087a85e51ce3e5d8d06d98cb9f1c02e93f646c90af0193"

@@ -18,45 +18,15 @@ from .models.transaction import (
     WithdrawTransaction,
 )
 from .proto import zex_pb2
-from .verify import chunkify
+from .singleton import SingletonMeta
 
 BTC_XMR_DEPOSIT, DEPOSIT, WITHDRAW, BUY, SELL, CANCEL, REGISTER = b"xdwbscr"
 TRADES_TTL = 1000
 
 
-class SingletonMeta(type):
-    """
-    This is a thread-safe implementation of Singleton.
-    """
-
-    _instances = {}
-
-    _lock: Lock = Lock()
-    """
-    We now have a lock object that will be used to synchronize threads during
-    first access to the Singleton.
-    """
-
-    def __call__(cls, *args, **kwargs):
-        """
-        Possible changes to the value of the `__init__` argument do not affect
-        the returned instance.
-        """
-        # Now, imagine that the program has just been launched. Since there's no
-        # Singleton instance yet, multiple threads can simultaneously pass the
-        # previous conditional and reach this point almost at the same time. The
-        # first of them will acquire lock and will proceed further, while the
-        # rest will wait here.
-        with cls._lock:
-            # The first thread to acquire the lock, reaches this conditional,
-            # goes inside and creates the Singleton instance. Once it leaves the
-            # lock block, a thread that might have been waiting for the lock
-            # release may then enter this section. But since the Singleton field
-            # is already initialized, the thread won't create a new object.
-            if cls not in cls._instances:
-                instance = super().__call__(*args, **kwargs)
-                cls._instances[cls] = instance
-        return cls._instances[cls]
+def chunkify(lst, n_chunks):
+    for i in range(0, len(lst), n_chunks):
+        yield lst[i: i + n_chunks]
 
 
 class Zex(metaclass=SingletonMeta):
@@ -136,74 +106,77 @@ class Zex(metaclass=SingletonMeta):
 
         self.test_mode = os.getenv("TEST_MODE")
         if self.test_mode:
-            from secp256k1 import PrivateKey
+            self.initialize_test_mode()
 
-            client_private = (
-                "31a84594060e103f5a63eb742bd46cf5f5900d8406e2726dedfc61c7cf43eba0"
-            )
-            client_priv = PrivateKey(bytes(bytearray.fromhex(client_private)), raw=True)
-            client_pub = client_priv.pubkey.serialize()
-            self.register_pub(client_pub)
+    def initialize_test_mode(self):
+        from secp256k1 import PrivateKey
 
-            private_seed = (
-                "31a84594060e103f5a63eb742bd46cf5f5900d8406e2726dedfc61c7cf43ebac"
-            )
-            private_seed_int = int.from_bytes(
-                bytearray.fromhex(private_seed), byteorder="big"
-            )
+        client_private = (
+            "31a84594060e103f5a63eb742bd46cf5f5900d8406e2726dedfc61c7cf43eba0"
+        )
+        client_priv = PrivateKey(bytes(bytearray.fromhex(client_private)), raw=True)
+        client_pub = client_priv.pubkey.serialize()
+        self.register_pub(client_pub)
 
-            TOKENS = {
-                "BTC": [(0, "0x" + "0" * 40)],
-                "XMR": [(0, "0x" + "0" * 40)],
-                "POL": [
-                    (1, "0xc2132D05D31c914a87C6611C10748AEb04B58e8F"),
-                    (2, "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"),
-                    (3, "0x1BFD67037B42Cf73acF2047067bd4F2C47D9BfD6"),
-                    (4, "0x53E0bca35eC356BD5ddDFebbD1Fc0fD03FaBad39"),
-                ],
-                "BSC": [
-                    (1, "0x55d398326f99059fF775485246999027B3197955"),
-                    (2, "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d"),
-                    (3, "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c"),
-                    (4, "0xF8A0BF9cF54Bb92F17374d9e9A321E6a111a51bD"),
-                ],
-                "ARB": [
-                    (1, "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9"),
-                    (2, "0xaf88d065e77c8cC2239327C5EDb3A432268e5831"),
-                    (3, "0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f"),
-                    (4, "0xf97f4df75117a78c1A5a0DBb814Af92458539FB4"),
-                ],
-            }
+        private_seed = (
+            "31a84594060e103f5a63eb742bd46cf5f5900d8406e2726dedfc61c7cf43ebac"
+        )
+        private_seed_int = int.from_bytes(
+            bytearray.fromhex(private_seed), byteorder="big"
+        )
 
-            for i in range(100):
-                bot_private_key = (private_seed_int + i).to_bytes(32, "big")
-                bot_priv = PrivateKey(bot_private_key, raw=True)
-                bot_pub = bot_priv.pubkey.serialize()
-                self.register_pub(bot_pub)
+        TOKENS = {
+            "BTC": [(0, "0x" + "0" * 40)],
+            "XMR": [(0, "0x" + "0" * 40)],
+            "POL": [
+                (1, "0xc2132D05D31c914a87C6611C10748AEb04B58e8F"),
+                (2, "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"),
+                (3, "0x1BFD67037B42Cf73acF2047067bd4F2C47D9BfD6"),
+                (4, "0x53E0bca35eC356BD5ddDFebbD1Fc0fD03FaBad39"),
+            ],
+            "BSC": [
+                (1, "0x55d398326f99059fF775485246999027B3197955"),
+                (2, "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d"),
+                (3, "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c"),
+                (4, "0xF8A0BF9cF54Bb92F17374d9e9A321E6a111a51bD"),
+            ],
+            "ARB": [
+                (1, "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9"),
+                (2, "0xaf88d065e77c8cC2239327C5EDb3A432268e5831"),
+                (3, "0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f"),
+                (4, "0xf97f4df75117a78c1A5a0DBb814Af92458539FB4"),
+            ],
+        }
 
-                for chain, token_ids in TOKENS.items():
-                    for token_id, contract_address in token_ids:
-                        if chain not in self.last_token_id:
-                            self.last_token_id[chain] = 0
-                        if chain not in self.contract_to_token_id_on_chain_lookup:
-                            self.contract_to_token_id_on_chain_lookup[chain] = {}
-                        if chain not in self.token_id_to_contract_on_chain_lookup:
-                            self.token_id_to_contract_on_chain_lookup[chain] = {}
-                        if (
+        for i in range(100):
+            bot_private_key = (private_seed_int + i).to_bytes(32, "big")
+            bot_priv = PrivateKey(bot_private_key, raw=True)
+            bot_pub = bot_priv.pubkey.serialize()
+            self.register_pub(bot_pub)
+
+            for chain, token_ids in TOKENS.items():
+                for token_id, contract_address in token_ids:
+                    if chain not in self.last_token_id:
+                        self.last_token_id[chain] = 0
+                    if chain not in self.contract_to_token_id_on_chain_lookup:
+                        self.contract_to_token_id_on_chain_lookup[chain] = {}
+                    if chain not in self.token_id_to_contract_on_chain_lookup:
+                        self.token_id_to_contract_on_chain_lookup[chain] = {}
+                    if (
+                        contract_address
+                        not in self.contract_to_token_id_on_chain_lookup[chain]
+                    ):
+                        self.contract_to_token_id_on_chain_lookup[chain][
                             contract_address
-                            not in self.contract_to_token_id_on_chain_lookup[chain]
-                        ):
-                            self.contract_to_token_id_on_chain_lookup[chain][
-                                contract_address
-                            ] = token_id
-                            self.token_id_to_contract_on_chain_lookup[chain][
-                                token_id
-                            ] = contract_address
-                            self.last_token_id[chain] += 1
-                        if f"{chain}:{token_id}" not in self.assets:
-                            self.assets[f"{chain}:{token_id}"] = {}
-                        self.assets[f"{chain}:{token_id}"][bot_pub] = 9_000_000 + i
-                        self.assets[f"{chain}:{token_id}"][client_pub] = 1_000
+                        ] = token_id
+                        self.token_id_to_contract_on_chain_lookup[chain][token_id] = (
+                            contract_address
+                        )
+                        self.last_token_id[chain] += 1
+                    if f"{chain}:{token_id}" not in self.assets:
+                        self.assets[f"{chain}:{token_id}"] = {}
+                    self.assets[f"{chain}:{token_id}"][bot_pub] = 9_000_000 + i
+                    self.assets[f"{chain}:{token_id}"][client_pub] = 1_000
 
     def to_protobuf(self) -> zex_pb2.ZexState:
         state = zex_pb2.ZexState()
@@ -236,7 +209,7 @@ class Zex(metaclass=SingletonMeta):
             pb_market.final_id = market.final_id
             pb_market.last_update_id = market.last_update_id
 
-            # TODO: find a better solution since loading pickle is dangarous
+            # TODO: find a better solution since loading pickle is dangerous
             buffer = BytesIO()
             market.kline.to_pickle(buffer)
             pb_market.kline = buffer.getvalue()
@@ -474,7 +447,7 @@ class Zex(metaclass=SingletonMeta):
                 continue
             v, name = tx[0:2]
             if v != 1:
-                logger.error("invalid verion", version=v)
+                logger.error("invalid version", version=v)
                 continue
 
             if name == DEPOSIT or name == BTC_XMR_DEPOSIT:
@@ -487,13 +460,18 @@ class Zex(metaclass=SingletonMeta):
                 base_token, quote_token, pair = self._get_tx_pair(tx)
 
                 if pair not in self.markets:
-                    self.markets[pair] = Market(base_token, quote_token, self)
                     if base_token not in self.assets:
                         self.assets[base_token] = {}
                     if quote_token not in self.assets:
                         self.assets[quote_token] = {}
+                    self.markets[pair] = Market(base_token, quote_token, self)
                 t = struct.unpack(">I", tx[32:36])[0]
                 # fast route check for instant match
+                logger.debug(
+                    "executing tx base: {base_token}, quote: {quote_token}",
+                    base_token=base_token,
+                    quote_token=quote_token,
+                )
                 if self.markets[pair].match_instantly(tx, t):
                     modified_pairs.add(pair)
                     continue
@@ -563,7 +541,7 @@ class Zex(metaclass=SingletonMeta):
 
             if self.token_decimal_on_chain_lookup[chain][token_contract] != decimal:
                 logger.warning(
-                    f"decimal for contract {token_contract} chaged from {self.token_decimal_on_chain_lookup[chain][token_contract]} to {decimal}"
+                    f"decimal for contract {token_contract} changed from {self.token_decimal_on_chain_lookup[chain][token_contract]} to {decimal}"
                 )
                 self.token_decimal_on_chain_lookup[chain][token_contract] = decimal
             amount /= 10**decimal
@@ -680,13 +658,13 @@ class Zex(metaclass=SingletonMeta):
             "E": now,  # Message output time
             "T": now,  # Transaction time
             "bids": [
-                [p, q]
+                [p, str(q)]
                 for p, q in sorted(
                     order_book["bids"].items(), key=lambda x: x[0], reverse=True
                 )[:limit]
             ],
             "asks": [
-                [p, q]
+                [p, str(q)]
                 for p, q in sorted(order_book["asks"].items(), key=lambda x: x[0])[
                     :limit
                 ]
@@ -934,7 +912,7 @@ class Market:
         self.final_id += 1
 
     def place(self, tx: bytes) -> bool:
-        operation, amount, price, nonce, public, index = _parse_transaction(tx)
+        operation, amount, price, _, public, index = _parse_transaction(tx)
 
         if operation == BUY:
             ok = self._place_buy_order(public, amount, price, index, tx)
@@ -957,7 +935,7 @@ class Market:
         for order in self.zex.orders[public]:
             if order_slice not in order:
                 continue
-            operation, _, price, nonce, public, index = _parse_transaction(order)
+            operation, _, price, _, public, index = _parse_transaction(order)
             amount = self.zex.amounts.pop(order)
             del self.zex.orders[public][order]
             if operation == BUY:
