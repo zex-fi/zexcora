@@ -8,9 +8,10 @@ from loguru import logger
 from pydantic import BaseModel
 import uvicorn
 
-from app import ZEX_HOST, ZEX_PORT, manager, stop_event
+from app import manager, stop_event
 from app.api.main import api_router
 from app.api.routes.system import process_loop, transmit_tx
+from app.config import settings
 from app.verify import TransactionVerifier
 
 
@@ -81,7 +82,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(api_router, prefix="/v1")
+app.include_router(api_router, prefix=settings.zex.api_prefix)
 
 
 @app.websocket("/ws")
@@ -101,4 +102,9 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host=ZEX_HOST, port=ZEX_PORT, log_level="debug")
+    uvicorn.run(
+        app,
+        host=settings.zex.host,
+        port=settings.zex.port,
+        log_level="debug" if settings.zex.verbose else "info",
+    )

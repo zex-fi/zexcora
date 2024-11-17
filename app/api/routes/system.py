@@ -15,6 +15,7 @@ import httpx
 import redis
 
 from app import stop_event, zex
+from app.config import settings
 from app.verify import TransactionVerifier
 
 
@@ -28,7 +29,7 @@ class MockZellular:
             host=host,
             port=port,
             db=0,
-            password=os.getenv("REDIS_PASSWORD", "zex_super_secure_password"),
+            password=settings.zex.redis.password,
         )
 
     def is_connected(self):
@@ -64,7 +65,7 @@ class MockZellular:
 
 
 def create_mock_zellular_instance(app_name: str):
-    base_url = os.getenv("REDIS_URL")
+    base_url = settings.zex.redis.url
     zellular = MockZellular(app_name, base_url, threshold_percent=2 / 3 * 100)
 
     while not zellular.is_connected():
@@ -96,7 +97,7 @@ def create_real_zellular_instance(app_name: str):
 
 def create_zellular_instance():
     app_name = "zex"
-    if os.getenv("USE_REDIS"):
+    if settings.zex.use_redis:
         return create_mock_zellular_instance(app_name)
     return create_real_zellular_instance(app_name)
 
@@ -175,7 +176,7 @@ async def transmit_tx(tx_verifier: TransactionVerifier):
                 ]
 
             verified_txs = tx_verifier.verify(txs)
-            txs = [x.decode("latin-1") for x in verified_txs]
+            txs = [x.decode("latin-1") for x in verified_txs if x is not None]
 
             zellular.send(txs)
             await asyncio.sleep(0.1)
@@ -199,7 +200,7 @@ async def process_loop(tx_verifier: TransactionVerifier):
     verifier.operators = operators
     verifier.aggregated_public_key = aggregated_public_key
 
-    verbose = True if os.getenv("TEST_MODE") else False
+    verbose = settings.zex.verbose
 
     for batch, index in verifier.batches(after=zex.last_tx_index):
         if verbose:

@@ -8,11 +8,8 @@ from fastapi import APIRouter, HTTPException
 from loguru import logger
 from web3 import Web3
 
-from app import (
-    ZEX_BTC_PUBLIC_KEY,
-    ZEX_MONERO_PUBLIC_ADDRESS,
-    zex,
-)
+from app import zex
+from app.config import settings
 from app.models.response import (
     Addresses,
     NonceResponse,
@@ -266,8 +263,8 @@ def get_create2_address(deployer_address: str, salt: int, bytecode_hash: str) ->
     return to_checksum_address(address_bytes)
 
 
-btc_master_pubkey = PublicKey(ZEX_BTC_PUBLIC_KEY)
-monero_master_address = Address(ZEX_MONERO_PUBLIC_ADDRESS)
+btc_master_pubkey = PublicKey(settings.zex.keys.btc_public_key)
+monero_master_address = Address(settings.zex.keys.monero_public_address)
 
 
 @router.get("/capital/deposit/address/list")

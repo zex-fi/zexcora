@@ -4,7 +4,6 @@ from struct import pack
 import asyncio
 import hashlib
 import json
-import os
 import signal
 
 from bitcoinrpc import BitcoinRPC, RPCError
@@ -31,7 +30,7 @@ TOKENS = {
 
 
 def create_tx(
-        deposits, chain: str, from_block, to_block, timestamp, monitor: PrivateKey
+    deposits, chain: str, from_block, to_block, timestamp, monitor: PrivateKey
 ):
     header_format = ">B B 3s Q Q H"
     version = 1

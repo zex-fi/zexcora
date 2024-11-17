@@ -28,6 +28,8 @@ pyfrost = { git = "https://github.com/zellular-xyz/pyfrost", rev = "main" }
 web3 = "^7.4.0"
 redis = "^5.1.1"
 protobuf = "^5.28.3"
+pydantic-settings = "^2.6.1"
+python-dotenv = "^1.0.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.2"

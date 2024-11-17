@@ -7,12 +7,12 @@ from time import time as unix_time
 from typing import IO
 import asyncio
 import heapq
-import os
 import struct
 
 from loguru import logger
 import pandas as pd
 
+from .config import settings
 from .models.transaction import (
     Deposit,
     WithdrawTransaction,
@@ -26,7 +26,7 @@ TRADES_TTL = 1000
 
 def chunkify(lst, n_chunks):
     for i in range(0, len(lst), n_chunks):
-        yield lst[i: i + n_chunks]
+        yield lst[i : i + n_chunks]
 
 
 class Zex(metaclass=SingletonMeta):
@@ -42,7 +42,9 @@ class Zex(metaclass=SingletonMeta):
         self.depth_callback = depth_callback
         self.state_dest = state_dest
         self.light_node = light_node
-        self.save_frequency = 500  # save state every N transactions
+        self.save_frequency = (
+            settings.zex.state_save_frequency
+        )  # save state every N transactions
 
         self.benchmark_mode = benchmark_mode
 
@@ -53,32 +55,9 @@ class Zex(metaclass=SingletonMeta):
         self.assets = {}
         self.contract_to_token_id_on_chain_lookup: dict[str, dict[str, int]] = {}
         self.token_id_to_contract_on_chain_lookup: dict[str, dict[int, str]] = {}
-        self.token_decimal_on_chain_lookup: dict[str, dict[str, int]] = {
-            "BTC": {
-                "0x" + "0" * 40: 8,
-            },
-            "XMR": {
-                "0x" + "0" * 40: 12,
-            },
-            "POL": {
-                "0xc2132D05D31c914a87C6611C10748AEb04B58e8F": 6,
-                "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359": 6,
-                "0x1BFD67037B42Cf73acF2047067bd4F2C47D9BfD6": 8,
-                "0x53E0bca35eC356BD5ddDFebbD1Fc0fD03FaBad39": 18,
-            },
-            "BSC": {
-                "0x55d398326f99059fF775485246999027B3197955": 6,
-                "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d": 6,
-                "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c": 8,
-                "0xF8A0BF9cF54Bb92F17374d9e9A321E6a111a51bD": 18,
-            },
-            "ARB": {
-                "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9": 6,
-                "0xaf88d065e77c8cC2239327C5EDb3A432268e5831": 6,
-                "0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f": 8,
-                "0xf97f4df75117a78c1A5a0DBb814Af92458539FB4": 18,
-            },
-        }
+        self.token_decimal_on_chain_lookup: dict[str, dict[str, int]] = (
+            settings.zex.default_tokens_deciaml
+        )
         self.last_token_id: dict[str, int] = {}
         self.amounts = {}
         self.trades = {}
@@ -88,13 +67,7 @@ class Zex(metaclass=SingletonMeta):
         self.id_to_public_lookup: dict[int, bytes] = {}
 
         self.withdraws: dict[str, dict[bytes, list[WithdrawTransaction]]] = {}
-        self.deposited_blocks = {
-            "BTC": 869815,
-            "XMR": 3278511,
-            "POL": 64229117,
-            "BSC": 43969265,
-            "ARB": 273985934,
-        }
+        self.deposited_blocks = settings.zex.deposited_block
         self.withdraw_nonces: dict[str, dict[bytes, int]] = {
             k: {} for k in self.deposited_blocks.keys()
         }
@@ -104,7 +77,7 @@ class Zex(metaclass=SingletonMeta):
         self.last_user_id_lock = Lock()
         self.last_user_id = 0
 
-        self.test_mode = os.getenv("TEST_MODE")
+        self.test_mode = not settings.zex.mainnet
         if self.test_mode:
             self.initialize_test_mode()
 
@@ -321,6 +294,10 @@ class Zex(metaclass=SingletonMeta):
 
         zex.last_tx_index = pb_state.last_tx_index
 
+        zex.assets = {
+            token: {e.public_key: e.amount for e in pb_balance.balances}
+            for token, pb_balance in pb_state.balances.items()
+        }
         for pair, pb_market in pb_state.markets.items():
             market = Market(pb_market.base_token, pb_market.quote_token, zex)
             market.buy_orders = [
@@ -341,10 +318,6 @@ class Zex(metaclass=SingletonMeta):
             market.kline = pd.read_pickle(BytesIO(pb_market.kline))
             zex.markets[pair] = market
 
-        zex.assets = {
-            token: {e.public_key: e.amount for e in pb_balance.balances}
-            for token, pb_balance in pb_state.balances.items()
-        }
         zex.amounts = {e.tx: e.amount for e in pb_state.amounts}
         zex.trades = {
             e.public_key: deque(
@@ -499,7 +472,7 @@ class Zex(metaclass=SingletonMeta):
             )
         self.last_tx_index = last_tx_index
 
-        if self.saved_state_index + 500 < self.last_tx_index:
+        if self.saved_state_index + self.save_frequency < self.last_tx_index:
             self.saved_state_index = self.last_tx_index
             self.save_state()
 

@@ -2,7 +2,6 @@ from hashlib import sha256
 from itertools import repeat
 from struct import unpack
 import multiprocessing
-import os
 
 from eth_hash.auto import keccak
 from loguru import logger
@@ -15,6 +14,8 @@ from secp256k1 import PublicKey
 import numpy as np
 
 from app.singleton import SingletonMeta
+
+from .config import settings
 
 BTC_XMR_DEPOSIT, DEPOSIT, WITHDRAW, BUY, SELL, CANCEL, REGISTER = b"xdwbscr"
 
@@ -55,9 +56,9 @@ def cancel_msg(tx: bytes) -> bytes:
 
 
 def _verify_single_tx(
-        tx: bytes,
-        deposit_monitor_pub_key: int,
-        btc_xmr_monitor_pub: bytes,
+    tx: bytes,
+    deposit_monitor_pub_key: int,
+    btc_xmr_monitor_pub: bytes,
 ) -> bool:
     """Verify a single transaction."""
     name = tx[1]
@@ -84,7 +85,7 @@ def _verify_single_tx(
         return pubkey.schnorr_verify(msg, sig, bip340tag="zex")
 
     elif name == WITHDRAW:
-        msg, pubkey, sig = withdraw_msg(tx), tx[45:78], tx[78: 78 + 64]
+        msg, pubkey, sig = withdraw_msg(tx), tx[45:78], tx[78 : 78 + 64]
         logger.info(f"withdraw request pubkey: {pubkey}")
         pubkey = PublicKey(pubkey, raw=True)
         sig = pubkey.ecdsa_deserialize_compact(sig)
@@ -93,11 +94,11 @@ def _verify_single_tx(
 
     else:
         if name == CANCEL:
-            msg, pubkey, sig = cancel_msg(tx), tx[41:74], tx[74: 74 + 64]
+            msg, pubkey, sig = cancel_msg(tx), tx[41:74], tx[74 : 74 + 64]
         elif name in (BUY, SELL):
-            msg, pubkey, sig = order_msg(tx), tx[40:73], tx[73: 73 + 64]
+            msg, pubkey, sig = order_msg(tx), tx[40:73], tx[73 : 73 + 64]
         elif name == REGISTER:
-            msg, pubkey, sig = register_msg(), tx[2:35], tx[35: 35 + 64]
+            msg, pubkey, sig = register_msg(), tx[2:35], tx[35 : 35 + 64]
         else:
             return False
 
@@ -108,7 +109,7 @@ def _verify_single_tx(
 
 
 def _verify_chunk(
-        txs: list[bytes], deposit_monitor_pub_key: int, btc_xmr_monitor_pub: bytes
+    txs: list[bytes], deposit_monitor_pub_key: int, btc_xmr_monitor_pub: bytes
 ) -> list[bool]:
     """Verify a chunk of transactions."""
     return [
@@ -129,9 +130,9 @@ class TransactionVerifier(metaclass=SingletonMeta):
         self.pool = multiprocessing.Pool(processes=self.num_processes)
 
         # Initialize environment variables
-        self.deposit_monitor_pub_key = os.getenv("DEPOSIT_MONITOR_PUB_KEY")
-        self.btc_xmr_deposit_monitor_pub_key = os.getenv(
-            "BTC_XMR_DEPOSIT_MONITOR_PUB_KEY"
+        self.deposit_monitor_pub_key = settings.zex.keys.deposit_public_key
+        self.btc_xmr_deposit_monitor_pub_key = (
+            settings.zex.keys.btc_xmr_deposit_public_key
         )
         self.btc_xmr_monitor_pub = PublicKey(
             bytes.fromhex(self.btc_xmr_deposit_monitor_pub_key), raw=True
@@ -155,7 +156,7 @@ class TransactionVerifier(metaclass=SingletonMeta):
     def _chunkify(lst: list, n_chunks: int) -> list[list]:
         """Split a list into n roughly equal chunks."""
         chunk_size = len(lst) // n_chunks + 1
-        return [lst[i: i + chunk_size] for i in range(0, len(lst), chunk_size)]
+        return [lst[i : i + chunk_size] for i in range(0, len(lst), chunk_size)]
 
     def verify(self, txs: list[bytes]) -> list[bytes | None]:
         """
