@@ -18,7 +18,7 @@ PORT = int(os.getenv("ZEX_PORT"))
 
 assert HOST is not None and PORT is not None, "HOST or PORT is not defined"
 
-DEPOSIT, WITHDRAW, BUY, SELL, CANCEL = b"dwbsc"
+BTC_XMR_DEPOSIT, DEPOSIT, WITHDRAW, BUY, SELL, CANCEL, REGISTER = b"xdwbscr"
 
 version = pack(">B", 1)
 
@@ -47,9 +47,7 @@ class ZexBot:
         self.rng = random.Random(seed)
 
         self.pubkey = self.privkey.pubkey.serialize()
-        self.user_id = httpx.get(
-            f"http://{HOST}:{PORT}/v1/user/id?public={self.pubkey.hex()}"
-        ).json()["id"]
+        self.user_id: int = None
         self.nonce = -1
         self.counter = 0
         self.orders = deque()
@@ -155,6 +153,30 @@ class ZexBot:
         tx += sig
         return tx
 
+    def create_register_msg(self):
+        """Format registration message for verification."""
+        msg = "Welcome to ZEX."
+        msg = "".join(("\x19Ethereum Signed Message:\n", str(len(msg)), msg))
+        return msg.encode("ascii")
+
+    def register(self):
+        tx = version + pack(">B", REGISTER) + self.pubkey
+        sig = self.privkey.ecdsa_sign(keccak(self.create_register_msg()), raw=True)
+        sig = self.privkey.ecdsa_serialize_compact(sig)
+        tx += sig
+
+        httpx.post(f"http://{HOST}:{PORT}/v1/order", json=[tx.decode("latin-1")])
+        for _ in range(5):
+            resp = httpx.get(
+                f"http://{HOST}:{PORT}/v1/user/id?public={self.pubkey.hex()}"
+            )
+            if resp.status_code != 200:
+                continue
+            self.user_id = resp.json()["id"]
+            break
+        if self.user_id is None:
+            resp.raise_for_status()
+
     def run(self):
         websocket.enableTrace(False)
         self.websocket = WebSocketApp(
@@ -164,6 +186,7 @@ class ZexBot:
         )
         Thread(target=self.websocket.run_forever, kwargs={"reconnect": 5}).start()
         self.is_running = True
+        self.register()
         while self.is_running:
             time.sleep(2)
             maker = self.rng.choices([True, False], [0.5, 0.5])[0]
