@@ -631,16 +631,18 @@ class Zex(metaclass=SingletonMeta):
             "E": now,  # Message output time
             "T": now,  # Transaction time
             "bids": [
-                [p, str(q)]
+                [p, q]
                 for p, q in sorted(
                     order_book["bids"].items(), key=lambda x: x[0], reverse=True
                 )[:limit]
+                if q != 0
             ],
             "asks": [
-                [p, str(q)]
+                [p, q]
                 for p, q in sorted(order_book["asks"].items(), key=lambda x: x[0])[
                     :limit
                 ]
+                if q != 0
             ],
         }
 
