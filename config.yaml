@@ -21,11 +21,11 @@ zex:
     password: <password>
 
   deposited_block:
-    BTC: 869815
-    XMR: 3278511
-    POL: 64229117
-    BSC: 43969265
-    ARB: 273985934
+    BTC: 870904
+    XMR: 3284235
+    POL: 64445422
+    BSC: 44125352
+    ARB: 275849157
 
   default_tokens_deciaml:
     BTC:

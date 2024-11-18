@@ -8,6 +8,23 @@ from . import CHAIN_TYPES, NAMES, SYMBOLS, TAGS, USDT_MAINNET
 
 router = APIRouter()
 
+market_filter_list = [
+    "BTC:0-POL:1",
+    "XMR:0-POL:1",
+    "POL:4-POL:1",
+    "BSC:4-POL:1",
+    "ARB:4-POL:1",
+]
+
+token_filter_list = [
+    "BTC:0",
+    "XMR:0",
+    "POL:1",
+    "POL:4",
+    "BSC:4",
+    "ARB:4",
+]
+
 
 @router.get("/depth")
 async def depth(symbol: str, limit: int = 500):
@@ -43,13 +60,6 @@ def get_token_info(token) -> Token:
 
 @timed_lru_cache(seconds=60)
 def _exchange_info_response():
-    filter_list = [
-        "POL:4-POL:1",
-        "BSC:4-POL:1",
-        "ARB:4-POL:1",
-        "BTC:0-POL:1",
-        "XMR:0-POL:1",
-    ]
     return ExchangeInfoResponse(
         timezone="UTC",
         symbols=[
@@ -63,9 +73,13 @@ def _exchange_info_response():
                 priceChange7D=market.get_price_change_7d_percent(),
             )
             for name, market in zex.markets.items()
-            if name in filter_list
+            if name in market_filter_list
         ],
-        tokens=[get_token_info(token) for token in zex.assets.keys()],
+        tokens=[
+            get_token_info(token)
+            for token in zex.assets.keys()
+            if token in token_filter_list
+        ],
         chains=[
             Chain(
                 chain=c,

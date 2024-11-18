@@ -1,4 +1,4 @@
-from collections import defaultdict, deque
+from collections import deque
 from collections.abc import Callable
 from copy import deepcopy
 from io import BytesIO
@@ -306,12 +306,14 @@ class Zex(metaclass=SingletonMeta):
             market.sell_orders = [
                 (o.price, o.index, o.tx) for o in pb_market.sell_orders
             ]
-            market.bids_order_book = defaultdict(
-                float, {e.price: e.amount for e in pb_market.bids_order_book}
-            )
-            market.asks_order_book = defaultdict(
-                float, {e.price: e.amount for e in pb_market.asks_order_book}
-            )
+
+            market.bids_order_book = {
+                e.price: e.amount for e in pb_market.bids_order_book
+            }
+            market.asks_order_book = {
+                e.price: e.amount for e in pb_market.asks_order_book
+            }
+
             market.first_id = pb_market.first_id
             market.final_id = pb_market.final_id
             market.last_update_id = pb_market.last_update_id
@@ -635,14 +637,12 @@ class Zex(metaclass=SingletonMeta):
                 for p, q in sorted(
                     order_book["bids"].items(), key=lambda x: x[0], reverse=True
                 )[:limit]
-                if q != 0
             ],
             "asks": [
                 [p, q]
                 for p, q in sorted(order_book["asks"].items(), key=lambda x: x[0])[
                     :limit
                 ]
-                if q != 0
             ],
         }
 
@@ -713,8 +713,8 @@ class Market:
         self.buy_orders: list[tuple[float, int, bytes]] = []
         self.sell_orders: list[tuple[float, int, bytes]] = []
         self.order_book_lock = Lock()
-        self.bids_order_book: dict[float, float] = defaultdict(float)
-        self.asks_order_book: dict[float, float] = defaultdict(float)
+        self.bids_order_book: dict[float, float] = {}
+        self.asks_order_book: dict[float, float] = {}
         self._order_book_updates = {"bids": {}, "asks": {}}
 
         self.first_id = 0
@@ -817,7 +817,10 @@ class Market:
             self.zex.orders[public][tx] = True
             self.quote_token_balances[public] -= price * amount
             with self.order_book_lock:
-                self.bids_order_book[price] += amount
+                if price in self.bids_order_book:
+                    self.bids_order_book[price] += amount
+                else:
+                    self.bids_order_book[price] = amount
                 self._order_book_updates["bids"][price] = self.bids_order_book[price]
 
         return True
@@ -861,7 +864,10 @@ class Market:
             self.zex.orders[public][tx] = True
             self.base_token_balances[public] -= amount
             with self.order_book_lock:
-                self.asks_order_book[price] += amount
+                if price in self.asks_order_book:
+                    self.asks_order_book[price] += amount
+                else:
+                    self.asks_order_book[price] = amount
                 self._order_book_updates["asks"][price] = self.asks_order_book[price]
 
         return True
@@ -1083,7 +1089,10 @@ class Market:
 
         heapq.heappush(self.buy_orders, (-price, index, tx))
         with self.order_book_lock:
-            self.bids_order_book[price] += amount
+            if price in self.bids_order_book:
+                self.bids_order_book[price] += amount
+            else:
+                self.bids_order_book[price] = amount
             self._order_book_updates["bids"][price] = self.bids_order_book[price]
 
         self.quote_token_balances[public] = balance - required
@@ -1104,7 +1113,10 @@ class Market:
 
         heapq.heappush(self.sell_orders, (price, index, tx))
         with self.order_book_lock:
-            self.asks_order_book[price] += amount
+            if price in self.asks_order_book:
+                self.asks_order_book[price] += amount
+            else:
+                self.asks_order_book[price] = amount
             self._order_book_updates["asks"][price] = self.asks_order_book[price]
 
         self.base_token_balances[public] = balance - amount
