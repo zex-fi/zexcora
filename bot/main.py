@@ -13,30 +13,29 @@ private_seed_int = int.from_bytes(bytearray.fromhex(private_seed), byteorder="bi
 
 def start_threads() -> list[tuple[Thread, ZexBot]]:
     threads: list[tuple[Thread, ZexBot]] = []
-    idx = 0
     for base_chain, x in PAIRS.items():
         for base_token_id, y in x.items():
             for quote_chain, z in y.items():
                 for quote_token_id, bid_ask_digits in z.items():
                     buyer_bot = ZexBot(
-                        private_key=(private_seed_int + idx).to_bytes(32, "big"),
+                        private_key=private_seed_int.to_bytes(32, "big"),
                         pair=f"{base_chain}:{base_token_id}-{quote_chain}:{quote_token_id}",
                         side="buy",
                         best_bid=bid_ask_digits["bid"],
                         best_ask=bid_ask_digits["ask"],
                         volume_digits=bid_ask_digits["volume_digits"],
                         price_digits=bid_ask_digits["price_digits"],
-                        seed=idx,
+                        seed=0,
                     )
                     seller_bot = ZexBot(
-                        private_key=(private_seed_int + idx + 1).to_bytes(32, "big"),
+                        private_key=(private_seed_int + 1).to_bytes(32, "big"),
                         pair=f"{base_chain}:{base_token_id}-{quote_chain}:{quote_token_id}",
                         side="sell",
                         best_bid=bid_ask_digits["bid"],
                         best_ask=bid_ask_digits["ask"],
                         volume_digits=bid_ask_digits["volume_digits"],
                         price_digits=bid_ask_digits["price_digits"],
-                        seed=idx + 1,
+                        seed=1,
                     )
                     print(
                         f"buyer id: {buyer_bot.user_id}, seller id: {seller_bot.user_id},{base_chain}:{base_token_id}-{quote_chain}:{quote_token_id}"
@@ -46,7 +45,6 @@ def start_threads() -> list[tuple[Thread, ZexBot]]:
                     t1.start()
                     t2.start()
                     threads.extend([(t1, buyer_bot), (t2, seller_bot)])
-                    idx += 2
     return threads
 
 
