@@ -66,10 +66,17 @@ class Zex(metaclass=SingletonMeta):
         self.public_to_id_lookup: dict[bytes, int] = {}
         self.id_to_public_lookup: dict[int, bytes] = {}
 
-        self.withdraws: dict[str, dict[bytes, list[WithdrawTransaction]]] = {}
+        self.user_withdraws_on_chain: dict[
+            str, dict[bytes, list[WithdrawTransaction]]
+        ] = {}
+
+        self.withdraws_on_chain: dict[str, list[WithdrawTransaction]] = {}
         self.deposited_blocks = settings.zex.deposited_block
-        self.withdraw_nonces: dict[str, dict[bytes, int]] = {
+        self.user_withdraw_nonce_on_chain: dict[str, dict[bytes, int]] = {
             k: {} for k in self.deposited_blocks.keys()
+        }
+        self.withdraw_nonce_on_chain: dict[str, int] = {
+            k: 0 for k in self.deposited_blocks.keys()
         }
         self.nonces = {}
         self.pair_lookup = {}
@@ -121,7 +128,7 @@ class Zex(metaclass=SingletonMeta):
             ],
         }
 
-        for i in range(100):
+        for i in range(1):
             bot_private_key = (private_seed_int + i).to_bytes(32, "big")
             bot_priv = PrivateKey(bot_private_key, raw=True)
             bot_pub = bot_priv.pubkey.serialize()
@@ -149,7 +156,7 @@ class Zex(metaclass=SingletonMeta):
                     if f"{chain}:{token_id}" not in self.assets:
                         self.assets[f"{chain}:{token_id}"] = {}
                     self.assets[f"{chain}:{token_id}"][bot_pub] = 9_000_000 + i
-                    self.assets[f"{chain}:{token_id}"][client_pub] = 1_000
+                    self.assets[f"{chain}:{token_id}"][client_pub] = 5_000_000
 
     def to_protobuf(self) -> zex_pb2.ZexState:
         state = zex_pb2.ZexState()
@@ -217,20 +224,26 @@ class Zex(metaclass=SingletonMeta):
             entry.public_key = public
             entry.orders.extend(orders.keys())
 
-        for chain, withdraws in self.withdraws.items():
-            pb_withdraws = state.withdraws[chain]
+        for chain, withdraws in self.withdraws_on_chain.items():
+            pb_withdraws = state.withdraws_on_chain[chain]
+            entry = pb_withdraws.withdraws.add()
+            entry.raw_txs.extend([w.raw_tx for w in withdraws])
+
+        for chain, withdraws in self.user_withdraws_on_chain.items():
+            pb_withdraws = state.user_withdraws_on_chain[chain]
             for public, withdraw_list in withdraws.items():
                 entry = pb_withdraws.withdraws.add()
                 entry.public_key = public
                 entry.raw_txs.extend([w.raw_tx for w in withdraw_list])
 
-        for chain, withdraw_nonces in self.withdraw_nonces.items():
-            pb_withdraw_nonces = state.withdraw_nonces[chain]
+        for chain, withdraw_nonces in self.user_withdraw_nonce_on_chain.items():
+            pb_withdraw_nonces = state.user_withdraw_nonce_on_chain[chain]
             for public, nonce in withdraw_nonces.items():
                 entry = pb_withdraw_nonces.nonces.add()
                 entry.public_key = public
                 entry.nonce = nonce
 
+        state.withdraw_nonce_on_chain.update(self.withdraw_nonce_on_chain)
         state.deposited_blocks.update(self.deposited_blocks)
 
         for public, nonce in self.nonces.items():
@@ -332,20 +345,29 @@ class Zex(metaclass=SingletonMeta):
             e.public_key: {order: True for order in e.orders} for e in pb_state.orders
         }
 
-        zex.withdraws = {}
-        for chain, pb_withdraws in pb_state.withdraws.items():
-            zex.withdraws[chain] = {}
+        zex.withdraws_on_chain = {}
+        for chain, pb_withdraws in pb_state.withdraws_on_chain.items():
+            zex.user_withdraws_on_chain[chain] = {}
             for entry in pb_withdraws.withdraws:
-                zex.withdraws[chain][entry.public_key] = [
+                zex.user_withdraws_on_chain[chain] = [
                     WithdrawTransaction.from_tx(raw_tx) for raw_tx in entry.raw_txs
                 ]
 
-        zex.withdraw_nonces = {}
-        for chain, pb_withdraw_nonces in pb_state.withdraw_nonces.items():
-            zex.withdraw_nonces[chain] = {
+        zex.user_withdraws_on_chain = {}
+        for chain, pb_withdraws in pb_state.user_withdraws_on_chain.items():
+            zex.user_withdraws_on_chain[chain] = {}
+            for entry in pb_withdraws.withdraws:
+                zex.user_withdraws_on_chain[chain][entry.public_key] = [
+                    WithdrawTransaction.from_tx(raw_tx) for raw_tx in entry.raw_txs
+                ]
+
+        zex.user_withdraw_nonce_on_chain = {}
+        for chain, pb_withdraw_nonces in pb_state.user_withdraw_nonce_on_chain.items():
+            zex.user_withdraw_nonce_on_chain[chain] = {
                 entry.public_key: entry.nonce for entry in pb_withdraw_nonces.nonces
             }
 
+        zex.withdraw_nonce_on_chain = dict(pb_state.withdraw_nonce_on_chain)
         zex.deposited_blocks = dict(pb_state.deposited_blocks)
 
         zex.nonces = {e.public_key: e.nonce for e in pb_state.nonces}
@@ -428,7 +450,6 @@ class Zex(metaclass=SingletonMeta):
             if name == DEPOSIT or name == BTC_XMR_DEPOSIT:
                 self.deposit(tx)
             elif name == WITHDRAW:
-                tx += b"00000001"
                 tx = WithdrawTransaction.from_tx(tx)
                 self.withdraw(tx)
             elif name in (BUY, SELL):
@@ -566,31 +587,38 @@ class Zex(metaclass=SingletonMeta):
             logger.debug(f"invalid amount: {tx.amount}")
             return
 
-        if tx.chain not in self.withdraw_nonces:
+        if tx.chain not in self.user_withdraw_nonce_on_chain:
             logger.debug(f"invalid chain: {self.nonces[tx.public]} != {tx.nonce}")
             return
 
-        if self.withdraw_nonces[tx.chain].get(tx.public, 0) != tx.nonce:
+        if self.user_withdraw_nonce_on_chain[tx.chain].get(tx.public, 0) != tx.nonce:
             logger.debug(f"invalid nonce: {self.nonces[tx.public]} != {tx.nonce}")
             return
 
-        balance = self.assets[tx.token].get(tx.public, 0)
+        balance = self.assets[tx.internal_token].get(tx.public, 0)
         if balance < tx.amount:
             logger.debug("balance not enough")
             return
 
-        if tx.public not in self.withdraw_nonces[tx.chain]:
-            self.withdraw_nonces[tx.chain][tx.public] = 0
+        if tx.public not in self.user_withdraw_nonce_on_chain[tx.chain]:
+            self.user_withdraw_nonce_on_chain[tx.chain][tx.public] = 0
 
-        self.assets[tx.token][tx.public] = balance - tx.amount
+        self.assets[tx.internal_token][tx.public] = balance - tx.amount
 
-        if tx.chain not in self.withdraws:
-            self.withdraws[tx.chain] = {}
-        if tx.public not in self.withdraws[tx.chain]:
-            self.withdraws[tx.chain][tx.public] = []
+        if tx.chain not in self.user_withdraws_on_chain:
+            self.user_withdraws_on_chain[tx.chain] = {}
+        if tx.public not in self.user_withdraws_on_chain[tx.chain]:
+            self.user_withdraws_on_chain[tx.chain][tx.public] = []
+        self.user_withdraws_on_chain[tx.chain][tx.public].append(tx)
 
-        self.withdraws[tx.chain][tx.public].append(tx)
-        self.withdraw_nonces[tx.chain][tx.public] += 1
+        if tx.chain not in self.withdraw_nonce_on_chain:
+            self.withdraw_nonce_on_chain[tx.chain] = 0
+        self.withdraw_nonce_on_chain[tx.chain] += 1
+
+        self.user_withdraw_nonce_on_chain[tx.chain][tx.public] += 1
+        if tx.chain not in self.withdraws_on_chain:
+            self.withdraws_on_chain[tx.chain] = []
+        self.withdraws_on_chain[tx.chain].append(tx)
 
     def get_order_book_update(self, pair: str):
         order_book_update = self.markets[pair].get_order_book_update()

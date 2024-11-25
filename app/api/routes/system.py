@@ -3,10 +3,8 @@ from threading import Lock
 from urllib.parse import urlparse
 import asyncio
 import json
-import os
 import time
 
-from eigensdk.crypto.bls import attestation
 from fastapi import APIRouter, HTTPException
 from loguru import logger
 from redis.exceptions import ConnectionError
@@ -76,8 +74,12 @@ def create_mock_zellular_instance(app_name: str):
 
 
 def create_real_zellular_instance(app_name: str):
-    with open("./nodes.json") as f:
-        operators = json.load(f)
+    resp = httpx.post(
+        "https://api.studio.thegraph.com/query/62454/zellular_test/version/latest",
+        json='{"query":"{ operators { id socket stake } }"}',
+    )
+    resp.raise_for_status()
+    operators = resp.json()["data"]["operators"]
 
     base_url = None
     for _, op in operators.items():
@@ -188,18 +190,6 @@ async def transmit_tx(tx_verifier: TransactionVerifier):
 
 async def process_loop(tx_verifier: TransactionVerifier):
     verifier = create_zellular_instance()
-
-    with open("./nodes.json") as f:
-        operators = json.load(f)
-    aggregated_public_key = attestation.new_zero_g2_point()
-    for _, operator in operators.items():
-        public_key_g2 = operator["public_key_g2"]
-        operator["public_key_g2"] = attestation.new_zero_g2_point()
-        operator["public_key_g2"].setStr(public_key_g2.encode("utf-8"))
-        aggregated_public_key += operator["public_key_g2"]
-    verifier.operators = operators
-    verifier.aggregated_public_key = aggregated_public_key
-
     verbose = settings.zex.verbose
 
     for batch, index in verifier.batches(after=zex.last_tx_index):

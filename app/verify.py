@@ -77,13 +77,11 @@ def _verify_single_tx(
                 "nonce": nonce.decode(),
             }
         )
-
     elif name == BTC_XMR_DEPOSIT:
         msg = tx[:-64]
         sig = tx[-64:]
         pubkey = PublicKey(btc_xmr_monitor_pub, raw=True)
         return pubkey.schnorr_verify(msg, sig, bip340tag="zex")
-
     elif name == WITHDRAW:
         msg, pubkey, sig = withdraw_msg(tx), tx[45:78], tx[78 : 78 + 64]
         logger.info(f"withdraw request pubkey: {pubkey}")
@@ -91,7 +89,6 @@ def _verify_single_tx(
         sig = pubkey.ecdsa_deserialize_compact(sig)
         msg_hash = keccak(msg)
         return pubkey.ecdsa_verify(msg_hash, sig, raw=True)
-
     else:
         if name == CANCEL:
             msg, pubkey, sig = cancel_msg(tx), tx[41:74], tx[74 : 74 + 64]

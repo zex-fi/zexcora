@@ -27,12 +27,10 @@ from app.models.transaction import Deposit, WithdrawTransaction
 from app.monero.address import Address
 from app.zex import BUY
 
-from . import BYTE_CODE_HASH, DEPLOYER_ADDRESS
-
 router = APIRouter()
 light_router = APIRouter()
 
-USDT_MAINNET = "HOL:1"
+USDT_MAINNET = "POL:1"
 
 
 # @timed_lru_cache(seconds=10)
@@ -138,7 +136,9 @@ def user_transfers(id: int) -> list[TransferResponse]:
         return []
     all_deposits = zex.deposits.get(user, []).copy()
     all_withdraws = [
-        x for chain in zex.withdraws.keys() for x in zex.withdraws[chain].get(user, [])
+        x
+        for chain in zex.user_withdraws_on_chain.keys()
+        for x in zex.user_withdraws_on_chain[chain].get(user, [])
     ]
 
     sorted_transfers: list[WithdrawTransaction | Deposit] = sorted(
@@ -146,7 +146,7 @@ def user_transfers(id: int) -> list[TransferResponse]:
     )
     return [
         TransferResponse(
-            token=t.token,
+            token=t.internal_token,
             amount=t.amount if isinstance(t, Deposit) else -t.amount,
             time=t.time,
         )
@@ -275,7 +275,9 @@ def get_user_addresses(id: int) -> UserAddressesResponse:
     id = zex.public_to_id_lookup[user]
     taproot_address = get_taproot_address(btc_master_pubkey, id)
     monero_address = monero_master_address.with_payment_id(id)
-    evm_address = get_create2_address(DEPLOYER_ADDRESS, id, BYTE_CODE_HASH)
+    evm_address = get_create2_address(
+        settings.dedeployer_address, id, settings.byte_code_hash
+    )
     return UserAddressesResponse(
         user=user.hex(),
         addresses=Addresses(
@@ -295,15 +297,57 @@ def get_latest_user_id():
 def get_withdraw_nonce(id: int, chain: str) -> WithdrawNonce:
     user = zex.id_to_public_lookup[id]
     chain = chain.upper()
-    if chain not in zex.withdraw_nonces:
+    if chain not in zex.user_withdraw_nonce_on_chain:
         raise HTTPException(404, {"error": f"{chain} not found"})
     return WithdrawNonce(
         chain=chain,
-        nonce=zex.withdraw_nonces[chain].get(user, 0),
+        nonce=zex.user_withdraw_nonce_on_chain[chain].get(user, 0),
     )
 
 
-def get_withdraw(
+def get_withdraw_nonce_on_chain(chain: str):
+    chain = chain.upper()
+    if chain not in zex.withdraw_nonce_on_chain:
+        raise HTTPException(404, {"error": "chain not found"})
+    return {"chain": chain, "nonce": zex.withdraw_nonce_on_chain[chain]}
+
+
+def get_chain_withdraws(
+    chain: str, offset: int, limit: int | None = None
+) -> list[Withdraw]:
+    if chain not in zex.withdraws_on_chain:
+        raise HTTPException(404, {"error": "chain not found"})
+    transactions = []
+    for i, withdraw in enumerate(zex.withdraws_on_chain[chain][offset:limit]):
+        user = withdraw.public
+        w = Withdraw(
+            chain=withdraw.chain,
+            tokenContract=zex.token_id_to_contract_on_chain_lookup[withdraw.chain][
+                withdraw.token_id
+            ],
+            amount=str(
+                int(
+                    withdraw.amount
+                    * (
+                        10
+                        ** zex.token_decimal_on_chain_lookup[withdraw.chain][
+                            zex.token_id_to_contract_on_chain_lookup[withdraw.chain][
+                                withdraw.token_id
+                            ]
+                        ]
+                    )
+                )
+            ),
+            user=str(int.from_bytes(user[1:], byteorder="big")),
+            destination=withdraw.dest,
+            t=withdraw.time,
+            nonce=i + offset,
+        )
+        transactions.append(w)
+    return transactions
+
+
+def get_user_withdraws(
     id: int, chain: str, nonce: int | None = None
 ) -> Withdraw | list[Withdraw]:
     if nonce and nonce < 0:
@@ -311,29 +355,32 @@ def get_withdraw(
 
     user = zex.id_to_public_lookup[id]
     chain = chain.upper()
-    if chain not in zex.withdraws:
+    if chain not in zex.user_withdraws_on_chain:
         raise HTTPException(404, {"error": f"{chain} not found"})
-    if user not in zex.withdraws[chain]:
+    if user not in zex.user_withdraws_on_chain[chain]:
         return []
 
-    withdraws = zex.withdraws[chain].get(user, [])
+    withdraws = zex.user_withdraws_on_chain[chain].get(user, [])
     if nonce and nonce >= len(withdraws):
         logger.debug(f"invalid nonce: maximum nonce is {len(withdraws) - 1}")
         raise HTTPException(400, {"error": "invalid nonce"})
 
     if nonce is not None:
         withdraw_tx = withdraws[nonce]
+        contract_address = zex.token_id_to_contract_on_chain_lookup[withdraw_tx.chain][
+            withdraw_tx.token_id
+        ]
 
         return Withdraw(
             chain=withdraw_tx.chain,
-            tokenID=withdraw_tx.token_id,
+            tokenContract=contract_address,
             amount=str(
                 int(
                     withdraw_tx.amount
                     * (
                         10
                         ** zex.token_decimal_on_chain_lookup[withdraw_tx.chain][
-                            withdraw_tx.token
+                            contract_address
                         ]
                     )
                 )
@@ -347,19 +394,37 @@ def get_withdraw(
         return [
             Withdraw(
                 chain=w.chain,
-                tokenID=w.token_id,
-                amount=str(w.amount),
+                tokenContract=zex.token_id_to_contract_on_chain_lookup[w.chain][
+                    w.token_id
+                ],
+                amount=str(
+                    int(
+                        w.amount
+                        * (
+                            10
+                            ** zex.token_decimal_on_chain_lookup[w.chain][
+                                zex.token_id_to_contract_on_chain_lookup[w.chain][
+                                    w.token_id
+                                ]
+                            ]
+                        )
+                    )
+                ),
                 user=str(int.from_bytes(user[1:], byteorder="big")),
                 destination=w.dest,
                 t=w.time,
                 nonce=w.nonce,
             )
-            for w in zex.withdraws[chain][user]
+            for w in zex.user_withdraws_on_chain[chain][user]
             if nonce is None or w.nonce == nonce
         ]
 
 
 if zex.light_node:
-    light_router.get("/user/withdraws")(get_withdraw)
+    light_router.get("/user/withdraws")(get_user_withdraws)
+    light_router.get("/withdraw/nonce/last")(get_withdraw_nonce_on_chain)
+    light_router.get("/withdraws")(get_chain_withdraws)
 else:
-    router.get("/user/withdraws")(get_withdraw)
+    router.get("/user/withdraws")(get_user_withdraws)
+    router.get("/withdraw/nonce/last")(get_withdraw_nonce_on_chain)
+    router.get("/withdraws")(get_chain_withdraws)

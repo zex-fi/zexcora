@@ -1,4 +1,5 @@
 from pathlib import Path
+import sys
 
 from pydantic import BaseModel
 from pydantic_settings import (
@@ -34,6 +35,8 @@ class ZexSettings(BaseModel):
     verbose: bool
 
     keys: Keys
+    deployer_address: str
+    byte_code_hash: str
     redis: Redis
 
     deposited_block: dict[str, int]
@@ -41,7 +44,7 @@ class ZexSettings(BaseModel):
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(yaml_file="config.yaml", extra="forbid")
+    model_config = SettingsConfigDict(yaml_file=sys.argv[1], extra="forbid")
 
     zex: ZexSettings
 

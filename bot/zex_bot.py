@@ -1,6 +1,6 @@
 from collections import deque
 from struct import pack, unpack
-from threading import Thread
+from threading import Lock, Thread
 import json
 import os
 import random
@@ -36,6 +36,7 @@ class ZexBot:
         best_ask: float,
         volume_digits: int,
         price_digits: int,
+        lock: Lock,
         seed: int | None = 1,
     ) -> None:
         self.privkey = PrivateKey(private_key, raw=True)
@@ -44,22 +45,34 @@ class ZexBot:
         self.is_running = False
         self.volume_digits = volume_digits
         self.price_digits = price_digits
+        self.lock = lock
         self.rng = random.Random(seed)
 
         self.pubkey = self.privkey.pubkey.serialize()
-        self.user_id: int = None
+        self.user_id: int | None = None
         self.nonce = -1
         self.counter = 0
         self.orders = deque()
-        self.websocket: WebSocketApp = None
+        self.websocket: WebSocketApp | None = None
 
-        self.best_bid = best_bid
-        self.best_ask = best_ask
+        bids, asks = self.get_order_book()
+        self.bids = {price: volume for price, volume in bids if volume != 0}
+        self.asks = {price: volume for price, volume in asks if volume != 0}
 
-        self.base_volume = MIN_ORDER_VALUE / best_bid
+        if len(self.bids.keys()) == 0:
+            self.best_bid = best_bid
+        else:
+            self.best_bid = max(self.bids.keys())
 
-        self.bids = {best_bid: self.base_volume}
-        self.asks = {best_ask: self.base_volume}
+        if len(self.asks.keys()) == 0:
+            self.best_ask = best_ask
+        else:
+            self.best_ask = min(self.asks.keys())
+
+        self.base_volume = MIN_ORDER_VALUE / self.best_bid
+
+        self.register()
+        # self.send_order()
 
     def on_open_wrapper(self):
         def on_open(ws: WebSocket):
@@ -94,12 +107,54 @@ class ZexBot:
                             del self.asks[price]
                     else:
                         self.asks[price] = qty
-                best_bid_price = max(self.bids.keys())
-                self.best_bid = best_bid_price
-                best_ask_price = min(self.asks.keys())
-                self.best_ask = best_ask_price
+                if len(self.bids.keys()) != 0:
+                    best_bid_price = max(self.bids.keys())
+                    self.best_bid = best_bid_price
+                    self.base_volume = MIN_ORDER_VALUE / self.best_bid
+                if len(self.asks.keys()) != 0:
+                    best_ask_price = min(self.asks.keys())
+                    self.best_ask = best_ask_price
+
+                # self.send_order()
 
         return on_message
+
+    def send_order(self):
+        if self.side == "buy" and len(self.bids) == 0:
+            price = self.best_ask - (self.best_ask * 0.2 * self.rng.random())
+            self.send_order_transaction(price)
+        elif self.side == "sell" and len(self.asks) == 0:
+            price = self.best_bid + (self.best_bid * 0.2 * self.rng.random())
+            self.send_order_transaction(price)
+
+    def send_order_transaction(self, price):
+        price = round(price, self.price_digits)
+        volume = round(
+            self.base_volume + self.rng.random() * self.base_volume / 2,
+            self.volume_digits,
+        )
+        if volume < self.base_volume * 0.001:
+            volume = round(self.base_volume, self.volume_digits)
+        with self.lock:
+            time.sleep(0.2)
+            resp = httpx.get(f"http://{HOST}:{PORT}/v1/user/nonce?id={self.user_id}")
+            self.nonce = resp.json()["nonce"]
+            tx = self.create_order(price, volume, maker=True)
+            self.orders.append(tx)
+            txs = [tx.decode("latin-1")]
+
+            if len(self.orders) >= MAX_ORDERS_COUNT:
+                oldest_tx = self.orders.popleft()
+                cancel_tx = self.create_cancel_order(oldest_tx[1:40])
+                txs.append(cancel_tx.decode("latin-1"))
+
+            httpx.post(f"http://{HOST}:{PORT}/v1/order", json=txs)
+
+    def get_order_book(self):
+        resp = httpx.get(f"http://{HOST}:{PORT}/v1/depth?symbol={self.pair}&limit=500")
+        resp.raise_for_status()
+        data = resp.json()
+        return data["bids"], data["asks"]
 
     def create_order(
         self,
@@ -171,6 +226,7 @@ class ZexBot:
                 f"http://{HOST}:{PORT}/v1/user/id?public={self.pubkey.hex()}"
             )
             if resp.status_code != 200:
+                time.sleep(0.1)
                 continue
             self.user_id = resp.json()["id"]
             break
@@ -186,9 +242,8 @@ class ZexBot:
         )
         Thread(target=self.websocket.run_forever, kwargs={"reconnect": 5}).start()
         self.is_running = True
-        self.register()
         while self.is_running:
-            time.sleep(2)
+            time.sleep(1)
             maker = self.rng.choices([True, False], [0.5, 0.5])[0]
             price = 0
             if maker:
@@ -201,24 +256,4 @@ class ZexBot:
                     price = self.best_ask
                 elif self.side == "sell":
                     price = self.best_bid
-            price = round(price, self.price_digits)
-            volume = round(
-                self.base_volume + self.rng.random() * self.base_volume / 2,
-                self.volume_digits,
-            )
-            if volume < self.base_volume * 0.001:
-                volume = round(self.base_volume, self.volume_digits)
-
-            resp = httpx.get(f"http://{HOST}:{PORT}/v1/user/nonce?id={self.user_id}")
-            self.nonce = resp.json()["nonce"]
-            tx = self.create_order(price, volume, maker=maker)
-            self.orders.append(tx)
-
-            txs = [tx.decode("latin-1")]
-
-            if len(self.orders) >= MAX_ORDERS_COUNT:
-                oldest_tx = self.orders.popleft()
-                cancel_tx = self.create_cancel_order(oldest_tx[1:40])
-                txs.append(cancel_tx.decode("latin-1"))
-
-            httpx.post(f"http://{HOST}:{PORT}/v1/order", json=txs)
+            self.send_order_transaction(price)

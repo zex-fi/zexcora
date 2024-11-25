@@ -101,7 +101,7 @@ class ExchangeInfoResponse(BaseModel):
 
 class Withdraw(BaseModel):
     chain: str
-    tokenID: int
+    tokenContract: str
     amount: str
     user: str
     destination: str

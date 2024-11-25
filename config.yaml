@@ -16,16 +16,19 @@ zex:
     btc_public_key: 0290ab36a28c3107d0091e8ea731e3c528046e317f854ed7b35f746d4e3484b1b3
     monero_public_address: 4AEKMFzEC1TBLXk7tn8iyWhHTEfZqKZKg1JAVi6BtLmSAhKLeJuFmAseTa1HoG6cW7LHSSreeno5TYCZtHrLnBSEC7TTP6W
 
+  deployer_address: "0xd3Fc9A776594140761D7149aDA0115499dD4B865"
+  byte_code_hash: "0x787586668300c34b70a9e19d74296b330a0f5672f620aac041906321555af911"
+
   redis:
     url: <ip>:<port>
     password: <password>
 
   deposited_block:
-    BTC: 870904
-    XMR: 3284235
-    POL: 64445422
-    BSC: 44125352
-    ARB: 275849157
+    BTC: 871937
+    XMR: 3289237
+    POL: 64547118
+    BSC: 44324006
+    ARB: 278220015
 
   default_tokens_deciaml:
     BTC:

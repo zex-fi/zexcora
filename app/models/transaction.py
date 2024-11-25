@@ -143,13 +143,12 @@ class WithdrawTransaction(BaseModel):
     nonce: int
     public: bytes
     signature: bytes
-    index: int
 
     raw_tx: bytes | None
 
     @classmethod
     def from_tx(cls, tx: bytes) -> "WithdrawTransaction":
-        assert len(tx) == 150, f"invalid transaction len(tx): {len(tx)}"
+        assert len(tx) == 142, f"invalid transaction len(tx): {len(tx)}"
         return WithdrawTransaction(
             version=tx[0],
             operation=chr(tx[1]),
@@ -161,12 +160,11 @@ class WithdrawTransaction(BaseModel):
             nonce=unpack(">I", tx[41:45])[0],
             public=tx[45:78],
             signature=tx[78:142],
-            index=unpack(">Q", tx[142:150])[0],
             raw_tx=tx,
         )
 
     @property
-    def token(self):
+    def internal_token(self):
         return f"{self.chain}:{self.token_id}"
 
     def hex(self):
