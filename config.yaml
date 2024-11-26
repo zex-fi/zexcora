@@ -16,8 +16,8 @@ zex:
     btc_public_key: 0290ab36a28c3107d0091e8ea731e3c528046e317f854ed7b35f746d4e3484b1b3
     monero_public_address: 4AEKMFzEC1TBLXk7tn8iyWhHTEfZqKZKg1JAVi6BtLmSAhKLeJuFmAseTa1HoG6cW7LHSSreeno5TYCZtHrLnBSEC7TTP6W
 
-  deployer_address: "0xd3Fc9A776594140761D7149aDA0115499dD4B865"
-  byte_code_hash: "0x787586668300c34b70a9e19d74296b330a0f5672f620aac041906321555af911"
+  deployer_address: "0x6ca7860A5653943025a66AD6e4Cbe6fad47dE62a"
+  byte_code_hash: "0x9f07a4789f0b30d80155f536d9d169f0ae43a59511c5d5859a1e1dbaf417a42a"
 
   redis:
     url: <ip>:<port>

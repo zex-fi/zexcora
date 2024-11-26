@@ -276,7 +276,7 @@ def get_user_addresses(id: int) -> UserAddressesResponse:
     taproot_address = get_taproot_address(btc_master_pubkey, id)
     monero_address = monero_master_address.with_payment_id(id)
     evm_address = get_create2_address(
-        settings.dedeployer_address, id, settings.byte_code_hash
+        settings.zex.deployer_address, id, settings.zex.byte_code_hash
     )
     return UserAddressesResponse(
         user=user.hex(),
@@ -319,7 +319,6 @@ def get_chain_withdraws(
         raise HTTPException(404, {"error": "chain not found"})
     transactions = []
     for i, withdraw in enumerate(zex.withdraws_on_chain[chain][offset:limit]):
-        user = withdraw.public
         w = Withdraw(
             chain=withdraw.chain,
             tokenContract=zex.token_id_to_contract_on_chain_lookup[withdraw.chain][
@@ -338,7 +337,6 @@ def get_chain_withdraws(
                     )
                 )
             ),
-            user=str(int.from_bytes(user[1:], byteorder="big")),
             destination=withdraw.dest,
             t=withdraw.time,
             nonce=i + offset,

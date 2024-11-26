@@ -103,7 +103,6 @@ class Withdraw(BaseModel):
     chain: str
     tokenContract: str
     amount: str
-    user: str
     destination: str
     t: int
     nonce: int
