@@ -530,6 +530,8 @@ class Zex(metaclass=SingletonMeta):
             )
             if chain not in self.token_decimal_on_chain_lookup:
                 self.token_decimal_on_chain_lookup[chain] = {}
+            if chain not in self.token_id_to_contract_on_chain_lookup:
+                self.token_id_to_contract_on_chain_lookup[chain] = {}
 
             token_contract = token_contract.decode()
             if token_contract not in self.token_decimal_on_chain_lookup[chain]:
