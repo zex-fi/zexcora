@@ -53,12 +53,21 @@ class Zex(metaclass=SingletonMeta):
         self.save_state_tx_index_threshold = self.save_frequency
         self.markets: dict[str, Market] = {}
         self.assets = {}
-        self.contract_to_token_id_on_chain_lookup: dict[str, dict[str, int]] = {}
-        self.token_id_to_contract_on_chain_lookup: dict[str, dict[int, str]] = {}
-        self.token_decimal_on_chain_lookup: dict[str, dict[str, int]] = (
-            settings.zex.default_tokens_deciaml
+        self.contract_to_token_id_on_chain_lookup: dict[str, dict[str, int]] = (
+            settings.zex.verified_tokens_id
         )
-        self.last_token_id: dict[str, int] = {}
+        self.token_id_to_contract_on_chain_lookup: dict[str, dict[int, str]] = {
+            chain: {
+                token_id: contract_address for contract_address, token_id in val.items()
+            }
+            for chain, val in settings.zex.verified_tokens_id.items()
+        }
+        self.token_decimal_on_chain_lookup: dict[str, dict[str, int]] = (
+            settings.zex.default_tokens_decimal
+        )
+        self.last_token_id: dict[str, int] = {
+            chain: max(tokens.values()) for chain, tokens in self.contract_to_token_id_on_chain_lookup.items()
+        }
         self.amounts = {}
         self.trades = {}
         self.orders = {}

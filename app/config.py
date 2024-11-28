@@ -40,7 +40,8 @@ class ZexSettings(BaseModel):
     redis: Redis
 
     deposited_block: dict[str, int]
-    default_tokens_deciaml: dict[str, dict[str, int]]
+    default_tokens_decimal: dict[str, dict[str, int]]
+    verified_tokens_id: dict[str, dict[str, int]]
 
 
 class Settings(BaseSettings):

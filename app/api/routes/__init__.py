@@ -1,8 +1,8 @@
 USDT_MAINNET = "POL:1"
 
 TAGS = {
-    "BTC:0": "btc",
-    "XMR:0": "xmr",
+    "BTC:1": "btc",
+    "XMR:1": "xmr",
     "POL:1": "usdt",
     "POL:2": "usdc",
     "POL:3": "wbtc",
@@ -26,8 +26,8 @@ CHAIN_TYPES = {
 }
 
 NAMES = {
-    "BTC:0": "Bitcoin",
-    "XMR:0": "Monero",
+    "BTC:1": "Bitcoin",
+    "XMR:1": "Monero",
     "POL:1": "USD Tether",
     "POL:2": "USD coin",
     "POL:3": "Wrapped Bitcoin",
@@ -43,8 +43,8 @@ NAMES = {
 }
 
 SYMBOLS = {
-    "BTC:0": "BTC",
-    "XMR:0": "XMR",
+    "BTC:1": "BTC",
+    "XMR:1": "XMR",
     "POL:1": "USDT",
     "POL:2": "USDC",
     "POL:3": "WBTC",
