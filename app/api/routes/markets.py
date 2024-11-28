@@ -9,16 +9,16 @@ from . import CHAIN_TYPES, NAMES, SYMBOLS, TAGS, USDT_MAINNET
 router = APIRouter()
 
 market_filter_list = [
-    "BTC:0-POL:1",
-    "XMR:0-POL:1",
+    "BTC:1-POL:1",
+    "XMR:1-POL:1",
     "POL:4-POL:1",
     "BSC:4-POL:1",
     "ARB:4-POL:1",
 ]
 
 token_filter_list = [
-    "BTC:0",
-    "XMR:0",
+    "BTC:1",
+    "XMR:1",
     "POL:1",
     "POL:4",
     "BSC:4",

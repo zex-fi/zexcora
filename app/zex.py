@@ -106,8 +106,8 @@ class Zex(metaclass=SingletonMeta):
         )
 
         TOKENS = {
-            "BTC": [(0, "0x" + "0" * 40)],
-            "XMR": [(0, "0x" + "0" * 40)],
+            "BTC": [(1, "0x" + "0" * 40)],
+            "XMR": [(1, "0x" + "0" * 40)],
             "POL": [
                 (1, "0xc2132D05D31c914a87C6611C10748AEb04B58e8F"),
                 (2, "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"),

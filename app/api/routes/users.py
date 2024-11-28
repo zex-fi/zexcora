@@ -44,7 +44,7 @@ def _user_assets(user: bytes) -> list[UserAssetResponse]:
         result.append(
             UserAssetResponse(
                 chain=token[0:3],
-                token=int(token[4]),
+            token=int(token[4:]),
                 free=str(balance),
                 locked="0",
                 freeze="0",
@@ -56,12 +56,16 @@ def _user_assets(user: bytes) -> list[UserAssetResponse]:
 
 @router.get("/asset/getUserAsset")
 def user_balances(id: int) -> list[UserAssetResponse]:
+    if id not in zex.id_to_public_lookup:
+        raise HTTPException(404, {"error": "user not found"})
     user = zex.id_to_public_lookup[id]
     return _user_assets(user)
 
 
 @router.get("/user/trades")
 def user_trades(id: int) -> list[TradeResponse]:
+    if id not in zex.id_to_public_lookup:
+        raise HTTPException(404, {"error": "user not found"})
     user = zex.id_to_public_lookup[id]
     trades = zex.trades.get(user, [])
     resp = {}
@@ -88,6 +92,8 @@ def user_trades(id: int) -> list[TradeResponse]:
 
 @router.get("/user/orders")
 def user_orders(id: int) -> list[OrderResponse]:
+    if id not in zex.id_to_public_lookup:
+        raise HTTPException(404, {"error": "user not found"})
     user = zex.id_to_public_lookup[id]
     orders = zex.orders.get(user, {})
     resp = []
@@ -112,6 +118,8 @@ def user_orders(id: int) -> list[OrderResponse]:
 
 @router.get("/user/nonce")
 def user_nonce(id: int) -> NonceResponse:
+    if id not in zex.id_to_public_lookup:
+        raise HTTPException(404, {"error": "user not found"})
     user = zex.id_to_public_lookup[id]
     return NonceResponse(nonce=zex.nonces.get(user, 0))
 
@@ -131,6 +139,8 @@ def user_id(public: str):
 
 @router.get("/user/transfers")
 def user_transfers(id: int) -> list[TransferResponse]:
+    if id not in zex.id_to_public_lookup:
+        raise HTTPException(404, {"error": "user not found"})
     user = zex.id_to_public_lookup[id]
     if user not in zex.deposits:
         return []
@@ -146,7 +156,7 @@ def user_transfers(id: int) -> list[TransferResponse]:
     )
     return [
         TransferResponse(
-            token=t.internal_token,
+            token=t.token if isinstance(t, Deposit) else t.internal_token,
             amount=t.amount if isinstance(t, Deposit) else -t.amount,
             time=t.time,
         )
@@ -269,6 +279,8 @@ monero_master_address = Address(settings.zex.keys.monero_public_address)
 
 @router.get("/capital/deposit/address/list")
 def get_user_addresses(id: int) -> UserAddressesResponse:
+    if id not in zex.id_to_public_lookup:
+        raise HTTPException(404, {"error": "user not found"})
     user = zex.id_to_public_lookup[id]
     if user not in zex.public_to_id_lookup:
         raise HTTPException(404, {"error": "user not found"})
@@ -295,6 +307,8 @@ def get_latest_user_id():
 
 @router.get("/user/withdraws/nonce")
 def get_withdraw_nonce(id: int, chain: str) -> WithdrawNonce:
+    if id not in zex.id_to_public_lookup:
+        raise HTTPException(404, {"error": "user not found"})
     user = zex.id_to_public_lookup[id]
     chain = chain.upper()
     if chain not in zex.user_withdraw_nonce_on_chain:
@@ -350,6 +364,8 @@ def get_user_withdraws(
 ) -> Withdraw | list[Withdraw]:
     if nonce and nonce < 0:
         raise HTTPException(400, {"error": "invalid nonce"})
+    if id not in zex.id_to_public_lookup:
+        raise HTTPException(404, {"error": "user not found"})
 
     user = zex.id_to_public_lookup[id]
     chain = chain.upper()
