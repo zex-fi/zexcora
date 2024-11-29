@@ -356,11 +356,12 @@ class Zex(metaclass=SingletonMeta):
 
         zex.withdraws_on_chain = {}
         for chain, pb_withdraws in pb_state.withdraws_on_chain.items():
-            zex.user_withdraws_on_chain[chain] = {}
+            zex.withdraws_on_chain[chain] = {}
             for entry in pb_withdraws.withdraws:
-                zex.user_withdraws_on_chain[chain] = [
+                zex.withdraws_on_chain[chain] = [
                     WithdrawTransaction.from_tx(raw_tx) for raw_tx in entry.raw_txs
                 ]
+        zex.withdraw_nonce_on_chain = dict(pb_state.withdraw_nonce_on_chain)
 
         zex.user_withdraws_on_chain = {}
         for chain, pb_withdraws in pb_state.user_withdraws_on_chain.items():
@@ -376,7 +377,6 @@ class Zex(metaclass=SingletonMeta):
                 entry.public_key: entry.nonce for entry in pb_withdraw_nonces.nonces
             }
 
-        zex.withdraw_nonce_on_chain = dict(pb_state.withdraw_nonce_on_chain)
         zex.deposited_blocks = dict(pb_state.deposited_blocks)
 
         zex.nonces = {e.public_key: e.nonce for e in pb_state.nonces}
