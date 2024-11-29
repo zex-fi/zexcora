@@ -15,6 +15,10 @@ TAGS = {
     "ARB:2": "usdc",
     "ARB:3": "wbtc",
     "ARB:4": "link",
+    "OP:1": "usdt",
+    "OP:2": "usdc",
+    "OP:3": "wbtc",
+    "OP:4": "link",
 }
 
 CHAIN_TYPES = {
@@ -23,6 +27,7 @@ CHAIN_TYPES = {
     "POL": "evm",
     "BSC": "evm",
     "ARB": "evm",
+    "OP": "evm",
 }
 
 NAMES = {
@@ -40,6 +45,10 @@ NAMES = {
     "ARB:2": "USD coin",
     "ARB:3": "Wrapped Bitcoin",
     "ARB:4": "ChainLink",
+    "OP:1": "USD Tether",
+    "OP:2": "USD coin",
+    "OP:3": "Wrapped Bitcoin",
+    "OP:4": "ChainLink",
 }
 
 SYMBOLS = {
@@ -57,4 +66,8 @@ SYMBOLS = {
     "ARB:2": "USDC",
     "ARB:3": "WBTC",
     "ARB:4": "LINK",
+    "OP:1": "USDT",
+    "OP:2": "USDC",
+    "OP:3": "WBTC",
+    "OP:4": "LINK",
 }

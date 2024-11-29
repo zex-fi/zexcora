@@ -136,6 +136,12 @@ class Zex(metaclass=SingletonMeta):
                 (3, "0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f"),
                 (4, "0xf97f4df75117a78c1A5a0DBb814Af92458539FB4"),
             ],
+            "OP": [
+                (1, "0x94b008aA00579c1307B0EF2c499aD98a8ce58e58"),
+                (2, "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85"),
+                (3, "0x68f180fcCe6836688e9084f035309E29Bf0A2095"),
+                (4, "0x350a791Bfc2C21F9Ed5d10980Dad2e2638ffa7f6"),
+            ],
         }
 
         for i in range(1):

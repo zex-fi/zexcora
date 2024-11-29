@@ -13,7 +13,7 @@ market_filter_list = [
     "XMR:1-POL:1",
     "POL:4-POL:1",
     "BSC:4-POL:1",
-    "ARB:4-POL:1",
+    "OP:4-POL:1",
 ]
 
 token_filter_list = [
@@ -22,7 +22,7 @@ token_filter_list = [
     "POL:1",
     "POL:4",
     "BSC:4",
-    "ARB:4",
+    "OP:4",
 ]
 
 
