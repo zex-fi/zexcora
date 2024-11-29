@@ -22,7 +22,7 @@ BTC_XMR_DEPOSIT, DEPOSIT, WITHDRAW, BUY, SELL, CANCEL, REGISTER = b"xdwbscr"
 
 version = pack(">B", 1)
 
-MAX_ORDERS_COUNT = 10
+MAX_ORDERS_COUNT = 5
 MIN_ORDER_VALUE = 1
 
 
@@ -174,7 +174,7 @@ class ZexBot:
         )
         if verbose:
             print(
-                f"pair: {self.pair}, maker: {maker}, side: {self.side}, price: {price}, vol: {volume}"
+                f"pair: {self.pair}, none: {self.nonce}, maker: {maker}, side: {self.side}, price: {price}, vol: {volume}"
             )
         tx = version + tx
         name = tx[1]

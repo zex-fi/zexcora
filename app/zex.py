@@ -66,7 +66,8 @@ class Zex(metaclass=SingletonMeta):
             settings.zex.default_tokens_decimal
         )
         self.last_token_id: dict[str, int] = {
-            chain: max(tokens.values()) for chain, tokens in self.contract_to_token_id_on_chain_lookup.items()
+            chain: max(tokens.values())
+            for chain, tokens in self.contract_to_token_id_on_chain_lookup.items()
         }
         self.amounts = {}
         self.trades = {}
@@ -114,7 +115,7 @@ class Zex(metaclass=SingletonMeta):
             bytearray.fromhex(private_seed), byteorder="big"
         )
 
-        TOKENS = {
+        tokens = {
             "BTC": [(1, "0x" + "0" * 40)],
             "XMR": [(1, "0x" + "0" * 40)],
             "POL": [
@@ -143,7 +144,7 @@ class Zex(metaclass=SingletonMeta):
             bot_pub = bot_priv.pubkey.serialize()
             self.register_pub(bot_pub)
 
-            for chain, token_ids in TOKENS.items():
+            for chain, token_ids in tokens.items():
                 for token_id, contract_address in token_ids:
                     if chain not in self.last_token_id:
                         self.last_token_id[chain] = 0
@@ -164,8 +165,8 @@ class Zex(metaclass=SingletonMeta):
                         self.last_token_id[chain] += 1
                     if f"{chain}:{token_id}" not in self.assets:
                         self.assets[f"{chain}:{token_id}"] = {}
-                    self.assets[f"{chain}:{token_id}"][bot_pub] = 9_000_000 + i
-                    self.assets[f"{chain}:{token_id}"][client_pub] = 5_000_000
+                    self.assets[f"{chain}:{token_id}"][bot_pub] = 100
+                    self.assets[f"{chain}:{token_id}"][client_pub] = 200
 
     def to_protobuf(self) -> zex_pb2.ZexState:
         state = zex_pb2.ZexState()
@@ -477,6 +478,11 @@ class Zex(metaclass=SingletonMeta):
                     base_token=base_token,
                     quote_token=quote_token,
                 )
+
+                _, _, _, nonce, public, _ = _parse_transaction(tx)
+                if not self.validate_nonce(public, nonce):
+                    continue
+
                 if self.markets[pair].match_instantly(tx, t):
                     modified_pairs.add(pair)
                     continue
@@ -518,7 +524,8 @@ class Zex(metaclass=SingletonMeta):
 
         if self.deposited_blocks[chain] != from_block - 1:
             logger.error(
-                f"invalid from block. self.deposited_blocks[chain]: {self.deposited_blocks[chain]}, from_block - 1: {from_block - 1}"
+                f"invalid from block. self.deposited_blocks[chain]: {self.deposited_blocks[chain]}, "
+                f"from_block - 1: {from_block - 1}"
             )
             return
         self.deposited_blocks[chain] = to_block
@@ -548,7 +555,8 @@ class Zex(metaclass=SingletonMeta):
 
             if self.token_decimal_on_chain_lookup[chain][token_contract] != decimal:
                 logger.warning(
-                    f"decimal for contract {token_contract} changed from {self.token_decimal_on_chain_lookup[chain][token_contract]} to {decimal}"
+                    f"decimal for contract {token_contract} changed "
+                    f"from {self.token_decimal_on_chain_lookup[chain][token_contract]} to {decimal}"
                 )
                 self.token_decimal_on_chain_lookup[chain][token_contract] = decimal
             amount /= 10**decimal
@@ -630,6 +638,17 @@ class Zex(metaclass=SingletonMeta):
         if tx.chain not in self.withdraws_on_chain:
             self.withdraws_on_chain[tx.chain] = []
         self.withdraws_on_chain[tx.chain].append(tx)
+
+    def validate_nonce(self, public: bytes, nonce: int) -> bool:
+        if self.nonces[public] != nonce:
+            logger.debug(
+                "Invalid nonce: expected {expected_nonce}, got {nonce}",
+                expected_nonce=self.nonces[public],
+                nonce=nonce,
+            )
+            return False
+        self.nonces[public] += 1
+        return True
 
     def get_order_book_update(self, pair: str):
         order_book_update = self.markets[pair].get_order_book_update()
@@ -791,11 +810,8 @@ class Market:
         return data
 
     def match_instantly(self, tx: bytes, t: int) -> bool:
-        operation, amount, price, nonce, public, index = _parse_transaction(tx)
-        if price < 0 or amount < 0:
-            return False
-
-        if not self._validate_nonce(public, nonce):
+        operation, amount, price, _, public, index = _parse_transaction(tx)
+        if price <= 0 or amount <= 0:
             return False
 
         if operation == BUY:
@@ -830,12 +846,14 @@ class Market:
         balance = self.quote_token_balances.get(public, 0)
         if balance < required:
             logger.debug(
-                "Insufficient balance, current balance: {current_balance}, side: buy, base token: {base_token}, quote token: {quote_token}",
+                "Insufficient balance, current balance: {current_balance}, "
+                "side: buy, base token: {base_token}, quote token: {quote_token}",
                 current_balance=balance,
                 base_token=self.base_token,
                 quote_token=self.quote_token,
             )
             return False
+        self.quote_token_balances[public] = balance - required
 
         # Execute the trade
         while amount > 0 and self.sell_orders and self.sell_orders[0][0] <= price:
@@ -844,8 +862,8 @@ class Market:
             self._execute_trade(tx, sell_order, trade_amount, sell_price, t)
 
             sell_public = sell_order[40:73]
-            self._update_sell_order(sell_order, trade_amount, sell_price, sell_public)
             self._update_balances(public, sell_public, trade_amount, sell_price)
+            self._update_sell_order(sell_order, trade_amount, sell_price, sell_public)
 
             amount -= trade_amount
 
@@ -854,7 +872,6 @@ class Market:
             heapq.heappush(self.buy_orders, (-price, index, tx))
             self.zex.amounts[tx] = amount
             self.zex.orders[public][tx] = True
-            self.quote_token_balances[public] -= price * amount
             with self.order_book_lock:
                 if price in self.bids_order_book:
                     self.bids_order_book[price] += amount
@@ -876,13 +893,14 @@ class Market:
         balance = self.base_token_balances.get(public, 0)
         if balance < amount:
             logger.debug(
-                "Insufficient balance, current balance: {current_balance}, side: sell, base token: {base_token}, quote token: {quote_token}",
+                "Insufficient balance, current balance: {current_balance}, "
+                "side: sell, base token: {base_token}, quote token: {quote_token}",
                 current_balance=balance,
                 base_token=self.base_token,
                 quote_token=self.quote_token,
             )
             return False
-
+        self.base_token_balances[public] = balance - amount
         # Execute the trade
         while amount > 0 and self.buy_orders and -self.buy_orders[0][0] >= price:
             buy_price, _, buy_order = self.buy_orders[0]
@@ -901,7 +919,6 @@ class Market:
             heapq.heappush(self.sell_orders, (price, index, tx))
             self.zex.amounts[tx] = amount
             self.zex.orders[public][tx] = True
-            self.base_token_balances[public] -= amount
             with self.order_book_lock:
                 if price in self.asks_order_book:
                     self.asks_order_book[price] += amount
@@ -932,7 +949,7 @@ class Market:
         self.final_id += 1
 
     def place(self, tx: bytes) -> bool:
-        operation, amount, price, _, public, index = _parse_transaction(tx)
+        operation, amount, price, nonce, public, index = _parse_transaction(tx)
 
         if operation == BUY:
             ok = self._place_buy_order(public, amount, price, index, tx)
@@ -1101,25 +1118,18 @@ class Market:
             return self.kline["Low"].iloc[prev_24h_index:].min()
         return self.kline["Low"].min()
 
-    def _validate_nonce(self, public: bytes, nonce: int) -> bool:
-        if self.zex.nonces[public] != nonce:
-            logger.debug(
-                "Invalid nonce: expected {expected_nonce}, got {nonce}",
-                expected_nonce=self.zex.nonces[public],
-                nonce=nonce,
-            )
-            return False
-        self.zex.nonces[public] += 1
-        return True
-
     def _place_buy_order(
         self, public: bytes, amount: float, price: float, index: int, tx: bytes
     ) -> bool:
+        if price < 0 or amount < 0:
+            return False
+
         required = amount * price
         balance = self.quote_token_balances.get(public, 0)
         if balance < required:
             logger.debug(
-                "Insufficient balance, current balance: {current_balance}, side: buy, base token: {base_token}, quote token: {quote_token}",
+                "Insufficient balance, current balance: {current_balance}, "
+                "side: buy, base token: {base_token}, quote token: {quote_token}",
                 current_balance=balance,
                 base_token=self.base_token,
                 quote_token=self.quote_token,
@@ -1140,10 +1150,14 @@ class Market:
     def _place_sell_order(
         self, public: bytes, amount: float, price: float, index: int, tx: bytes
     ) -> bool:
+        if price < 0 or amount < 0:
+            return False
+
         balance = self.base_token_balances.get(public, 0)
         if balance < amount:
             logger.debug(
-                "Insufficient balance, current balance: {current_balance}, side: sell, base token: {base_token}, quote token: {quote_token}",
+                "Insufficient balance, current balance: {current_balance}, "
+                "side: sell, base token: {base_token}, quote token: {quote_token}",
                 current_balance=balance,
                 base_token=self.base_token,
                 quote_token=self.quote_token,
@@ -1229,12 +1243,10 @@ class Market:
         self.base_token_balances[buy_public] = (
             self.base_token_balances.get(buy_public, 0) + trade_amount
         )
-        self.base_token_balances[sell_public] -= trade_amount
 
         self.quote_token_balances[sell_public] = (
             self.quote_token_balances.get(sell_public, 0) + price * trade_amount
         )
-        self.quote_token_balances[buy_public] -= price * trade_amount
 
     def _record_trade(
         self,
