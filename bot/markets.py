@@ -20,30 +20,6 @@ PAIRS = {
             },
         },
     },
-    "BTC": {
-        1: {  # BTC
-            "POL": {
-                1: {
-                    "bid": 79500,
-                    "ask": 79500,
-                    "price_digits": 2,
-                    "volume_digits": 6,
-                },
-            },
-        },
-    },
-    "XMR": {
-        1: {  # XMR
-            "POL": {
-                1: {
-                    "bid": 170,
-                    "ask": 171,
-                    "price_digits": 4,
-                    "volume_digits": 5,
-                },
-            },
-        },
-    },
     "BSC": {
         4: {  # Link
             "POL": {
