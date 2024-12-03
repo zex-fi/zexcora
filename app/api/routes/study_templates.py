@@ -4,7 +4,7 @@ from .tables import Study
 
 study_collection = Study("db.sqlite")
 
-router = APIRouter(prefix="/study_templates", tags=["study_templates"])
+router = APIRouter(prefix="/1.1/study_templates", tags=["study_templates"])
 
 
 @router.get("/")
@@ -13,6 +13,8 @@ def get_templates(
     user_id: str = Query(..., alias="user"),
     template_name: str | None = Query(None, alias="template"),
 ):
+    if user_id <= 0:
+        raise HTTPException(404, "invalid user id")
     if template_name is None:
         return get_all_templates_list(client_id, user_id)
     else:
@@ -25,6 +27,8 @@ def delete_templates(
     user_id: str = Query(..., alias="user"),
     template_name: str | None = Query(None, alias="template"),
 ):
+    if user_id <= 0:
+        raise HTTPException(404, "invalid user id")
     if template_name is None:
         raise HTTPException(404, "Wrong template id")
     else:
@@ -38,6 +42,8 @@ def set_templates(
     template_name: str = Form(..., alias="name"),
     content: str = Form(..., alias="content"),
 ):
+    if user_id <= 0:
+        raise HTTPException(404, "invalid user id")
     return create_or_update_template(client_id, user_id, template_name, content)
 
 

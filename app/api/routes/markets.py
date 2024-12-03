@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app import zex
 from app.api.cache import timed_lru_cache
+from app.config import settings
 from app.models.response import Chain, ExchangeInfoResponse, Symbol, Token
 
 from . import CHAIN_TYPES, NAMES, SYMBOLS, TAGS, USDT_MAINNET
@@ -58,7 +59,7 @@ def get_token_info(token) -> Token:
     return t
 
 
-@timed_lru_cache(seconds=60)
+@timed_lru_cache(seconds=60 if settings.zex.mainnet else 1)
 def _exchange_info_response():
     return ExchangeInfoResponse(
         timezone="UTC",

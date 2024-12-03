@@ -1,6 +1,7 @@
 from collections import deque
 from collections.abc import Callable
 from copy import deepcopy
+from decimal import Decimal, FloatOperation, getcontext
 from io import BytesIO
 from threading import Lock
 from time import time as unix_time
@@ -38,6 +39,8 @@ class Zex(metaclass=SingletonMeta):
         light_node: bool = False,
         benchmark_mode=False,
     ):
+        c = getcontext()
+        c.traps[FloatOperation] = True
         self.kline_callback = kline_callback
         self.depth_callback = depth_callback
         self.state_dest = state_dest
@@ -136,7 +139,7 @@ class Zex(metaclass=SingletonMeta):
                 (3, "0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f"),
                 (4, "0xf97f4df75117a78c1A5a0DBb814Af92458539FB4"),
             ],
-            "OP": [
+            "OPT": [
                 (1, "0x94b008aA00579c1307B0EF2c499aD98a8ce58e58"),
                 (2, "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85"),
                 (3, "0x68f180fcCe6836688e9084f035309E29Bf0A2095"),
@@ -668,10 +671,10 @@ class Zex(metaclass=SingletonMeta):
             "u": order_book_update["u"],
             "pu": order_book_update["pu"],
             "b": [
-                [p, q] for p, q in order_book_update["bids"].items()
+                [float(p), float(q)] for p, q in order_book_update["bids"].items()
             ],  # Bids to be updated
             "a": [
-                [p, q] for p, q in order_book_update["asks"].items()
+                [float(p), float(q)] for p, q in order_book_update["asks"].items()
             ],  # Asks to be updated
         }
 
@@ -759,11 +762,11 @@ def get_current_1m_open_time():
     return open_time * 1000
 
 
-def _parse_transaction(tx: bytes):
+def _parse_transaction(tx: bytes) -> tuple[int, Decimal, Decimal, int, bytes, int]:
     operation, amount, price, nonce, public, index = struct.unpack(
         ">xB14xdd4xI33s64xQ", tx
     )
-    return operation, amount, price, nonce, public, index
+    return operation, Decimal(str(amount)), Decimal(str(price)), nonce, public, index
 
 
 class Market:
@@ -773,12 +776,11 @@ class Market:
         self.pair = f"{base_token}-{quote_token}"
         self.zex = zex
 
-        self.amount_tolerance = 1e-8
-        self.buy_orders: list[tuple[float, int, bytes]] = []
-        self.sell_orders: list[tuple[float, int, bytes]] = []
+        self.buy_orders: list[tuple[Decimal, int, bytes]] = []
+        self.sell_orders: list[tuple[Decimal, int, bytes]] = []
         self.order_book_lock = Lock()
-        self.bids_order_book: dict[float, float] = {}
-        self.asks_order_book: dict[float, float] = {}
+        self.bids_order_book: dict[Decimal, Decimal] = {}
+        self.asks_order_book: dict[Decimal, Decimal] = {}
         self._order_book_updates = {"bids": {}, "asks": {}}
 
         self.first_id = 0
@@ -842,8 +844,8 @@ class Market:
     def _execute_instant_buy(
         self,
         public: bytes,
-        amount: float,
-        price: float,
+        amount: Decimal,
+        price: Decimal,
         index: int,
         tx: bytes,
         t: int,
@@ -859,7 +861,6 @@ class Market:
                 quote_token=self.quote_token,
             )
             return False
-        self.quote_token_balances[public] = balance - required
 
         # Execute the trade
         while amount > 0 and self.sell_orders and self.sell_orders[0][0] <= price:
@@ -868,8 +869,9 @@ class Market:
             self._execute_trade(tx, sell_order, trade_amount, sell_price, t)
 
             sell_public = sell_order[40:73]
-            self._update_balances(public, sell_public, trade_amount, sell_price)
             self._update_sell_order(sell_order, trade_amount, sell_price, sell_public)
+            self._update_balances(public, sell_public, trade_amount, sell_price)
+            self.quote_token_balances[public] -= trade_amount * sell_price
 
             amount -= trade_amount
 
@@ -884,14 +886,15 @@ class Market:
                 else:
                     self.bids_order_book[price] = amount
                 self._order_book_updates["bids"][price] = self.bids_order_book[price]
+            self.quote_token_balances[public] -= amount * price
 
         return True
 
     def _execute_instant_sell(
         self,
         public: bytes,
-        amount: float,
-        price: float,
+        amount: Decimal,
+        price: Decimal,
         index: int,
         tx: bytes,
         t: int,
@@ -906,7 +909,6 @@ class Market:
                 quote_token=self.quote_token,
             )
             return False
-        self.base_token_balances[public] = balance - amount
         # Execute the trade
         while amount > 0 and self.buy_orders and -self.buy_orders[0][0] >= price:
             buy_price, _, buy_order = self.buy_orders[0]
@@ -917,6 +919,7 @@ class Market:
             buy_public = buy_order[40:73]
             self._update_buy_order(buy_order, trade_amount, buy_price, buy_public)
             self._update_balances(buy_public, public, trade_amount, buy_price)
+            self.base_token_balances[public] -= trade_amount
 
             amount -= trade_amount
 
@@ -931,15 +934,15 @@ class Market:
                 else:
                     self.asks_order_book[price] = amount
                 self._order_book_updates["asks"][price] = self.asks_order_book[price]
-
+            self.base_token_balances[public] -= amount
         return True
 
     def _execute_trade(
         self,
         buy_order: bytes,
         sell_order: bytes,
-        trade_amount: float,
-        price: float,
+        trade_amount: Decimal,
+        price: Decimal,
         t: int,
     ):
         buy_public = buy_order[40:73]
@@ -950,22 +953,60 @@ class Market:
         )
 
         if not self.zex.benchmark_mode and not self.zex.light_node:
-            self._update_kline(price, trade_amount)
+            self._update_kline(float(price), float(trade_amount))
 
         self.final_id += 1
 
     def place(self, tx: bytes) -> bool:
-        operation, amount, price, nonce, public, index = _parse_transaction(tx)
+        operation, amount, price, _, public, index = _parse_transaction(tx)
+        if price < 0 or amount < 0:
+            return False
 
         if operation == BUY:
-            ok = self._place_buy_order(public, amount, price, index, tx)
+            side = "buy"
+            order_book_update_key = "bids"
+            order_book = self.bids_order_book
+            orders_heap = self.buy_orders
+            heap_item = (-price, index, tx)
+
+            balances_dict = self.quote_token_balances
+            balance = balances_dict.get(public, 0)
+
+            required = amount * price
         elif operation == SELL:
-            ok = self._place_sell_order(public, amount, price, index, tx)
+            side = "sell"
+            order_book_update_key = "asks"
+            order_book = self.asks_order_book
+            orders_heap = self.sell_orders
+            heap_item = (price, index, tx)
+
+            balances_dict = self.base_token_balances
+            balance = balances_dict.get(public, 0)
+
+            required = amount
         else:
             raise ValueError(f"Unsupported transaction type: {operation}")
 
-        if not ok:
+        if balance < required:
+            logger.debug(
+                "Insufficient balance, current balance: {current_balance}, "
+                "side: {side}, base token: {base_token}, quote token: {quote_token}",
+                current_balance=balance,
+                side=side,
+                base_token=self.base_token,
+                quote_token=self.quote_token,
+            )
             return False
+
+        heapq.heappush(orders_heap, heap_item)
+        with self.order_book_lock:
+            if price in order_book:
+                order_book[price] += amount
+            else:
+                order_book[price] = amount
+            self._order_book_updates[order_book_update_key][price] = order_book[price]
+
+        balances_dict[public] = balance - required
 
         self.final_id += 1
         self.zex.amounts[tx] = amount
@@ -986,20 +1027,29 @@ class Market:
                 self.buy_orders.remove((-price, index, order))
                 heapq.heapify(self.buy_orders)
                 with self.order_book_lock:
-                    self.bids_order_book[price] -= amount
-                    self._order_book_updates["bids"][price] = self.bids_order_book[
-                        price
-                    ]
+                    if amount >= self.bids_order_book[price]:
+                        del self.bids_order_book[price]
+                        self._order_book_updates["bids"][price] = 0
+                    else:
+                        self.bids_order_book[price] -= amount
+                        self._order_book_updates["bids"][price] = self.bids_order_book[
+                            price
+                        ]
 
             else:
                 self.base_token_balances[public] += amount
                 self.sell_orders.remove((price, index, order))
                 heapq.heapify(self.sell_orders)
                 with self.order_book_lock:
-                    self.asks_order_book[price] -= amount
-                    self._order_book_updates["asks"][price] = self.asks_order_book[
-                        price
-                    ]
+                    if amount >= self.asks_order_book[price]:
+                        del self.asks_order_book[price]
+                        self._order_book_updates["asks"][price] = 0
+                    else:
+                        self.asks_order_book[price] -= amount
+                        self._order_book_updates["asks"][price] = self.asks_order_book[
+                            price
+                        ]
+            self.final_id += 1
             return True
         else:
             return False
@@ -1124,68 +1174,11 @@ class Market:
             return self.kline["Low"].iloc[prev_24h_index:].min()
         return self.kline["Low"].min()
 
-    def _place_buy_order(
-        self, public: bytes, amount: float, price: float, index: int, tx: bytes
-    ) -> bool:
-        if price < 0 or amount < 0:
-            return False
-
-        required = amount * price
-        balance = self.quote_token_balances.get(public, 0)
-        if balance < required:
-            logger.debug(
-                "Insufficient balance, current balance: {current_balance}, "
-                "side: buy, base token: {base_token}, quote token: {quote_token}",
-                current_balance=balance,
-                base_token=self.base_token,
-                quote_token=self.quote_token,
-            )
-            return False
-
-        heapq.heappush(self.buy_orders, (-price, index, tx))
-        with self.order_book_lock:
-            if price in self.bids_order_book:
-                self.bids_order_book[price] += amount
-            else:
-                self.bids_order_book[price] = amount
-            self._order_book_updates["bids"][price] = self.bids_order_book[price]
-
-        self.quote_token_balances[public] = balance - required
-        return True
-
-    def _place_sell_order(
-        self, public: bytes, amount: float, price: float, index: int, tx: bytes
-    ) -> bool:
-        if price < 0 or amount < 0:
-            return False
-
-        balance = self.base_token_balances.get(public, 0)
-        if balance < amount:
-            logger.debug(
-                "Insufficient balance, current balance: {current_balance}, "
-                "side: sell, base token: {base_token}, quote token: {quote_token}",
-                current_balance=balance,
-                base_token=self.base_token,
-                quote_token=self.quote_token,
-            )
-            return False
-
-        heapq.heappush(self.sell_orders, (price, index, tx))
-        with self.order_book_lock:
-            if price in self.asks_order_book:
-                self.asks_order_book[price] += amount
-            else:
-                self.asks_order_book[price] = amount
-            self._order_book_updates["asks"][price] = self.asks_order_book[price]
-
-        self.base_token_balances[public] = balance - amount
-        return True
-
     def _update_buy_order(
         self,
         buy_order: bytes,
-        trade_amount: float,
-        buy_price: float,
+        trade_amount: Decimal,
+        buy_price: Decimal,
         buy_public: bytes,
     ):
         with self.order_book_lock:
@@ -1206,8 +1199,8 @@ class Market:
     def _update_sell_order(
         self,
         sell_order: bytes,
-        trade_amount: float,
-        sell_price: float,
+        trade_amount: Decimal,
+        sell_price: Decimal,
         sell_public: bytes,
     ):
         with self.order_book_lock:
@@ -1225,14 +1218,11 @@ class Market:
                 del self.zex.orders[sell_public][sell_order]
                 self.final_id += 1
 
-    def _remove_from_order_book(self, book_type: str, price: float, amount: float):
+    def _remove_from_order_book(self, book_type: str, price: Decimal, amount: Decimal):
         order_book = (
             self.bids_order_book if book_type == "bids" else self.asks_order_book
         )
-        if (
-            order_book[price] < amount
-            or abs(order_book[price] - amount) < self.amount_tolerance
-        ):
+        if order_book[price] <= amount:
             self._order_book_updates[book_type][price] = 0
             del order_book[price]
         else:
@@ -1243,8 +1233,8 @@ class Market:
         self,
         buy_public: bytes,
         sell_public: bytes,
-        trade_amount: float,
-        price: float,
+        trade_amount: Decimal,
+        price: Decimal,
     ):
         self.base_token_balances[buy_public] = (
             self.base_token_balances.get(buy_public, 0) + trade_amount
@@ -1260,7 +1250,7 @@ class Market:
         sell_order: bytes,
         buy_public: bytes,
         sell_public: bytes,
-        trade_amount: float,
+        trade_amount: Decimal,
         t: int,
     ):
         for public, order_type in [(buy_public, BUY), (sell_public, SELL)]:

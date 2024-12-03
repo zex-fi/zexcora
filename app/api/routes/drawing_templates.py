@@ -4,7 +4,7 @@ from .tables import Drawing
 
 drawing_collection = Drawing("db.sqlite")
 
-router = APIRouter(prefix="/drawing_templates", tags=["drawing_templates"])
+router = APIRouter(prefix="/1.1/drawing_templates", tags=["drawing_templates"])
 
 
 @router.get("/")
@@ -14,6 +14,8 @@ def get_templates(
     name: str | None = Query(None, alias="name"),
     tool: str | None = Query("", alias="tool"),
 ):
+    if user_id <= 0:
+        raise HTTPException(404, "invalid user id")
     if name is None:
         return get_all_templates_list(client_id, user_id, tool)
     else:
@@ -27,6 +29,8 @@ def delete_templates(
     name: str | None = Query(None, alias="name"),
     tool: str | None = Query("", alias="tool"),
 ):
+    if user_id <= 0:
+        raise HTTPException(404, "invalid user id")
     if name is None:
         raise HTTPException(404, "Wrong template id")
     else:
@@ -41,6 +45,8 @@ def set_templates(
     tool: str | None = Query("", alias="tool"),
     content: str = Form(..., alias="content"),
 ):
+    if user_id <= 0:
+        raise HTTPException(404, "invalid user id")
     return create_or_update_template(client_id, user_id, name, tool, content)
 
 

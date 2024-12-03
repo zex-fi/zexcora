@@ -44,7 +44,7 @@ def _user_assets(user: bytes) -> list[UserAssetResponse]:
         result.append(
             UserAssetResponse(
                 chain=token[0:3],
-            token=int(token[4:]),
+                token=int(token[4:]),
                 free=str(balance),
                 locked="0",
                 freeze="0",
