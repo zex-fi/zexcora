@@ -6,6 +6,7 @@ import os
 import random
 import time
 
+from binance.spot import Spot
 from eth_hash.auto import keccak
 from secp256k1 import PrivateKey
 from websocket import WebSocket, WebSocketApp
@@ -23,7 +24,7 @@ BTC_XMR_DEPOSIT, DEPOSIT, WITHDRAW, BUY, SELL, CANCEL, REGISTER = b"xdwbscr"
 version = pack(">B", 1)
 
 MAX_ORDERS_COUNT = 5
-MIN_ORDER_VALUE = 1
+MIN_ORDER_VALUE = 2
 
 
 class ZexBot:
@@ -31,9 +32,8 @@ class ZexBot:
         self,
         private_key: bytes,
         pair: str,
+        binance_name: str,
         side: str,
-        best_bid: float,
-        best_ask: float,
         volume_digits: int,
         price_digits: int,
         lock: Lock,
@@ -41,6 +41,7 @@ class ZexBot:
     ) -> None:
         self.privkey = PrivateKey(private_key, raw=True)
         self.pair = pair
+        self.binance_name = binance_name
         self.side = side
         self.is_running = False
         self.volume_digits = volume_digits
@@ -55,17 +56,24 @@ class ZexBot:
         self.orders = deque()
         self.websocket: WebSocketApp | None = None
 
+        self.client = Spot()
+        kline = self.client.klines(symbol=self.binance_name, interval="1m", limit=1)
+        self.mark_price = float(kline[0][4])
+        print(
+            f"self.binance_name = {self.binance_name}, mark_price = {self.mark_price}"
+        )
+
         bids, asks = self.get_order_book()
         self.bids = {price: volume for price, volume in bids if volume != 0}
         self.asks = {price: volume for price, volume in asks if volume != 0}
 
         if len(self.bids.keys()) == 0:
-            self.best_bid = best_bid
+            self.best_bid = self.mark_price
         else:
             self.best_bid = max(self.bids.keys())
 
         if len(self.asks.keys()) == 0:
-            self.best_ask = best_ask
+            self.best_ask = self.mark_price
         else:
             self.best_ask = min(self.asks.keys())
 
@@ -115,19 +123,9 @@ class ZexBot:
                     best_ask_price = min(self.asks.keys())
                     self.best_ask = best_ask_price
 
-                # self.send_order()
-
         return on_message
 
-    def send_order(self):
-        if self.side == "buy" and len(self.bids) == 0:
-            price = self.best_ask - (self.best_ask * 0.2 * self.rng.random())
-            self.send_order_transaction(price)
-        elif self.side == "sell" and len(self.asks) == 0:
-            price = self.best_bid + (self.best_bid * 0.2 * self.rng.random())
-            self.send_order_transaction(price)
-
-    def send_order_transaction(self, price):
+    def send_order_transaction(self, price, maker):
         price = round(price, self.price_digits)
         volume = round(
             self.base_volume + self.rng.random() * self.base_volume / 2,
@@ -139,7 +137,7 @@ class ZexBot:
             time.sleep(0.2)
             resp = httpx.get(f"http://{HOST}:{PORT}/v1/user/nonce?id={self.user_id}")
             self.nonce = resp.json()["nonce"]
-            tx = self.create_order(price, volume, maker=True)
+            tx = self.create_order(price, volume, maker=maker)
             self.orders.append(tx)
             txs = [tx.decode("latin-1")]
 
@@ -208,7 +206,8 @@ class ZexBot:
         tx += sig
         return tx
 
-    def create_register_msg(self):
+    @staticmethod
+    def create_register_msg():
         """Format registration message for verification."""
         msg = "Welcome to ZEX."
         msg = "".join(("\x19Ethereum Signed Message:\n", str(len(msg)), msg))
@@ -242,18 +241,34 @@ class ZexBot:
         )
         Thread(target=self.websocket.run_forever, kwargs={"reconnect": 5}).start()
         self.is_running = True
+
+        # Add a thread to update mark_price every minute
+        def update_mark_price():
+            while self.is_running:
+                time.sleep(60)  # Wait for 60 seconds
+                kline = self.client.klines(
+                    symbol=self.binance_name, interval="1m", limit=1
+                )
+                self.mark_price = float(kline[0][4])
+
+        Thread(target=update_mark_price).start()
+
         while self.is_running:
             time.sleep(1)
             maker = self.rng.choices([True, False], [0.5, 0.5])[0]
             price = 0
             if maker:
                 if self.side == "buy":
-                    price = self.best_ask - (self.best_ask * 0.1 * self.rng.random())
+                    price = self.mark_price - (
+                        self.mark_price * 0.05 * self.rng.random()
+                    )
                 elif self.side == "sell":
-                    price = self.best_bid + (self.best_bid * 0.1 * self.rng.random())
+                    price = self.mark_price + (
+                        self.mark_price * 0.05 * self.rng.random()
+                    )
             else:
                 if self.side == "buy":
-                    price = self.best_ask
+                    price = self.mark_price
                 elif self.side == "sell":
-                    price = self.best_bid
-            self.send_order_transaction(price)
+                    price = self.mark_price
+            self.send_order_transaction(price, maker)

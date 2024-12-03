@@ -12,10 +12,9 @@ PAIRS = {
         4: {  # Link
             "POL": {
                 1: {
-                    "bid": 9.7,
-                    "ask": 9.7,
-                    "price_digits": 4,
-                    "volume_digits": 3,
+                    "price_digits": 2,
+                    "volume_digits": 2,
+                    "binance_name": "LINKUSDT"
                 },
             },
         },
@@ -24,10 +23,9 @@ PAIRS = {
         4: {  # Link
             "POL": {
                 1: {
-                    "bid": 9.7,
-                    "ask": 9.7,
-                    "price_digits": 4,
-                    "volume_digits": 3,
+                    "price_digits": 2,
+                    "volume_digits": 2,
+                    "binance_name": "LINKUSDT"
                 },
             },
         },
@@ -36,10 +34,9 @@ PAIRS = {
         4: {  # Link
             "POL": {
                 1: {
-                    "bid": 9.7,
-                    "ask": 9.7,
                     "price_digits": 4,
                     "volume_digits": 2,
+                    "binance_name": "LINKUSDT"
                 },
             },
         },
