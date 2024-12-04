@@ -972,7 +972,7 @@ class Market:
             heap_item = (-price, index, tx)
 
             balances_dict = self.quote_token_balances
-            balance = balances_dict.get(public, 0)
+            balance = Decimal(str(balances_dict.get(public, 0)))
 
             required = amount * price
         elif operation == SELL:
@@ -983,7 +983,7 @@ class Market:
             heap_item = (price, index, tx)
 
             balances_dict = self.base_token_balances
-            balance = balances_dict.get(public, 0)
+            balance = Decimal(str(balances_dict.get(public, 0)))
 
             required = amount
         else:
@@ -993,7 +993,7 @@ class Market:
             logger.debug(
                 "Insufficient balance, current balance: {current_balance}, "
                 "side: {side}, base token: {base_token}, quote token: {quote_token}",
-                current_balance=balance,
+                current_balance=float(balance),
                 side=side,
                 base_token=self.base_token,
                 quote_token=self.quote_token,
