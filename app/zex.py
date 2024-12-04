@@ -1022,7 +1022,7 @@ class Market:
             if order_slice not in order:
                 continue
             operation, _, price, _, public, index = _parse_transaction(order)
-            amount = self.zex.amounts.pop(order)
+            amount = Decimal(str(self.zex.amounts.pop(order)))
             del self.zex.orders[public][order]
             if operation == BUY:
                 self.quote_token_balances[public] += amount * price
