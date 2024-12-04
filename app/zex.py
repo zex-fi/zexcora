@@ -553,6 +553,8 @@ class Zex(metaclass=SingletonMeta):
             token_contract, amount, decimal, t, user_id = struct.unpack(
                 deposit_format, chunk[:deposit_size]
             )
+            amount = Decimal(amount)
+            decimal = Decimal(decimal)
             if chain not in self.token_decimal_on_chain_lookup:
                 self.token_decimal_on_chain_lookup[chain] = {}
             if chain not in self.token_id_to_contract_on_chain_lookup:
@@ -589,7 +591,7 @@ class Zex(metaclass=SingletonMeta):
             if token not in self.assets:
                 self.assets[token] = {}
             if public not in self.assets[token]:
-                self.assets[token][public] = 0
+                self.assets[token][public] = Decimal("0")
 
             if public not in self.deposits:
                 self.deposits[public] = []

@@ -1,3 +1,4 @@
+from decimal import Decimal
 from struct import unpack
 
 from pydantic import BaseModel
@@ -93,7 +94,7 @@ class MarketTransaction:
 
 class Deposit(BaseModel):
     token: str
-    amount: float
+    amount: Decimal
     time: int
 
 
