@@ -11,7 +11,6 @@ router = APIRouter()
 
 market_filter_list = [
     "BTC:1-POL:1",
-    "XMR:1-POL:1",
     "POL:4-POL:1",
     "BSC:4-POL:1",
     "OPT:4-POL:1",
@@ -19,7 +18,6 @@ market_filter_list = [
 
 token_filter_list = [
     "BTC:1",
-    "XMR:1",
     "POL:1",
     "POL:4",
     "BSC:4",

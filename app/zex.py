@@ -553,8 +553,7 @@ class Zex(metaclass=SingletonMeta):
             token_contract, amount, decimal, t, user_id = struct.unpack(
                 deposit_format, chunk[:deposit_size]
             )
-            amount = Decimal(amount)
-            decimal = Decimal(decimal)
+            amount = Decimal(str(amount))
             if chain not in self.token_decimal_on_chain_lookup:
                 self.token_decimal_on_chain_lookup[chain] = {}
             if chain not in self.token_id_to_contract_on_chain_lookup:
@@ -570,7 +569,7 @@ class Zex(metaclass=SingletonMeta):
                     f"from {self.token_decimal_on_chain_lookup[chain][token_contract]} to {decimal}"
                 )
                 self.token_decimal_on_chain_lookup[chain][token_contract] = decimal
-            amount /= 10**decimal
+            amount /= 10 ** Decimal(decimal)
 
             if token_contract not in self.contract_to_token_id_on_chain_lookup[chain]:
                 self.last_token_id[chain] += 1
@@ -592,6 +591,10 @@ class Zex(metaclass=SingletonMeta):
                 self.assets[token] = {}
             if public not in self.assets[token]:
                 self.assets[token][public] = Decimal("0")
+
+            pair = f"{token}-{settings.zex.usdt_mainnet}"
+            if pair not in self.markets:
+                self.markets[pair] = Market(token, settings.zex.usdt_mainnet, self)
 
             if public not in self.deposits:
                 self.deposits[public] = []
@@ -1022,7 +1025,7 @@ class Market:
             if order_slice not in order:
                 continue
             operation, _, price, _, public, index = _parse_transaction(order)
-            amount = Decimal(str(self.zex.amounts.pop(order)))
+            amount = self.zex.amounts.pop(order)
             del self.zex.orders[public][order]
             if operation == BUY:
                 self.quote_token_balances[public] += amount * price

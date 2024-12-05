@@ -128,11 +128,9 @@ class TransactionVerifier(metaclass=SingletonMeta):
 
         # Initialize environment variables
         self.deposit_monitor_pub_key = settings.zex.keys.deposit_public_key
-        self.btc_xmr_deposit_monitor_pub_key = (
-            settings.zex.keys.btc_xmr_deposit_public_key
-        )
-        self.btc_xmr_monitor_pub = PublicKey(
-            bytes.fromhex(self.btc_xmr_deposit_monitor_pub_key), raw=True
+        self.btc_deposit_monitor_pub_key = settings.zex.keys.btc_deposit_public_key
+        self.btc_monitor_pub = PublicKey(
+            bytes.fromhex(self.btc_deposit_monitor_pub_key), raw=True
         )
 
     def __enter__(self):
@@ -172,7 +170,7 @@ class TransactionVerifier(metaclass=SingletonMeta):
             zip(
                 chunks,
                 repeat(int(self.deposit_monitor_pub_key)),
-                repeat(bytes.fromhex(self.btc_xmr_deposit_monitor_pub_key)),
+                repeat(bytes.fromhex(self.btc_deposit_monitor_pub_key)),
             ),
         )
 

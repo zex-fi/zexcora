@@ -1,4 +1,6 @@
-USDT_MAINNET = "POL:1"
+from app.config import settings
+
+USDT_MAINNET = settings.zex.usdt_mainnet
 
 TAGS = {
     "BTC:1": "btc",

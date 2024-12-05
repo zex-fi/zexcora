@@ -15,7 +15,7 @@ def get_charts(
     user_id: str = Query(..., alias="user"),
     chart_id: str | None = Query(None, alias="chart"),
 ):
-    if user_id <= 0:
+    if user_id == "0":
         raise HTTPException(404, "invalid user id")
     if chart_id is None:
         return get_all_user_charts(client_id, user_id)
@@ -29,7 +29,7 @@ def delete_charts(
     user_id: str = Query(..., alias="user"),
     chart_id: str | None = Query(None, alias="chart"),
 ):
-    if user_id <= 0:
+    if user_id == "0":
         raise HTTPException(404, "invalid user id")
     if chart_id is None:
         raise HTTPException(404, "Wrong chart id")
@@ -47,7 +47,7 @@ def set_charts(
     symbol: str = Form(..., alias="symbol"),
     resolution: str = Form(..., alias="resolution"),
 ):
-    if user_id <= 0:
+    if user_id == "0":
         raise HTTPException(404, "invalid user id")
     if chart_id is None:
         return save_chart(client_id, user_id, chart_name, symbol, resolution, content)

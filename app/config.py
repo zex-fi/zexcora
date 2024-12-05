@@ -12,9 +12,8 @@ from pydantic_settings import (
 
 class Keys(BaseModel):
     deposit_public_key: int
-    btc_xmr_deposit_public_key: str
+    btc_deposit_public_key: str
     btc_public_key: str
-    monero_public_address: str
 
 
 class Redis(BaseModel):
@@ -40,6 +39,8 @@ class ZexSettings(BaseModel):
     redis: Redis
 
     deposited_block: dict[str, int]
+
+    usdt_mainnet: str
     default_tokens_decimal: dict[str, dict[str, int]]
     verified_tokens_id: dict[str, dict[str, int]]
 

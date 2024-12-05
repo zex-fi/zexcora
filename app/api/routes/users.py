@@ -30,8 +30,6 @@ from app.zex import BUY
 router = APIRouter()
 light_router = APIRouter()
 
-USDT_MAINNET = "POL:1"
-
 
 # @timed_lru_cache(seconds=10)
 def _user_assets(user: bytes) -> list[UserAssetResponse]:
@@ -274,7 +272,6 @@ def get_create2_address(deployer_address: str, salt: int, bytecode_hash: str) ->
 
 
 btc_master_pubkey = PublicKey(settings.zex.keys.btc_public_key)
-monero_master_address = Address(settings.zex.keys.monero_public_address)
 
 
 @router.get("/capital/deposit/address/list")
@@ -286,7 +283,6 @@ def get_user_addresses(id: int) -> UserAddressesResponse:
         raise HTTPException(404, {"error": "user not found"})
     id = zex.public_to_id_lookup[user]
     taproot_address = get_taproot_address(btc_master_pubkey, id)
-    monero_address = monero_master_address.with_payment_id(id)
     evm_address = get_create2_address(
         settings.zex.deployer_address, id, settings.zex.byte_code_hash
     )
@@ -294,7 +290,6 @@ def get_user_addresses(id: int) -> UserAddressesResponse:
         user=user.hex(),
         addresses=Addresses(
             BTC=taproot_address.to_string(),
-            XMR=str(monero_address),
             EVM=evm_address,
         ),
     )
