@@ -55,7 +55,7 @@ class Zex(metaclass=SingletonMeta):
         self.saved_state_index = 0
         self.save_state_tx_index_threshold = self.save_frequency
         self.markets: dict[str, Market] = {}
-        self.assets: dict[str, dict[bytes, Decimal]] = {}
+        self.assets: dict[str, dict[bytes, Decimal]] = {settings.zex.usdt_mainnet: {}}
         self.contract_to_token_id_on_chain_lookup: dict[str, dict[str, int]] = (
             settings.zex.verified_tokens_id
         )
