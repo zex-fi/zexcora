@@ -36,7 +36,7 @@ def create_tx(deposits, chain: str, timestamp, monitor: PrivateKey):
         len(deposits),
     )
     for deposit in deposits:
-        tx_hash: str = deposit["tx_hash"]
+        tx_hash: str = "0x"+deposit["tx_hash"]
         vout: int = deposit["vout"]
         user_id: int = deposit["user_id"]
         token_address: str = "0x" + "0" * 40

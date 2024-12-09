@@ -28,7 +28,7 @@ def initialize_zex():
         )
 
     response = httpx.get(settings.zex.state_source)
-    if response.status_code != 200:
+    if response.status_code != 200 or len(response.content) == 0:
         return Zex(
             kline_callback=kline_event(manager),
             depth_callback=depth_event(manager),
