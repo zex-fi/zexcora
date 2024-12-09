@@ -567,6 +567,9 @@ class Zex(metaclass=SingletonMeta):
                 )
                 continue
 
+            if chain not in self.deposits:
+                self.deposits[chain] = set()
+
             if (tx_hash, vout) in self.deposits[chain]:
                 logger.error(
                     f"chain: {chain}, tx_hash: {tx_hash}, vout: {vout} has already been deposited"
