@@ -55,7 +55,7 @@ class Zex(metaclass=SingletonMeta):
         self.saved_state_index = 0
         self.save_state_tx_index_threshold = self.save_frequency
         self.markets: dict[str, Market] = {}
-        self.assets = {}
+        self.assets: dict[str, dict[bytes, Decimal]] = {}
         self.contract_to_token_id_on_chain_lookup: dict[str, dict[str, int]] = (
             settings.zex.verified_tokens_id
         )
@@ -72,10 +72,10 @@ class Zex(metaclass=SingletonMeta):
             chain: max(tokens.values())
             for chain, tokens in self.contract_to_token_id_on_chain_lookup.items()
         }
-        self.amounts = {}
-        self.trades = {}
-        self.orders = {}
-        self.deposits: dict[bytes, list[Deposit]] = {}
+        self.amounts: dict[bytes, Decimal] = {}
+        self.trades: dict[bytes, deque] = {}
+        self.orders: dict[bytes, dict[bytes, bool]] = {}
+        self.user_deposits: dict[bytes, list[Deposit]] = {}
         self.public_to_id_lookup: dict[bytes, int] = {}
         self.id_to_public_lookup: dict[int, bytes] = {}
 
@@ -84,15 +84,17 @@ class Zex(metaclass=SingletonMeta):
         ] = {}
 
         self.withdraws_on_chain: dict[str, list[WithdrawTransaction]] = {}
-        self.deposited_blocks = settings.zex.deposited_block
+        self.deposits: dict[str, set[tuple[str, int]]] = {
+            chain: set() for chain in settings.zex.chains
+        }
         self.user_withdraw_nonce_on_chain: dict[str, dict[bytes, int]] = {
-            k: {} for k in self.deposited_blocks.keys()
+            k: {} for k in self.deposits.keys()
         }
         self.withdraw_nonce_on_chain: dict[str, int] = {
-            k: 0 for k in self.deposited_blocks.keys()
+            k: 0 for k in self.deposits.keys()
         }
-        self.nonces = {}
-        self.pair_lookup = {}
+        self.nonces: dict[bytes, int] = {}
+        self.pair_lookup: dict[bytes, tuple[str, str, str]] = {}
 
         self.last_user_id_lock = Lock()
         self.last_user_id = 0
@@ -120,7 +122,6 @@ class Zex(metaclass=SingletonMeta):
 
         tokens = {
             "BTC": [(1, "0x" + "0" * 40)],
-            "XMR": [(1, "0x" + "0" * 40)],
             "POL": [
                 (1, "0xc2132D05D31c914a87C6611C10748AEb04B58e8F"),
                 (2, "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"),
@@ -133,12 +134,6 @@ class Zex(metaclass=SingletonMeta):
                 (3, "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c"),
                 (4, "0xF8A0BF9cF54Bb92F17374d9e9A321E6a111a51bD"),
             ],
-            "ARB": [
-                (1, "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9"),
-                (2, "0xaf88d065e77c8cC2239327C5EDb3A432268e5831"),
-                (3, "0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f"),
-                (4, "0xf97f4df75117a78c1A5a0DBb814Af92458539FB4"),
-            ],
             "OPT": [
                 (1, "0x94b008aA00579c1307B0EF2c499aD98a8ce58e58"),
                 (2, "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85"),
@@ -147,7 +142,7 @@ class Zex(metaclass=SingletonMeta):
             ],
         }
 
-        for i in range(1):
+        for i in range(110):
             bot_private_key = (private_seed_int + i).to_bytes(32, "big")
             bot_priv = PrivateKey(bot_private_key, raw=True)
             bot_pub = bot_priv.pubkey.serialize()
@@ -174,8 +169,8 @@ class Zex(metaclass=SingletonMeta):
                         self.last_token_id[chain] += 1
                     if f"{chain}:{token_id}" not in self.assets:
                         self.assets[f"{chain}:{token_id}"] = {}
-                    self.assets[f"{chain}:{token_id}"][bot_pub] = 100
-                    self.assets[f"{chain}:{token_id}"][client_pub] = 200
+                    self.assets[f"{chain}:{token_id}"][bot_pub] = Decimal("100")
+                    self.assets[f"{chain}:{token_id}"][client_pub] = Decimal("200")
 
     def to_protobuf(self) -> zex_pb2.ZexState:
         state = zex_pb2.ZexState()
@@ -188,22 +183,22 @@ class Zex(metaclass=SingletonMeta):
             pb_market.quote_token = market.quote_token
             for order in market.buy_orders:
                 pb_order = pb_market.buy_orders.add()
-                pb_order.price = -order[0]  # Negate price for buy orders
+                pb_order.price = str(-order[0])  # Negate price for buy orders
                 pb_order.index = order[1]
                 pb_order.tx = order[2]
             for order in market.sell_orders:
                 pb_order = pb_market.sell_orders.add()
-                pb_order.price = order[0]
+                pb_order.price = str(order[0])
                 pb_order.index = order[1]
                 pb_order.tx = order[2]
             for price, amount in market.bids_order_book.items():
                 entry = pb_market.bids_order_book.add()
-                entry.price = price
-                entry.amount = amount
+                entry.price = str(price)
+                entry.amount = str(amount)
             for price, amount in market.asks_order_book.items():
                 entry = pb_market.asks_order_book.add()
-                entry.price = price
-                entry.amount = amount
+                entry.price = str(price)
+                entry.amount = str(amount)
             pb_market.first_id = market.first_id
             pb_market.final_id = market.final_id
             pb_market.last_update_id = market.last_update_id
@@ -218,12 +213,12 @@ class Zex(metaclass=SingletonMeta):
             for public, amount in balances.items():
                 entry = pb_balance.balances.add()
                 entry.public_key = public
-                entry.amount = amount
+                entry.amount = str(amount)
 
         for tx, amount in self.amounts.items():
             entry = state.amounts.add()
             entry.tx = tx
-            entry.amount = amount
+            entry.amount = str(amount)
 
         for public, trades in self.trades.items():
             entry = state.trades.add()
@@ -236,7 +231,7 @@ class Zex(metaclass=SingletonMeta):
                     pb_trade.pair,
                     pb_trade.order_type,
                     pb_trade.order,
-                ) = trade
+                ) = trade[0], str(trade[1]), trade[2], trade[3], trade[4]
 
         for public, orders in self.orders.items():
             entry = state.orders.add()
@@ -263,20 +258,26 @@ class Zex(metaclass=SingletonMeta):
                 entry.nonce = nonce
 
         state.withdraw_nonce_on_chain.update(self.withdraw_nonce_on_chain)
-        state.deposited_blocks.update(self.deposited_blocks)
+
+        for chain, deposits in self.deposits.items():
+            pb_deposits = state.deposits[chain]
+            for deposit in deposits:
+                entry = pb_deposits.deposits.add()
+                entry.tx_hash = deposit[0]
+                entry.vout = deposit[1]
 
         for public, nonce in self.nonces.items():
             entry = state.nonces.add()
             entry.public_key = public
             entry.nonce = nonce
 
-        for public, deposits in self.deposits.items():
-            entry = state.deposits.add()
+        for public, deposits in self.user_deposits.items():
+            entry = state.user_deposits.add()
             entry.public_key = public
             for deposit in deposits:
                 pb_deposit = entry.deposits.add()
                 pb_deposit.token = deposit.token
-                pb_deposit.amount = deposit.amount
+                pb_deposit.amount = str(deposit.amount)
                 pb_deposit.time = deposit.time
 
         for key, (base_token, quote_token, pair) in self.pair_lookup.items():
@@ -327,23 +328,23 @@ class Zex(metaclass=SingletonMeta):
         zex.last_tx_index = pb_state.last_tx_index
 
         zex.assets = {
-            token: {e.public_key: e.amount for e in pb_balance.balances}
+            token: {e.public_key: Decimal(e.amount) for e in pb_balance.balances}
             for token, pb_balance in pb_state.balances.items()
         }
         for pair, pb_market in pb_state.markets.items():
             market = Market(pb_market.base_token, pb_market.quote_token, zex)
             market.buy_orders = [
-                (-o.price, o.index, o.tx) for o in pb_market.buy_orders
+                (-Decimal(o.price), o.index, o.tx) for o in pb_market.buy_orders
             ]
             market.sell_orders = [
-                (o.price, o.index, o.tx) for o in pb_market.sell_orders
+                (Decimal(o.price), o.index, o.tx) for o in pb_market.sell_orders
             ]
 
             market.bids_order_book = {
-                e.price: e.amount for e in pb_market.bids_order_book
+                Decimal(e.price): Decimal(e.amount) for e in pb_market.bids_order_book
             }
             market.asks_order_book = {
-                e.price: e.amount for e in pb_market.asks_order_book
+                Decimal(e.price): Decimal(e.amount) for e in pb_market.asks_order_book
             }
 
             market.first_id = pb_market.first_id
@@ -352,10 +353,16 @@ class Zex(metaclass=SingletonMeta):
             market.kline = pd.read_pickle(BytesIO(pb_market.kline))
             zex.markets[pair] = market
 
-        zex.amounts = {e.tx: e.amount for e in pb_state.amounts}
+        zex.amounts = {e.tx: Decimal(e.amount) for e in pb_state.amounts}
         zex.trades = {
             e.public_key: deque(
-                (trade.t, trade.amount, trade.pair, trade.order_type, trade.order)
+                (
+                    trade.t,
+                    Decimal(trade.amount),
+                    trade.pair,
+                    trade.order_type,
+                    trade.order,
+                )
                 for trade in e.trades
             )
             for e in pb_state.trades
@@ -387,20 +394,22 @@ class Zex(metaclass=SingletonMeta):
                 entry.public_key: entry.nonce for entry in pb_withdraw_nonces.nonces
             }
 
-        zex.deposited_blocks = dict(pb_state.deposited_blocks)
+        zex.deposits = {
+            chain: set(e.deposits) for chain, e in pb_state.deposits.items()
+        }
 
         zex.nonces = {e.public_key: e.nonce for e in pb_state.nonces}
 
-        zex.deposits = {
+        zex.user_deposits = {
             e.public_key: [
                 Deposit(
                     token=pb_deposit.token,
-                    amount=pb_deposit.amount,
+                    amount=Decimal(pb_deposit.amount),
                     time=pb_deposit.time,
                 )
                 for pb_deposit in e.deposits
             ]
-            for e in pb_state.deposits
+            for e in pb_state.user_deposits
         }
 
         zex.pair_lookup = {
@@ -524,35 +533,47 @@ class Zex(metaclass=SingletonMeta):
             self.save_state()
 
     def deposit(self, tx: bytes):
-        header_format = ">xx 3s Q Q H"
+        header_format = ">xx 3s H"
         header_size = struct.calcsize(header_format)
-        chain, from_block, to_block, count = struct.unpack(
-            header_format, tx[:header_size]
-        )
+        chain, count = struct.unpack(header_format, tx[:header_size])
         chain = chain.upper().decode()
 
-        if self.deposited_blocks[chain] != from_block - 1:
-            logger.error(
-                f"invalid from block. self.deposited_blocks[chain]: {self.deposited_blocks[chain]}, "
-                f"from_block - 1: {from_block - 1}"
-            )
-            return
-        self.deposited_blocks[chain] = to_block
         if chain not in self.contract_to_token_id_on_chain_lookup:
             self.contract_to_token_id_on_chain_lookup[chain] = {}
         if chain not in self.last_token_id:
             self.last_token_id[chain] = 0
 
-        deposit_format = ">42s Q B I Q"
+        deposit_format = ">66s 42s 32s B I Q B"
         deposit_size = struct.calcsize(deposit_format)
 
         deposits = list(
             chunkify(tx[header_size : header_size + deposit_size * count], deposit_size)
         )
         for chunk in deposits:
-            token_contract, amount, decimal, t, user_id = struct.unpack(
+            tx_hash, token_contract, amount, decimal, t, user_id, vout = struct.unpack(
                 deposit_format, chunk[:deposit_size]
             )
+            amount = int.from_bytes(amount, byteorder="big")
+            tx_hash = tx_hash.decode()
+
+            if user_id < 1:
+                logger.critical(
+                    f"invalid user id: {user_id}, tx_hash: {tx_hash}, vout: {vout}, token_contract: {token_contract}, amount: {amount}, decimal: {decimal}"
+                )
+                continue
+            if self.last_user_id < user_id:
+                logger.error(
+                    f"deposit for missing user: {user_id}, tx_hash: {tx_hash}, vout: {vout}, token_contract: {token_contract}, amount: {amount}, decimal: {decimal}"
+                )
+                continue
+
+            if (tx_hash, vout) in self.deposits[chain]:
+                logger.error(
+                    f"chain: {chain}, tx_hash: {tx_hash}, vout: {vout} has already been deposited"
+                )
+                continue
+            self.deposits[chain].add((tx_hash, vout))
+
             amount = Decimal(str(amount))
             if chain not in self.token_decimal_on_chain_lookup:
                 self.token_decimal_on_chain_lookup[chain] = {}
@@ -596,10 +617,10 @@ class Zex(metaclass=SingletonMeta):
             if pair not in self.markets:
                 self.markets[pair] = Market(token, settings.zex.usdt_mainnet, self)
 
-            if public not in self.deposits:
-                self.deposits[public] = []
+            if public not in self.user_deposits:
+                self.user_deposits[public] = []
 
-            self.deposits[public].append(
+            self.user_deposits[public].append(
                 Deposit(
                     token=token,
                     amount=amount,
@@ -607,6 +628,9 @@ class Zex(metaclass=SingletonMeta):
                 )
             )
             self.assets[token][public] += amount
+            logger.info(
+                f"deposit on chain: {chain}, token: {token}, amount: {amount} for user: {public}, tx_hash: {tx_hash}, new balance: {self.assets[token][public]}"
+            )
 
             if public not in self.trades:
                 self.trades[public] = deque()
@@ -755,8 +779,8 @@ class Zex(metaclass=SingletonMeta):
             self.trades[public] = deque()
         if public not in self.orders:
             self.orders[public] = {}
-        if public not in self.deposits:
-            self.deposits[public] = []
+        if public not in self.user_deposits:
+            self.user_deposits[public] = []
         if public not in self.nonces:
             self.nonces[public] = 0
 

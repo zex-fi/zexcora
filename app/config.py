@@ -12,6 +12,7 @@ from pydantic_settings import (
 
 class Keys(BaseModel):
     deposit_public_key: int
+    deposit_shield_address: str
     btc_deposit_public_key: str
     btc_public_key: str
 
@@ -38,7 +39,7 @@ class ZexSettings(BaseModel):
     byte_code_hash: str
     redis: Redis
 
-    deposited_block: dict[str, int]
+    chains: list[str]
 
     usdt_mainnet: str
     default_tokens_decimal: dict[str, dict[str, int]]

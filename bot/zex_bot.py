@@ -56,7 +56,7 @@ class ZexBot:
         self.orders = deque()
         self.websocket: WebSocketApp | None = None
 
-        self.client = Spot()
+        self.client = Spot(proxies={"https": "socks5://127.0.0.1:12123"})
         kline = self.client.klines(symbol=self.binance_name, interval="1m", limit=1)
         self.mark_price = float(kline[0][4])
         print(

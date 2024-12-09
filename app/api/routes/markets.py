@@ -84,7 +84,7 @@ def _exchange_info_response():
                 chain=c,
                 chainType=CHAIN_TYPES[c],
             )
-            for c in zex.deposited_blocks.keys()
+            for c in zex.deposits.keys()
         ],
     )
 

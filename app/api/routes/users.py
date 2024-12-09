@@ -140,9 +140,9 @@ def user_transfers(id: int) -> list[TransferResponse]:
     if id not in zex.id_to_public_lookup:
         raise HTTPException(404, {"error": "user not found"})
     user = zex.id_to_public_lookup[id]
-    if user not in zex.deposits:
+    if user not in zex.user_deposits:
         return []
-    all_deposits = zex.deposits.get(user, []).copy()
+    all_deposits = zex.user_deposits.get(user, []).copy()
     all_withdraws = [
         x
         for chain in zex.user_withdraws_on_chain.keys()

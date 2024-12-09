@@ -1,7 +1,22 @@
 services:
   zex:
-    image: zellular/zex:dev
-    build:
-      context: .
-    env_file:
-      - .envrc
+    image: zex:dev
+    container_name: zex-dev
+    network_mode: host
+    volumes:
+      - ./config-test.yaml:/config.yaml
+      - ./init_db.sql:/zex/init_db.sql
+      - ./zex_state.pb:/zex/zex_state.pb
+    depends_on:
+      - redis
+  redis:
+    container_name: zsequencer-redis
+    image: redis:alpine
+    command: ["redis-server", "/redis.conf"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./redis-data:/data
+      - ./redis.conf:/redis.conf
+
+    restart: unless-stopped

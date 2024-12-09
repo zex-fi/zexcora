@@ -3,7 +3,9 @@ from itertools import repeat
 from struct import unpack
 import multiprocessing
 
+from eth_account.messages import encode_defunct
 from eth_hash.auto import keccak
+from eth_utils.address import to_checksum_address
 from loguru import logger
 from pyfrost.frost import (
     code_to_pub,
@@ -11,6 +13,7 @@ from pyfrost.frost import (
     verify_group_signature,
 )
 from secp256k1 import PublicKey
+from web3 import Web3
 import numpy as np
 
 from app.singleton import SingletonMeta
@@ -18,6 +21,8 @@ from app.singleton import SingletonMeta
 from .config import settings
 
 BTC_XMR_DEPOSIT, DEPOSIT, WITHDRAW, BUY, SELL, CANCEL, REGISTER = b"xdwbscr"
+
+w3 = Web3()
 
 
 def order_msg(tx: bytes) -> bytes:
@@ -58,25 +63,36 @@ def cancel_msg(tx: bytes) -> bytes:
 def _verify_single_tx(
     tx: bytes,
     deposit_monitor_pub_key: int,
+    deposit_shield_address: str,
     btc_xmr_monitor_pub: bytes,
 ) -> bool:
     """Verify a single transaction."""
     name = tx[1]
 
     if name == DEPOSIT:
-        msg = tx[:-74]
+        msg = tx[:-206]
         msg_hash = sha256(msg).hexdigest()
-        nonce, sig = unpack(">42s32s", tx[-74:])
+        nonce, frost_sig, ecdsa_sig = unpack(">42s 32s 132s", tx[-206:])
 
-        return verify_group_signature(
+        frost_verified = verify_group_signature(
             {
                 "key_type": "ETH",
                 "public_key": pub_compress(code_to_pub(int(deposit_monitor_pub_key))),
                 "message": msg_hash,
-                "signature": int.from_bytes(sig, "big"),
+                "signature": int.from_bytes(frost_sig, "big"),
                 "nonce": nonce.decode(),
             }
         )
+
+        # Encode the message using Ethereum's signed message structure
+        eth_signed_message = encode_defunct(tx[:-206])
+
+        recovered_address = w3.eth.account.recover_message(
+            eth_signed_message, signature=bytes.fromhex(ecdsa_sig.decode()[2:])
+        )
+        ecdsa_verified = recovered_address == deposit_shield_address
+
+        return frost_verified and ecdsa_verified
     elif name == BTC_XMR_DEPOSIT:
         msg = tx[:-64]
         sig = tx[-64:]
@@ -106,11 +122,19 @@ def _verify_single_tx(
 
 
 def _verify_chunk(
-    txs: list[bytes], deposit_monitor_pub_key: int, btc_xmr_monitor_pub: bytes
+    txs: list[bytes],
+    deposit_monitor_pub_key: int,
+    deposit_shield_address: str,
+    btc_xmr_monitor_pub: bytes,
 ) -> list[bool]:
     """Verify a chunk of transactions."""
     return [
-        _verify_single_tx(tx, deposit_monitor_pub_key, btc_xmr_monitor_pub)
+        _verify_single_tx(
+            tx,
+            deposit_monitor_pub_key,
+            deposit_shield_address,
+            btc_xmr_monitor_pub,
+        )
         for tx in txs
     ]
 
@@ -128,6 +152,9 @@ class TransactionVerifier(metaclass=SingletonMeta):
 
         # Initialize environment variables
         self.deposit_monitor_pub_key = settings.zex.keys.deposit_public_key
+        self.deposit_shield_address = to_checksum_address(
+            settings.zex.keys.deposit_shield_address
+        )
         self.btc_deposit_monitor_pub_key = settings.zex.keys.btc_deposit_public_key
         self.btc_monitor_pub = PublicKey(
             bytes.fromhex(self.btc_deposit_monitor_pub_key), raw=True
@@ -170,6 +197,7 @@ class TransactionVerifier(metaclass=SingletonMeta):
             zip(
                 chunks,
                 repeat(int(self.deposit_monitor_pub_key)),
+                repeat(self.deposit_shield_address),
                 repeat(bytes.fromhex(self.btc_deposit_monitor_pub_key)),
             ),
         )

@@ -120,11 +120,33 @@ async def server_time():
     return {"serverTime": int(time.time() * 1000)}
 
 
-@router.get("/block/latest")
-def get_latest_deposited_block(chain: str):
-    if chain not in zex.deposited_blocks:
+@router.get("/status/deposit")
+def get_deposit_status(chain: str, tx_hash: str, vout: int = 0):
+    if chain not in zex.deposits:
         raise HTTPException(404, {"error": "chain not found"})
-    return {"block": zex.deposited_blocks[chain]}
+    if (tx_hash, vout) not in zex.deposits:
+        raise HTTPException(404, {"error": "transaction not found"})
+    return {"status": "complete"}
+
+
+@router.get("/capital/config/withdraw")
+def get_withdraw_config():
+    return {
+        "token": "",
+        "name": "",
+        "networkList": [
+            {
+                "addressRegex": "",
+                "name": "Polygon",
+                "network": "POL",
+                "withdrawEnable": True,
+                "withdrawFee": 0,
+                "withdrawMin": 0,
+                "withdrawMax": 0,
+                "contractAddress": "",
+            }
+        ],
+    }
 
 
 @router.post("/register")

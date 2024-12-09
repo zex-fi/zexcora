@@ -1,13 +1,13 @@
 FROM python:3.11
 
 RUN pip3 install cmake && \
-    git clone https://github.com/herumi/mcl.git && \
-    cd mcl && \
-    mkdir build && \
-    cd build && \
-    cmake .. && \
-    make -j8 && \
-    make install
+  git clone https://github.com/herumi/mcl.git && \
+  cd mcl && \
+  mkdir build && \
+  cd build && \
+  cmake .. && \
+  make -j8 && \
+  make install
 
 ENV PYTHONFAULTHANDLER=1 \
   PYTHONUNBUFFERED=1 \
@@ -24,9 +24,9 @@ ENV PYTHONFAULTHANDLER=1 \
 
 WORKDIR /zex
 COPY pyproject.toml poetry.lock ./
-RUN curl -sSL https://install.python-poetry.org | python3 - &&  /usr/local/bin/poetry install
+RUN curl -sSL https://install.python-poetry.org | python3 - && /usr/local/bin/poetry install
 COPY . .
 RUN /usr/local/bin/poetry install
 
-EXPOSE 8000
-CMD ["python", "app/main.py"]
+EXPOSE 15782
+CMD ["python", "app/main.py", "/config.yaml"]

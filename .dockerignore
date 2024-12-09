@@ -1,3 +1,9 @@
 *.example
 .envrc
 tests/
+notebooks/
+monero/
+redis-data/
+init_db.sql
+docker-compose.yaml
+Dockerfile

@@ -5,14 +5,7 @@ networks:
     public_key: "0290ab36a28c3107d0091e8ea731e3c528046e317f854ed7b35f746d4e3484b1b3"
     blocks_confirmation: 1
     block_duration: 60
-  - name: monero
-    chain: XMR
-    mainnet: true
-    node_url: "https://node.xmr.agor.ist:443"
-    wallet_path: "monero/wallets/zex-mainnet_view"
-    wallet_pass: ""
-    blocks_confirmation: 1
-    block_duration: 60
+    start_block: 873982
 
 api_url: http://127.0.0.1:15782/v1
 monitor_private: "cd7d94cd90d25d8722087a85e51ce3e5d8d06d98cb9f1c02e93f646c90af0193"

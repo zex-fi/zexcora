@@ -166,3 +166,12 @@ node_modules
 
 *.env
 *.envrc
+notebooks
+init_db.sql
+nodes.json
+redis.conf
+zex_state.pb
+important-keys.yaml
+config-test.yaml
+wallet/monero
+redis-data/
