@@ -395,7 +395,8 @@ class Zex(metaclass=SingletonMeta):
             }
 
         zex.deposits = {
-            chain: set(e.deposits) for chain, e in pb_state.deposits.items()
+            chain: {(item.tx_hash, item.vout) for item in e.deposits}
+            for chain, e in pb_state.deposits.items()
         }
 
         zex.nonces = {e.public_key: e.nonce for e in pb_state.nonces}
