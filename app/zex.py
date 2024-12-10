@@ -656,7 +656,7 @@ class Zex(metaclass=SingletonMeta):
             logger.debug(f"invalid nonce: {self.nonces[tx.public]} != {tx.nonce}")
             return
 
-        balance = self.assets[tx.internal_token].get(tx.public, 0)
+        balance = self.assets[tx.internal_token].get(tx.public, Decimal("0"))
         if balance < tx.amount:
             logger.debug("balance not enough")
             return

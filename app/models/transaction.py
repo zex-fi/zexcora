@@ -138,7 +138,7 @@ class WithdrawTransaction(BaseModel):
     operation: str
     chain: str
     token_id: int
-    amount: float
+    amount: Decimal
     dest: str
     time: int
     nonce: int
@@ -155,7 +155,7 @@ class WithdrawTransaction(BaseModel):
             operation=chr(tx[1]),
             chain=tx[2:5].upper(),
             token_id=unpack(">I", tx[5:9])[0],
-            amount=unpack(">d", tx[9:17])[0],
+            amount=Decimal(str(unpack(">d", tx[9:17])[0])),
             dest="0x" + tx[17:37].hex(),
             time=unpack(">I", tx[37:41])[0],
             nonce=unpack(">I", tx[41:45])[0],
