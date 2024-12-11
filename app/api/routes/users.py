@@ -317,8 +317,10 @@ def get_withdraw_nonce(id: int, chain: str) -> WithdrawNonce:
 def get_withdraw_nonce_on_chain(chain: str):
     chain = chain.upper()
     if chain not in zex.withdraw_nonce_on_chain:
-        raise HTTPException(404, {"error": "chain not found"})
-    return {"chain": chain, "nonce": zex.withdraw_nonce_on_chain[chain]}
+        raise HTTPException(404, {"error": "no withdraw on chain"})
+    if zex.withdraw_nonce_on_chain[chain] == 0:
+        raise HTTPException(404, {"error": "no withdraw on chain"})
+    return {"chain": chain, "nonce": zex.withdraw_nonce_on_chain[chain] - 1}
 
 
 def get_chain_withdraws(
