@@ -136,24 +136,24 @@ def get_withdraw_config():
     result = []
     for token in zex.assets.keys():
         if token in settings.zex.verified_tokens:
-            for chain, address in settings.zex.verified_tokens[token].items():
-                item = {
-                    "token": token,
-                    "name": NAMES[token],
-                    "networkList": [
-                        {
-                            "addressRegex": "",
-                            "name": NETWORK_NAME[chain],
-                            "network": chain,
-                            "withdrawEnable": True,
-                            "withdrawFee": 0,
-                            "withdrawMin": 0,
-                            "withdrawMax": 0,
-                            "contractAddress": address,
-                        }
-                    ],
-                }
-                result.append(item)
+            item = {
+                "token": token,
+                "name": NAMES[token],
+                "networkList": [
+                    {
+                        "addressRegex": "",
+                        "name": NETWORK_NAME[chain],
+                        "network": chain,
+                        "withdrawEnable": True,
+                        "withdrawFee": 0,
+                        "withdrawMin": 0,
+                        "withdrawMax": 0,
+                        "contractAddress": address,
+                    }
+                    for chain, address in settings.zex.verified_tokens[token].items()
+                ],
+            }
+            result.append(item)
         else:
             chain, address = token.split(":")
             item = {
