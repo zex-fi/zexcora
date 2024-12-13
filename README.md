@@ -23,8 +23,8 @@ In order to test the backend follow these steps:
         "method": "SUBSCRIBE",
         "params":
             [
-                "xmr:0-hol:0@kline_1m",
-                "xmr:0-hol:0@depth"
+                "BTC-USDT@kline_1m",
+                "BTC-USDT@depth"
             ],
         "id": 1
     }

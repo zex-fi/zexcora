@@ -24,7 +24,6 @@ from app.models.response import (
     WithdrawNonce,
 )
 from app.models.transaction import Deposit, WithdrawTransaction
-from app.monero.address import Address
 from app.zex import BUY
 
 router = APIRouter()
@@ -34,15 +33,14 @@ light_router = APIRouter()
 # @timed_lru_cache(seconds=10)
 def _user_assets(user: bytes) -> list[UserAssetResponse]:
     result = []
-    for token in zex.assets:
-        if zex.assets[token].get(user, 0) == 0:
+    for asset in zex.assets:
+        if zex.assets[asset].get(user, 0) == 0:
             continue
 
-        balance = zex.assets[token][user]
+        balance = zex.assets[asset][user]
         result.append(
             UserAssetResponse(
-                chain=token[0:3],
-                token=int(token[4:]),
+                asset=asset,
                 free=str(balance),
                 locked="0",
                 freeze="0",
@@ -340,7 +338,7 @@ def get_chain_withdraws(
                     withdraw.amount
                     * (
                         10
-                        ** zex.token_decimal_on_chain_lookup[withdraw.chain][
+                        ** zex.token_decimals[withdraw.chain][
                             zex.token_id_to_contract_on_chain_lookup[withdraw.chain][
                                 withdraw.token_id
                             ]
@@ -388,12 +386,7 @@ def get_user_withdraws(
             amount=str(
                 int(
                     withdraw_tx.amount
-                    * (
-                        10
-                        ** zex.token_decimal_on_chain_lookup[withdraw_tx.chain][
-                            contract_address
-                        ]
-                    )
+                    * (10 ** zex.token_decimals[withdraw_tx.chain][contract_address])
                 )
             ),
             user=str(int.from_bytes(user[1:], byteorder="big")),
@@ -413,7 +406,7 @@ def get_user_withdraws(
                         w.amount
                         * (
                             10
-                            ** zex.token_decimal_on_chain_lookup[w.chain][
+                            ** zex.token_decimals[w.chain][
                                 zex.token_id_to_contract_on_chain_lookup[w.chain][
                                     w.token_id
                                 ]

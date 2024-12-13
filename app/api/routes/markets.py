@@ -5,23 +5,19 @@ from app.api.cache import timed_lru_cache
 from app.config import settings
 from app.models.response import Chain, ExchangeInfoResponse, Symbol, Token
 
-from . import CHAIN_TYPES, NAMES, SYMBOLS, TAGS, USDT_MAINNET
+from . import CHAIN_TYPES, NAMES, USDT_MAINNET
 
 router = APIRouter()
 
 market_filter_list = [
-    "BTC:1-POL:1",
-    "POL:4-POL:1",
-    "BSC:4-POL:1",
-    "OPT:4-POL:1",
+    "BTC-USDT",
+    "LINK-USDT",
 ]
 
 token_filter_list = [
-    "BTC:1",
-    "POL:1",
-    "POL:4",
-    "BSC:4",
-    "OPT:4",
+    "BTC",
+    "USDT",
+    "LINK",
 ]
 
 
@@ -31,17 +27,10 @@ async def depth(symbol: str, limit: int = 500):
 
 
 def get_token_info(token) -> Token:
-    chain = token[:3]
-    id = int(token[4:])
-    address = zex.token_id_to_contract_on_chain_lookup.get(chain, {}).get(
-        id, "0x" + "0" * 40
-    )
     t = Token(
-        chain=chain,
-        id=id,
-        address=address,
-        chainType="evm" if chain not in ["BTC", "XMR"] else "native_only",
-        decimals=zex.token_decimal_on_chain_lookup.get(chain, {}).get(address, 8),
+        token=token,
+        chainType="evm" if token[:3] not in ["BTC"] else "native_only",
+        decimals=zex.token_decimals.get(token, 8),
         price=zex.markets[f"{token}-{USDT_MAINNET}"].get_last_price()
         if f"{token}-{USDT_MAINNET}" in zex.markets
         else 0
@@ -51,8 +40,8 @@ def get_token_info(token) -> Token:
         if token != USDT_MAINNET and f"{token}-{USDT_MAINNET}" in zex.markets
         else 0,
         name=NAMES.get(token, token),
-        symbol=SYMBOLS.get(token, token),
-        tag=TAGS.get(token, token),
+        symbol=token,
+        tag=token,
     )
     return t
 

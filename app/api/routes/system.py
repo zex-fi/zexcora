@@ -16,6 +16,8 @@ from app import stop_event, zex
 from app.config import settings
 from app.verify import TransactionVerifier
 
+from . import NAMES, NETWORK_NAME
+
 
 class MockZellular:
     def __init__(self, app_name: str, base_url: str, threshold_percent: float = 67):
@@ -131,22 +133,47 @@ def get_deposit_status(chain: str, tx_hash: str, vout: int = 0):
 
 @router.get("/capital/config/withdraw")
 def get_withdraw_config():
-    return {
-        "token": "",
-        "name": "",
-        "networkList": [
-            {
-                "addressRegex": "",
-                "name": "Polygon",
-                "network": "POL",
-                "withdrawEnable": True,
-                "withdrawFee": 0,
-                "withdrawMin": 0,
-                "withdrawMax": 0,
-                "contractAddress": "",
+    result = []
+    for token in zex.assets.keys():
+        if token in settings.zex.verified_tokens:
+            for chain, address in settings.zex.verified_tokens[token].items():
+                item = {
+                    "token": token,
+                    "name": NAMES[token],
+                    "networkList": [
+                        {
+                            "addressRegex": "",
+                            "name": NETWORK_NAME[chain],
+                            "network": chain,
+                            "withdrawEnable": True,
+                            "withdrawFee": 0,
+                            "withdrawMin": 0,
+                            "withdrawMax": 0,
+                            "contractAddress": address,
+                        }
+                    ],
+                }
+                result.append(item)
+        else:
+            chain, address = token.split(":")
+            item = {
+                "token": token,
+                "name": "",
+                "networkList": [
+                    {
+                        "addressRegex": "",
+                        "name": NETWORK_NAME.get(chain, chain),
+                        "network": chain,
+                        "withdrawEnable": True,
+                        "withdrawFee": 0,
+                        "withdrawMin": 0,
+                        "withdrawMax": 0,
+                        "contractAddress": address,
+                    }
+                ],
             }
-        ],
-    }
+            result.append(item)
+    return result
 
 
 @router.post("/register")

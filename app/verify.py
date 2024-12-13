@@ -1,6 +1,6 @@
 from hashlib import sha256
 from itertools import repeat
-from struct import unpack
+from struct import calcsize, unpack
 import multiprocessing
 
 from eth_account.messages import encode_defunct
@@ -20,28 +20,44 @@ from app.singleton import SingletonMeta
 
 from .config import settings
 
-BTC_XMR_DEPOSIT, DEPOSIT, WITHDRAW, BUY, SELL, CANCEL, REGISTER = b"xdwbscr"
+BTC_DEPOSIT, DEPOSIT, WITHDRAW, BUY, SELL, CANCEL, REGISTER = b"xdwbscr"
 
 w3 = Web3()
 
 
 def order_msg(tx: bytes) -> bytes:
     """Format order message for verification."""
-    msg = f"""v: {tx[0]}\nname: {"buy" if tx[1] == BUY else "sell"}\nbase token: {tx[2:5].decode("ascii")}:{unpack(">I", tx[5:9])[0]}\nquote token: {tx[9:12].decode("ascii")}:{unpack(">I", tx[12:16])[0]}\namount: {np.format_float_positional(unpack(">d", tx[16:24])[0], trim="0")}\nprice: {np.format_float_positional(unpack(">d", tx[24:32])[0], trim="0")}\nt: {unpack(">I", tx[32:36])[0]}\nnonce: {unpack(">I", tx[36:40])[0]}\npublic: {tx[40:73].hex()}\n"""
+    version, side, base_token_len, quote_token_len = unpack(">B B B B", tx[:4])
+
+    order_format = f">{base_token_len}s {quote_token_len}s d d I I 33s"
+    order_format_size = calcsize(order_format)
+    base_token, quote_token, amount, price, t, nonce, public = unpack(
+        order_format, tx[4 : 4 + order_format_size]
+    )
+    base_token = base_token.decode("ascii")
+    quote_token = quote_token.decode("ascii")
+    public = public.hex()
+
+    msg = f"""v: {version}\nname: {"buy" if side == BUY else "sell"}\nbase token: {base_token}\nquote token: {quote_token}\namount: {np.format_float_positional(amount, trim="0")}\nprice: {np.format_float_positional(price, trim="0")}\nt: {t}\nnonce: {nonce}\npublic: {public}\n"""
     msg = "".join(("\x19Ethereum Signed Message:\n", str(len(msg)), msg))
     return msg.encode()
 
 
 def withdraw_msg(tx: bytes) -> bytes:
     """Format withdrawal message for verification."""
-    msg = f"v: {tx[0]}\n"
+    version, side, token_len = unpack(">B B B", tx[:3])
+
+    withdraw_format = f">{token_len}s d 20s I I 33s"
+    token, amount, to, t, nonce, public = unpack(withdraw_format, tx[4:])
+
+    msg = f"v: {version}\n"
     msg += "name: withdraw\n"
-    msg += f'token: {tx[2:5].decode("ascii")}:{unpack(">I", tx[5:9])[0]}\n'
-    msg += f'amount: {unpack(">d", tx[9:17])[0]}\n'
-    msg += f'to: {"0x" + tx[17:37].hex()}\n'
-    msg += f't: {unpack(">I", tx[37:41])[0]}\n'
-    msg += f'nonce: {unpack(">I", tx[41:45])[0]}\n'
-    msg += f"public: {tx[45:78].hex()}\n"
+    msg += f"token: {token}\n"
+    msg += f"amount: {amount}\n"
+    msg += f'to: {"0x" + to.hex()}\n'
+    msg += f"t: {t}\n"
+    msg += f"nonce: {nonce}\n"
+    msg += f"public: {public}\n"
     msg = "\x19Ethereum Signed Message:\n" + str(len(msg)) + msg
     return msg.encode()
 
@@ -55,7 +71,8 @@ def register_msg() -> bytes:
 
 def cancel_msg(tx: bytes) -> bytes:
     """Format cancellation message for verification."""
-    msg = f"""v: {tx[0]}\nname: cancel\nslice: {tx[2:41].hex()}\npublic: {tx[41:74].hex()}\n"""
+    order_tx = tx[2:-33].hex()
+    msg = f"""v: {tx[0]}\nname: cancel\nslice: {order_tx}\npublic: {tx[-33:].hex()}\n"""
     msg = "".join(("\x19Ethereum Signed Message:\n", str(len(msg)), msg))
     return msg.encode()
 
@@ -64,7 +81,7 @@ def _verify_single_tx(
     tx: bytes,
     deposit_monitor_pub_key: int,
     deposit_shield_address: str,
-    btc_xmr_monitor_pub: bytes,
+    btc_monitor_pub: bytes,
 ) -> bool:
     """Verify a single transaction."""
     name = tx[1]
@@ -93,10 +110,10 @@ def _verify_single_tx(
         ecdsa_verified = recovered_address == deposit_shield_address
 
         return frost_verified and ecdsa_verified
-    elif name == BTC_XMR_DEPOSIT:
+    elif name == BTC_DEPOSIT:
         msg = tx[:-64]
         sig = tx[-64:]
-        pubkey = PublicKey(btc_xmr_monitor_pub, raw=True)
+        pubkey = PublicKey(btc_monitor_pub, raw=True)
         return pubkey.schnorr_verify(msg, sig, bip340tag="zex")
     elif name == WITHDRAW:
         msg, pubkey, sig = withdraw_msg(tx), tx[45:78], tx[78 : 78 + 64]
@@ -107,9 +124,10 @@ def _verify_single_tx(
         return pubkey.ecdsa_verify(msg_hash, sig, raw=True)
     else:
         if name == CANCEL:
-            msg, pubkey, sig = cancel_msg(tx), tx[41:74], tx[74 : 74 + 64]
+            msg, pubkey, sig = cancel_msg(tx), tx[-97:-64], tx[-64:]
         elif name in (BUY, SELL):
-            msg, pubkey, sig = order_msg(tx), tx[40:73], tx[73 : 73 + 64]
+            msg = order_msg(tx)
+            pubkey, sig = tx[-97:-64], tx[-64:]
         elif name == REGISTER:
             msg, pubkey, sig = register_msg(), tx[2:35], tx[35 : 35 + 64]
         else:
@@ -125,7 +143,7 @@ def _verify_chunk(
     txs: list[bytes],
     deposit_monitor_pub_key: int,
     deposit_shield_address: str,
-    btc_xmr_monitor_pub: bytes,
+    btc_monitor_pub: bytes,
 ) -> list[bool]:
     """Verify a chunk of transactions."""
     return [
@@ -133,7 +151,7 @@ def _verify_chunk(
             tx,
             deposit_monitor_pub_key,
             deposit_shield_address,
-            btc_xmr_monitor_pub,
+            btc_monitor_pub,
         )
         for tx in txs
     ]

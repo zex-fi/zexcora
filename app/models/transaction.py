@@ -164,6 +164,7 @@ class WithdrawTransaction(BaseModel):
             raw_tx=tx,
         )
 
+    # TODO: check if this needs modification to support unification of tokens
     @property
     def internal_token(self):
         return f"{self.chain}:{self.token_id}"

@@ -2,8 +2,7 @@ from pydantic import BaseModel
 
 
 class UserAssetResponse(BaseModel):
-    chain: str
-    token: int
+    asset: str
     free: str
     locked: str
     freeze: str
@@ -74,10 +73,7 @@ class Symbol(BaseModel):
 
 
 class Token(BaseModel):
-    chain: str
-    id: int
     chainType: str
-    address: str | None
     decimals: int
     price: float  # price is USDT
     change_24h: float

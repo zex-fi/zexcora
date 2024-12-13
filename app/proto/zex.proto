@@ -13,15 +13,11 @@ message ZexState {
     
     map<string, DepositsOnChain> deposits = 10;
     repeated NonceEntry nonces = 11;
-    repeated PairLookupEntry pair_lookup = 12;
-    uint64 last_tx_index = 13;
-    repeated UserDepositEntry user_deposits = 14;
-    repeated IDLookupEntry public_to_id_lookup = 15;
-    map<uint64, bytes> id_to_public_lookup = 16;
-    repeated ContractToIDOnChainEntry contract_to_token_id_on_chain_lookup = 17;
-    repeated IDToContractOnChainEntry token_id_to_contract_on_chain_lookup = 18;
-    repeated TokenToDecimalOnChainEntry token_decimal_on_chain_lookup = 19;
-    map<string, uint64> last_token_id_on_chain = 20;
+    uint64 last_tx_index = 12;
+    repeated UserDepositEntry user_deposits = 13;
+    repeated IDLookupEntry public_to_id_lookup = 14;
+    map<uint64, bytes> id_to_public_lookup = 15;
+    repeated TokenToDecimalOnChainEntry token_decimal_on_chain_lookup = 16;
 }
 
 message Market {
@@ -39,8 +35,7 @@ message Market {
 
 message Order {
     string price = 1;
-    int64 index = 2;
-    bytes tx = 3;
+    bytes tx = 2;
 }
 
 message OrderBookEntry {
@@ -128,13 +123,6 @@ message Deposit {
 message NonceEntry {
     bytes public_key = 1;
     uint32 nonce = 2;
-}
-
-message PairLookupEntry {
-    bytes key = 1;
-    string base_token = 2;
-    string quote_token = 3;
-    string pair = 4;
 }
 
 message IDLookupEntry {

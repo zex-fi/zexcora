@@ -42,8 +42,8 @@ class ZexSettings(BaseModel):
     chains: list[str]
 
     usdt_mainnet: str
-    default_tokens_decimal: dict[str, dict[str, int]]
-    verified_tokens_id: dict[str, dict[str, int]]
+
+    verified_tokens: dict[str, dict[str, str]]
 
 
 class Settings(BaseSettings):

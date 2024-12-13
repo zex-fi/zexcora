@@ -31,12 +31,12 @@ def initialize() -> tuple[Zex, ZexBot, ZexBot]:
 
     zex.benchmark_mode = True
 
-    zex.assets["BST:1"] = {}
-    zex.assets["BST:1"][public2] = 150000000000000
-    zex.assets["BST:2"] = {}
-    zex.assets["BST:2"][public1] = 200000000000000
-    order_book = Market("BST:1", "BST:2", zex)
-    zex.markets["BST:1-BST:2"] = order_book
+    zex.assets["LINK"] = {}
+    zex.assets["LINK"][public2] = 150000000000000
+    zex.assets["USDT"] = {}
+    zex.assets["USDT"][public1] = 200000000000000
+    order_book = Market("LINK", "USDT", zex)
+    zex.markets["LINK-USDT"] = order_book
 
     zex.trades[public1] = deque()
     zex.orders[public1] = {}
@@ -46,12 +46,8 @@ def initialize() -> tuple[Zex, ZexBot, ZexBot]:
     zex.orders[public2] = {}
     zex.nonces[public2] = 0
 
-    buyer_bot = ZexBot(
-        bytes.fromhex(u1_private), "XMR:0-HOL:1", "buy", 169, 171, 5, 4
-    )
-    seller_bot = ZexBot(
-        bytes.fromhex(u2_private), "XMR:0-HOL:1", "sell", 169, 171, 5, 4
-    )
+    buyer_bot = ZexBot(bytes.fromhex(u1_private), "LINK-USDT", "buy", 169, 171, 5, 4)
+    seller_bot = ZexBot(bytes.fromhex(u2_private), "LINK-USDT", "sell", 169, 171, 5, 4)
 
     return zex, buyer_bot, seller_bot
 
