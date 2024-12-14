@@ -1,4 +1,4 @@
-from struct import unpack
+from struct import calcsize, unpack
 import hashlib
 
 from bitcoinutils.keys import P2trAddress, PublicKey
@@ -95,17 +95,23 @@ def user_orders(id: int) -> list[OrderResponse]:
     resp = []
     order: bytes
     for order in orders:
+        side, base_token_len, quote_token_len = unpack(">x B B B", order[:4])
+        order_format = f">{base_token_len}s {quote_token_len}s d d I I"
+        order_format_size = calcsize(order_format)
+        base_token, quote_token, amount, price, t, nonce = unpack(
+            order_format, order[4 : 4 + order_format_size]
+        )
+        base_token = base_token.decode("ascii")
+        quote_token = quote_token.decode("ascii")
+
         o = {
-            "name": "buy" if order[1] == BUY else "sell",
-            "base_chain": order[2:5].decode("ascii"),
-            "base_token": unpack(">I", order[5:9])[0],
-            "quote_chain": order[9:12].decode("ascii"),
-            "quote_token": unpack(">I", order[12:16])[0],
-            "amount": unpack(">d", order[16:24])[0],
-            "price": unpack(">d", order[24:32])[0],
-            "t": unpack(">I", order[32:36])[0],
-            "nonce": unpack(">I", order[36:40])[0],
-            "index": unpack(">Q", order[137:145])[0],
+            "name": "buy" if side == BUY else "sell",
+            "base_token": base_token,
+            "quote_token": quote_token,
+            "amount": amount,
+            "price": price,
+            "t": t,
+            "nonce": nonce,
             "slice": order[1:40].hex(),
         }
         resp.append(o)

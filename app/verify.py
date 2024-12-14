@@ -45,7 +45,7 @@ def order_msg(tx: bytes) -> bytes:
 
 def withdraw_msg(tx: bytes) -> bytes:
     """Format withdrawal message for verification."""
-    version, side, token_len = unpack(">B B B", tx[:3])
+    version, token_len = unpack(">B x B", tx[:3])
 
     withdraw_format = f">{token_len}s d 20s I I 33s"
     token, amount, to, t, nonce, public = unpack(withdraw_format, tx[4:])

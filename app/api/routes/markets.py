@@ -12,12 +12,14 @@ router = APIRouter()
 market_filter_list = [
     "BTC-USDT",
     "LINK-USDT",
+    "POL:0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619-USDT",
 ]
 
 token_filter_list = [
     "BTC",
     "USDT",
     "LINK",
+    "POL:0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619",
 ]
 
 
@@ -41,7 +43,6 @@ def get_token_info(token) -> Token:
         else 0,
         name=NAMES.get(token, token),
         symbol=token,
-        tag=token,
     )
     return t
 

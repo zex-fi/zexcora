@@ -1,4 +1,4 @@
-FROM python:3.11
+FROM python:3.12
 
 RUN pip3 install cmake && \
   git clone https://github.com/herumi/mcl.git && \

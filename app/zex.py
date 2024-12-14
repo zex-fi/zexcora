@@ -32,7 +32,7 @@ def chunkify(lst, n_chunks):
 
 
 def get_token_name(chain, address):
-    for symbol, tokens in settings.zex.verified_tokens.items():
+    for symbol, tokens in settings.zex.verified_tokens.tokens.items():
         if chain not in tokens:
             continue
         if tokens[chain] == address:
@@ -120,24 +120,25 @@ class Zex(metaclass=SingletonMeta):
         )
 
         tokens = {
-            "BTC": ["0x" + "0" * 40],
+            "BTC": [("0x" + "0" * 40, 8)],
             "POL": [
-                "0xc2132D05D31c914a87C6611C10748AEb04B58e8F",
-                "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
-                "0x1BFD67037B42Cf73acF2047067bd4F2C47D9BfD6",
-                "0x53E0bca35eC356BD5ddDFebbD1Fc0fD03FaBad39",
+                ("0xc2132D05D31c914a87C6611C10748AEb04B58e8F", 6),
+                ("0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359", 6),
+                ("0x1BFD67037B42Cf73acF2047067bd4F2C47D9BfD6", 8),
+                ("0x53E0bca35eC356BD5ddDFebbD1Fc0fD03FaBad39", 18),
+                ("0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619", 18),  # WETH
             ],
             "BSC": [
-                "0x55d398326f99059fF775485246999027B3197955",
-                "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
-                "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c",
-                "0xF8A0BF9cF54Bb92F17374d9e9A321E6a111a51bD",
+                ("0x55d398326f99059fF775485246999027B3197955", 6),
+                ("0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", 6),
+                ("0x0555E30da8f98308EdB960aa94C0Db47230d2B9c", 8),
+                ("0xF8A0BF9cF54Bb92F17374d9e9A321E6a111a51bD", 18),
             ],
             "OPT": [
-                "0x94b008aA00579c1307B0EF2c499aD98a8ce58e58",
-                "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
-                "0x68f180fcCe6836688e9084f035309E29Bf0A2095",
-                "0x350a791Bfc2C21F9Ed5d10980Dad2e2638ffa7f6",
+                ("0x94b008aA00579c1307B0EF2c499aD98a8ce58e58", 6),
+                ("0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85", 6),
+                ("0x68f180fcCe6836688e9084f035309E29Bf0A2095", 8),
+                ("0x350a791Bfc2C21F9Ed5d10980Dad2e2638ffa7f6", 18),
             ],
         }
 
@@ -147,11 +148,12 @@ class Zex(metaclass=SingletonMeta):
             bot_pub = bot_priv.pubkey.serialize()
             self.register_pub(bot_pub)
 
-            for chain, contracts in tokens.items():
-                for constract_address in contracts:
+            for chain, details in tokens.items():
+                for constract_address, decimal in details:
                     name = get_token_name(chain, constract_address)
                     if name not in self.assets:
                         self.assets[name] = {}
+                    self.token_decimals[name] = decimal
                     self.assets[name][bot_pub] = Decimal("1000")
                     self.assets[name][client_pub] = Decimal("2000")
 
@@ -261,23 +263,13 @@ class Zex(metaclass=SingletonMeta):
                 pb_deposit.amount = str(deposit.amount)
                 pb_deposit.time = deposit.time
 
-        for key, (base_token, quote_token, pair) in self.pair_lookup.items():
-            entry = state.pair_lookup.add()
-            entry.key = key
-            entry.base_token = base_token
-            entry.quote_token = quote_token
-            entry.pair = pair
-
         for public, user_id in self.public_to_id_lookup.items():
             entry = state.public_to_id_lookup.add()
             entry.public_key = public
             entry.user_id = user_id
         state.id_to_public_lookup.update(self.id_to_public_lookup)
 
-        for chain, details in self.token_decimals.items():
-            entry = state.token_decimal_on_chain_lookup.add()
-            entry.chain = chain
-            entry.contract_to_decimal.update(details)
+        state.token_decimals.update(self.token_decimals)
 
         return state
 
@@ -383,10 +375,6 @@ class Zex(metaclass=SingletonMeta):
                 for pb_deposit in e.deposits
             ]
             for e in pb_state.user_deposits
-        }
-
-        zex.pair_lookup = {
-            e.key: (e.base_token, e.quote_token, e.pair) for e in pb_state.pair_lookup
         }
 
         zex.public_to_id_lookup = {

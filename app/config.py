@@ -22,6 +22,11 @@ class Redis(BaseModel):
     password: str
 
 
+class VerifiedTokens(BaseModel):
+    decimals: dict[str, int]
+    tokens: dict[str, dict[str, str]]
+
+
 class ZexSettings(BaseModel):
     host: str
     port: int
@@ -43,7 +48,7 @@ class ZexSettings(BaseModel):
 
     usdt_mainnet: str
 
-    verified_tokens: dict[str, dict[str, str]]
+    verified_tokens: VerifiedTokens
 
 
 class Settings(BaseSettings):

@@ -23,10 +23,8 @@ class TradeResponse(BaseModel):
 
 class OrderResponse(BaseModel):
     name: str
-    base_chain: str
-    base_token: int
-    quote_chain: str
-    quote_token: int
+    base_token: str
+    quote_token: str
     amount: float
     price: float
     t: int
@@ -79,7 +77,6 @@ class Token(BaseModel):
     change_24h: float
     name: str  # standard name of the token
     symbol: str  # standard representation of a token
-    tag: str
 
 
 class Chain(BaseModel):

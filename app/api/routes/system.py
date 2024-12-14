@@ -135,7 +135,7 @@ def get_deposit_status(chain: str, tx_hash: str, vout: int = 0):
 def get_withdraw_config():
     result = []
     for token in zex.assets.keys():
-        if token in settings.zex.verified_tokens:
+        if token in settings.zex.verified_tokens.tokens:
             item = {
                 "token": token,
                 "name": NAMES[token],
@@ -150,7 +150,9 @@ def get_withdraw_config():
                         "withdrawMax": 0,
                         "contractAddress": address,
                     }
-                    for chain, address in settings.zex.verified_tokens[token].items()
+                    for chain, address in settings.zex.verified_tokens.tokens[
+                        token
+                    ].items()
                 ],
             }
             result.append(item)
