@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from threading import Thread
 import asyncio
 
+from eth_utils.address import to_checksum_address
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
@@ -27,21 +28,54 @@ class StreamResponse(BaseModel):
 
 
 class JSONMessageManager:
+    @staticmethod
+    def normalize_channel(channel: str):
+        symbol, task = channel.split("@")
+        if ":" in symbol:
+            base_token, quote_token = symbol.split("-")
+            if ":" in base_token:
+                base_chain, base_contract_address = base_token.split(":")
+                try:
+                    base_contract_address = to_checksum_address(base_contract_address)
+                except ValueError as e:
+                    logger.exception(e)
+                    raise e
+
+                base_token = f"{base_chain}:{base_contract_address}"
+            if ":" in quote_token:
+                quote_chain, quote_contract_address = quote_token.split(":")
+                try:
+                    quote_contract_address = to_checksum_address(quote_contract_address)
+                except ValueError as e:
+                    logger.exception(e)
+                    raise e
+                quote_token = f"{quote_chain}:{quote_contract_address}"
+            symbol = f"{base_token}-{quote_token}"
+        return f"{symbol}@{task}"
+
     @classmethod
     def handle(cls, message, websocket: WebSocket, context: dict):
         request = StreamRequest.model_validate_json(message)
         match request.method.upper():
             case "SUBSCRIBE":
                 for channel in request.params:
-                    parts = channel.split("@")
-                    parts[0] = parts[0].upper()
-                    manager.subscribe(websocket, "@".join(parts))
+                    try:
+                        normal_channel = cls.normalize_channel(channel)
+                    except ValueError:
+                        return StreamResponse(
+                            result={"error": "contract address is not valid"}
+                        )
+                    manager.subscribe(websocket, normal_channel)
                 return StreamResponse(id=request.id, result=None)
             case "UNSUBSCRIBE":
                 for channel in request.params:
-                    parts = channel.split("@")
-                    parts[0] = parts[0].upper()
-                    manager.unsubscribe(websocket, "@".join(parts))
+                    try:
+                        normal_channel = cls.normalize_channel(channel)
+                    except ValueError:
+                        return StreamResponse(
+                            result={"error": "contract address is not valid"}
+                        )
+                    manager.unsubscribe(websocket, normal_channel)
                 return StreamResponse(id=request.id, result=None)
 
 

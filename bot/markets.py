@@ -19,4 +19,10 @@ PAIRS = [
         "volume_digits": 2,
         "binance_name": "LINKUSDT",
     },
+    {
+        "pair": "POL:0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619-USDT",
+        "price_digits": 2,
+        "volume_digits": 5,
+        "binance_name": "WBETHUSDT",
+    },
 ]

@@ -10,6 +10,7 @@ import asyncio
 import heapq
 import struct
 
+from eth_utils.address import to_checksum_address
 from loguru import logger
 import pandas as pd
 
@@ -154,8 +155,8 @@ class Zex(metaclass=SingletonMeta):
                     if name not in self.assets:
                         self.assets[name] = {}
                     self.token_decimals[name] = decimal
-                    self.assets[name][bot_pub] = Decimal("1000")
-                    self.assets[name][client_pub] = Decimal("2000")
+                    self.assets[name][bot_pub] = Decimal("5_000_000")
+                    self.assets[name][client_pub] = Decimal("1_000_000")
 
     def to_protobuf(self) -> zex_pb2.ZexState:
         state = zex_pb2.ZexState()
@@ -382,14 +383,12 @@ class Zex(metaclass=SingletonMeta):
         }
         zex.id_to_public_lookup = dict(pb_state.id_to_public_lookup)
 
+        zex.token_decimals = dict(zex.token_decimals)
+
         zex.last_user_id = (
             max(zex.public_to_id_lookup.values()) if zex.public_to_id_lookup else 0
         )
 
-        zex.token_decimals = {
-            entry.chain: dict(entry.contract_to_decimal)
-            for entry in pb_state.token_decimal_on_chain_lookup
-        }
         return zex
 
     def save_state(self):
@@ -417,7 +416,7 @@ class Zex(metaclass=SingletonMeta):
         )
 
     def process(self, txs: list[bytes], last_tx_index):
-        modified_pairs = set()
+        modified_pairs: set[str] = set()
         for tx in txs:
             if not tx:
                 continue
@@ -527,7 +526,7 @@ class Zex(metaclass=SingletonMeta):
 
             amount = Decimal(str(amount))
 
-            token_contract = token_contract.decode()
+            token_contract = to_checksum_address(token_contract.decode())
             token_name = get_token_name(chain, token_contract)
 
             if token_name not in self.token_decimals:

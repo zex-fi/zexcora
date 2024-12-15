@@ -71,10 +71,8 @@ def user_trades(id: int) -> list[TradeResponse]:
         trade = {
             "name": "buy" if name == BUY else "sell",
             "t": time,
-            "base_chain": base_asset[:3],
-            "base_token": int(base_asset[4:]),
-            "quote_chain": quote_asset[:3],
-            "quote_token": int(quote_asset[4:]),
+            "base_token": base_asset,
+            "quote_token": quote_asset,
             "amount": amount,
             "price": price,
             "nonce": nonce,

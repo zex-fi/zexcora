@@ -12,10 +12,8 @@ class UserAssetResponse(BaseModel):
 class TradeResponse(BaseModel):
     name: str
     t: int
-    base_chain: str
-    base_token: int
-    quote_chain: str
-    quote_token: int
+    base_token: str
+    quote_token: str
     amount: float
     price: float
     nonce: int
