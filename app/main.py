@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from threading import Thread
 import asyncio
+import sys
 
 from eth_utils.address import to_checksum_address
 from fastapi import FastAPI, WebSocket
@@ -135,10 +136,48 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.exception(e)
 
 
+def setup_logging(debug_mode: bool = False):
+    """Configure logging for the application."""
+    # Remove default handler
+    logger.remove()
+
+    # Determine minimum console log level based on debug mode
+    console_level = "DEBUG" if debug_mode else "INFO"
+
+    # Console handler
+    logger.add(
+        sys.stdout,
+        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+        level=console_level,
+        colorize=True,
+        serialize=True,
+    )
+
+    # File handlers
+    logger.add(
+        "logs/debug.log",
+        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
+        level="DEBUG",
+        rotation="10 MB",
+        retention="1 week",
+        serialize=True,
+    )
+
+    logger.add(
+        "logs/error.log",
+        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
+        level="ERROR",
+        rotation="10 MB",
+        retention="1 month",
+        serialize=True,
+    )
+
+
 if __name__ == "__main__":
+    setup_logging(debug_mode=settings.zex.verbose)
     uvicorn.run(
         app,
         host=settings.zex.host,
         port=settings.zex.port,
-        log_level="debug" if settings.zex.verbose else "info",
+        # log_level="debug" if settings.zex.verbose else "info",
     )

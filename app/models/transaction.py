@@ -5,8 +5,8 @@ from pydantic import BaseModel
 
 
 class Deposit(BaseModel):
-    chain: str
-    name: str
+    token_chain: str
+    token_name: str
     amount: Decimal
     time: int
 

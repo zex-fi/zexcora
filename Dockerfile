@@ -28,5 +28,8 @@ RUN curl -sSL https://install.python-poetry.org | python3 - && /usr/local/bin/po
 COPY . .
 RUN /usr/local/bin/poetry install
 
+RUN mkdir -p /app/logs
+ENV LOG_DIR=/app/logs
+
 EXPOSE 15782
 CMD ["python", "app/main.py", "/config.yaml"]

@@ -7,8 +7,52 @@ services:
       - ./config.dev.yaml:/config.yaml
       - ./init_db.sql:/zex/init_db.sql
       - ./zex_state.pb:/zex/zex_state.pb
+      - logs:/zex/logs
+    environment:
+      - LOG_DIR=/zex/logs
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
     depends_on:
       - redis
+
+  log-viewer:
+    image: amir20/dozzle:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "8080:8080"
+
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.7.0
+    volumes:
+      - ./filebeat.yaml:/usr/share/filebeat/filebeat.yml:ro
+      - logs:/zex/logs:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: filebeat -e -strict.perms=false
+    depends_on:
+      - zex
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.7.0
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.7.0
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elasticsearch
+
   redis:
     container_name: zsequencer-redis
     image: redis:alpine
@@ -16,7 +60,12 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - ./redis-data:/data
+      - redis-data:/data
       - ./redis.conf:/redis.conf
 
     restart: unless-stopped
+
+volumes:
+  logs:
+  elasticsearch_data:
+  redis-data:

@@ -173,8 +173,8 @@ def user_transfers(id: int) -> list[TransferResponse]:
     )
     return [
         TransferResponse(
-            chain=t.chain,
-            name=t.name,
+            chain=t.token_chain,
+            name=t.token_name,
             amount=t.amount if isinstance(t, Deposit) else -t.amount,
             time=t.time,
         )
