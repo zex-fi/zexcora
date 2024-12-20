@@ -53,7 +53,8 @@ class UserAddressesResponse(BaseModel):
 
 
 class TransferResponse(BaseModel):
-    token: str
+    chain: str
+    name: str
     amount: float
     time: int
 

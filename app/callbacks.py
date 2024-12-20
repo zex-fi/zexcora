@@ -1,3 +1,4 @@
+from decimal import Decimal
 import time
 
 from loguru import logger
@@ -82,5 +83,41 @@ def depth_event(manager: ConnectionManager):
                 except Exception as e:
                     manager.remove(ws)
                     logger.exception(e)
+
+    return f
+
+
+def user_order_event(manager: ConnectionManager):
+    async def f(public: str, nonce: int, amount: Decimal, price: Decimal):
+        subs = manager.subscriptions.copy()
+        for channel, clients in subs.items():
+            parts = channel.split("@")
+            user_public, details = parts[0], parts[1]
+            if "executionReport" not in details or user_public != public:
+                continue
+
+            for ws in clients.copy():
+                if ws not in manager.active_connections:
+                    manager.remove(ws)
+                    continue
+                try:
+                    await ws.send_json({"stream": channel, "data": public})
+                except Exception as e:
+                    manager.remove(ws)
+                    logger.exception(e)
+
+    return f
+
+
+def user_deposit_event(manager: ConnectionManager):
+    async def f(public: str, chain: str, name: str, amount: Decimal):
+        logger.debug("deposit")
+
+    return f
+
+
+def user_withdraw_event(manager: ConnectionManager):
+    async def f(public: str, chain: str, name: str, amount: Decimal):
+        logger.debug("withdraw")
 
     return f

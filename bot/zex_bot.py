@@ -1,5 +1,5 @@
 from collections import deque
-from struct import pack, unpack
+from struct import pack
 from threading import Lock, Thread
 import json
 import os
@@ -142,7 +142,7 @@ class ZexBot:
 
             if len(self.orders) >= MAX_ORDERS_COUNT:
                 oldest_tx = self.orders.popleft()
-                cancel_tx = self.create_cancel_order(oldest_tx[1:40])
+                cancel_tx = self.create_cancel_order(oldest_tx)
                 txs.append(cancel_tx.decode("latin-1"))
 
             httpx.post(f"http://{HOST}:{PORT}/v1/order", json=txs)
@@ -198,8 +198,8 @@ class ZexBot:
         return tx
 
     def create_cancel_order(self, order: bytes):
-        tx = version + pack(">B", CANCEL) + order + self.pubkey
-        msg = f"""v: {tx[0]}\nname: cancel\nslice: {tx[2:41].hex()}\npublic: {tx[41:74].hex()}\n"""
+        tx = version + pack(">B", CANCEL) + order[1:-97] + self.pubkey
+        msg = f"""v: {tx[0]}\nname: cancel\nslice: {order[1:-97].hex()}\npublic: {order[-97:-64].hex()}\n"""
         msg = "".join(("\x19Ethereum Signed Message:\n", str(len(msg)), msg))
 
         sig = self.privkey.ecdsa_sign(keccak(msg.encode("ascii")), raw=True)

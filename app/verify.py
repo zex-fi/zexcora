@@ -40,6 +40,7 @@ def order_msg(tx: bytes) -> bytes:
 
     msg = f"""v: {version}\nname: {"buy" if side == BUY else "sell"}\nbase token: {base_token}\nquote token: {quote_token}\namount: {np.format_float_positional(amount, trim="0")}\nprice: {np.format_float_positional(price, trim="0")}\nt: {t}\nnonce: {nonce}\npublic: {public}\n"""
     msg = "".join(("\x19Ethereum Signed Message:\n", str(len(msg)), msg))
+    logger.debug("order message: {msg}", msg=msg)
     return msg.encode()
 
 
@@ -47,18 +48,24 @@ def withdraw_msg(tx: bytes) -> bytes:
     """Format withdrawal message for verification."""
     version, token_len = unpack(">B x B", tx[:3])
 
-    withdraw_format = f">{token_len}s d 20s I I 33s"
-    token, amount, to, t, nonce, public = unpack(withdraw_format, tx[4:])
+    withdraw_format = f">3s {token_len}s d 20s I I 33s"
+    token_chain, token_name, amount, destination, t, nonce, public = unpack(
+        withdraw_format, tx[3 : 3 + calcsize(withdraw_format)]
+    )
+    token_chain = token_chain.decode("ascii")
+    token_name = token_name.decode("ascii")
 
     msg = f"v: {version}\n"
     msg += "name: withdraw\n"
-    msg += f"token: {token}\n"
+    msg += f"token chain: {token_chain}\n"
+    msg += f"token name: {token_name}\n"
     msg += f"amount: {amount}\n"
-    msg += f'to: {"0x" + to.hex()}\n'
+    msg += f'to: {"0x" + destination.hex()}\n'
     msg += f"t: {t}\n"
     msg += f"nonce: {nonce}\n"
-    msg += f"public: {public}\n"
+    msg += f"public: {public.hex()}\n"
     msg = "\x19Ethereum Signed Message:\n" + str(len(msg)) + msg
+    logger.debug("withdraw message: {msg}", msg=msg)
     return msg.encode()
 
 
@@ -66,14 +73,16 @@ def register_msg() -> bytes:
     """Format registration message for verification."""
     msg = "Welcome to ZEX."
     msg = "".join(("\x19Ethereum Signed Message:\n", str(len(msg)), msg))
+    logger.debug("register message: {msg}", msg=msg)
     return msg.encode()
 
 
 def cancel_msg(tx: bytes) -> bytes:
     """Format cancellation message for verification."""
-    order_tx = tx[2:-33].hex()
-    msg = f"""v: {tx[0]}\nname: cancel\nslice: {order_tx}\npublic: {tx[-33:].hex()}\n"""
+    order_tx = tx[2:-97].hex()
+    msg = f"""v: {tx[0]}\nname: cancel\nslice: {order_tx}\npublic: {tx[-97:-64].hex()}\n"""
     msg = "".join(("\x19Ethereum Signed Message:\n", str(len(msg)), msg))
+    logger.debug("cancel message: {msg}", msg=msg)
     return msg.encode()
 
 
@@ -116,7 +125,7 @@ def _verify_single_tx(
         pubkey = PublicKey(btc_monitor_pub, raw=True)
         return pubkey.schnorr_verify(msg, sig, bip340tag="zex")
     elif name == WITHDRAW:
-        msg, pubkey, sig = withdraw_msg(tx), tx[45:78], tx[78 : 78 + 64]
+        msg, pubkey, sig = withdraw_msg(tx), tx[-97:-64], tx[-64:]
         logger.info(f"withdraw request pubkey: {pubkey}")
         pubkey = PublicKey(pubkey, raw=True)
         sig = pubkey.ecdsa_deserialize_compact(sig)
@@ -136,7 +145,16 @@ def _verify_single_tx(
         pubkey = PublicKey(pubkey, raw=True)
         sig = pubkey.ecdsa_deserialize_compact(sig)
         msg_hash = keccak(msg)
-        return pubkey.ecdsa_verify(msg_hash, sig, raw=True)
+        is_verified = pubkey.ecdsa_verify(msg_hash, sig, raw=True)
+
+        if not is_verified:
+            logger.error(
+                "failed to verify transaction: name: {name}, pubkey: {pubkey}",
+                name=chr(name),
+                pubkey=pubkey.serialize().hex(),
+            )
+
+        return is_verified
 
 
 def _verify_chunk(

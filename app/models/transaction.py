@@ -1,99 +1,12 @@
 from decimal import Decimal
-from struct import unpack
+from struct import calcsize, unpack
 
 from pydantic import BaseModel
 
 
-class MarketTransaction:
-    def __init__(self, tx: bytes):
-        assert len(tx) == 145, f"invalid transaction len(tx): {len(tx)}"
-        self.raw_tx = tx
-
-    @property
-    def version(self):
-        return self.raw_tx[0]
-
-    @property
-    def operation(self):
-        return self.raw_tx[1]
-
-    @property
-    def base_chain(self):
-        return self.raw_tx[2:5].upper().decode()
-
-    @property
-    def base_token_id(self):
-        return unpack(">I", self.raw_tx[5:9])[0]
-
-    @property
-    def quote_chain(self):
-        return self.raw_tx[9:12].upper().decode()
-
-    @property
-    def quote_token_id(self):
-        return unpack(">I", self.raw_tx[12:16])[0]
-
-    @property
-    def amount(self):
-        return unpack(">d", self.raw_tx[16:24])[0]
-
-    @property
-    def price(self):
-        return unpack(">d", self.raw_tx[24:32])[0]
-
-    @property
-    def time(self):
-        return unpack(">I", self.raw_tx[32:36])[0]
-
-    @property
-    def nonce(self):
-        return unpack(">I", self.raw_tx[36:40])[0]
-
-    @property
-    def public(self):
-        return self.raw_tx[40:73]
-
-    @property
-    def signature(self):
-        return self.raw_tx[73:137]
-
-    @property
-    def index(self):
-        return unpack(">Q", self.raw_tx[137:145])[0]
-
-    @property
-    def pair(self):
-        return f"{self.base_chain}:{self.base_token_id}-{self.quote_chain}:{self.quote_token_id}"
-
-    @property
-    def base_token(self):
-        return f"{self.base_chain}:{self.base_token_id}"
-
-    @property
-    def quote_token(self):
-        return f"{self.quote_chain}:{self.quote_token_id}"
-
-    @property
-    def order_slice(self):
-        return self.raw_tx[2:41]
-
-    def hex(self):
-        return self.raw_tx.hex()
-
-    def __lt__(self, other: "MarketTransaction"):
-        return self.time < other.time
-
-    def __eq__(self, other):
-        if id(self) == id(other):
-            return True
-        if not isinstance(other, MarketTransaction):
-            return False
-
-        return self.signature == other.signature
-
-
 class Deposit(BaseModel):
-    token: str
+    chain: str
+    name: str
     amount: Decimal
     time: int
 
@@ -136,10 +49,10 @@ class DepositTransaction(BaseModel):
 class WithdrawTransaction(BaseModel):
     version: int
     operation: str
-    chain: str
-    token_id: int
+    token_chain: str
+    token_name: str
     amount: Decimal
-    dest: str
+    destination: str
     time: int
     nonce: int
     public: bytes
@@ -149,25 +62,28 @@ class WithdrawTransaction(BaseModel):
 
     @classmethod
     def from_tx(cls, tx: bytes) -> "WithdrawTransaction":
-        assert len(tx) == 142, f"invalid transaction len(tx): {len(tx)}"
+        version, token_len = unpack(">B x B", tx[:3])
+
+        withdraw_format = f">3s {token_len}s d 20s I I 33s"
+        token_chain, token_name, amount, destination, t, nonce, public = unpack(
+            withdraw_format, tx[3 : 3 + calcsize(withdraw_format)]
+        )
+        token_chain = token_chain.decode("ascii")
+        token_name = token_name.decode("ascii")
+
         return WithdrawTransaction(
             version=tx[0],
             operation=chr(tx[1]),
-            chain=tx[2:5].upper(),
-            token_id=unpack(">I", tx[5:9])[0],
-            amount=Decimal(str(unpack(">d", tx[9:17])[0])),
-            dest="0x" + tx[17:37].hex(),
-            time=unpack(">I", tx[37:41])[0],
-            nonce=unpack(">I", tx[41:45])[0],
-            public=tx[45:78],
-            signature=tx[78:142],
+            token_chain=token_chain,
+            token_name=token_name,
+            amount=Decimal(str(amount)),
+            destination="0x" + destination.hex(),
+            time=t,
+            nonce=nonce,
+            public=public,
+            signature=tx[-64:],
             raw_tx=tx,
         )
-
-    # TODO: check if this needs modification to support unification of tokens
-    @property
-    def internal_token(self):
-        return f"{self.chain}:{self.token_id}"
 
     def hex(self):
         return self.raw_tx.hex()

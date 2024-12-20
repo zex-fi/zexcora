@@ -46,14 +46,22 @@ class Zex(metaclass=SingletonMeta):
         self,
         kline_callback: Callable[[str, pd.DataFrame], None],
         depth_callback: Callable[[str, dict], None],
+        order_callback: Callable[[UserPublic, int, Decimal, Decimal], None],
+        deposit_callback: Callable[[UserPublic, Chain, str, Decimal], None],
+        withdraw_callback: Callable[[UserPublic, Chain, str, Decimal], None],
         state_dest: str,
         light_node: bool = False,
         benchmark_mode=False,
     ):
         c = getcontext()
         c.traps[FloatOperation] = True
+
         self.kline_callback = kline_callback
         self.depth_callback = depth_callback
+        self.order_callback = order_callback
+        self.deposit_callback = deposit_callback
+        self.withdraw_callback = withdraw_callback
+
         self.state_dest = state_dest
         self.light_node = light_node
         self.save_frequency = (
@@ -143,15 +151,15 @@ class Zex(metaclass=SingletonMeta):
             ],
         }
 
-        for i in range(110):
+        for i in range(1):
             bot_private_key = (private_seed_int + i).to_bytes(32, "big")
             bot_priv = PrivateKey(bot_private_key, raw=True)
             bot_pub = bot_priv.pubkey.serialize()
             self.register_pub(bot_pub)
 
             for chain, details in tokens.items():
-                for constract_address, decimal in details:
-                    name = get_token_name(chain, constract_address)
+                for contract_address, decimal in details:
+                    name = get_token_name(chain, contract_address)
                     if name not in self.assets:
                         self.assets[name] = {}
                     self.token_decimals[name] = decimal
@@ -260,7 +268,8 @@ class Zex(metaclass=SingletonMeta):
             entry.public_key = public
             for deposit in deposits:
                 pb_deposit = entry.deposits.add()
-                pb_deposit.token = deposit.token
+                pb_deposit.chain = deposit.chain
+                pb_deposit.name = deposit.name
                 pb_deposit.amount = str(deposit.amount)
                 pb_deposit.time = deposit.time
 
@@ -280,12 +289,18 @@ class Zex(metaclass=SingletonMeta):
         pb_state: zex_pb2.ZexState,
         kline_callback: Callable[[str, pd.DataFrame], None],
         depth_callback: Callable[[str, dict], None],
+        order_callback: Callable,
+        deposit_callback: Callable,
+        withdraw_callback: Callable,
         state_dest: str,
         light_node: bool,
     ):
         zex = cls(
             kline_callback,
             depth_callback,
+            order_callback,
+            deposit_callback,
+            withdraw_callback,
             state_dest,
             light_node,
         )
@@ -369,7 +384,8 @@ class Zex(metaclass=SingletonMeta):
         zex.user_deposits = {
             e.public_key: [
                 Deposit(
-                    token=pb_deposit.token,
+                    chain=pb_deposit.chain,
+                    name=pb_deposit.name,
                     amount=Decimal(pb_deposit.amount),
                     time=pb_deposit.time,
                 )
@@ -402,6 +418,9 @@ class Zex(metaclass=SingletonMeta):
         data: IO[bytes],
         kline_callback: Callable[[str, pd.DataFrame], None],
         depth_callback: Callable[[str, dict], None],
+        order_callback: Callable,
+        deposit_callback: Callable,
+        withdraw_callback: Callable,
         state_dest: str,
         light_node: bool,
     ):
@@ -411,6 +430,9 @@ class Zex(metaclass=SingletonMeta):
             pb_state,
             kline_callback,
             depth_callback,
+            order_callback,
+            deposit_callback,
+            withdraw_callback,
             state_dest,
             light_node,
         )
@@ -574,44 +596,71 @@ class Zex(metaclass=SingletonMeta):
             if public not in self.nonces:
                 self.nonces[public] = 0
 
-    # TODO: this method should modify the unified token
+            asyncio.create_task(
+                self.deposit_callback(public.hex(), chain, token_name, amount)
+            )
+
     def withdraw(self, tx: WithdrawTransaction):
         if tx.amount <= 0:
             logger.debug(f"invalid amount: {tx.amount}")
             return
 
-        if tx.chain not in self.user_withdraw_nonce_on_chain:
+        if tx.token_chain not in self.user_withdraw_nonce_on_chain:
             logger.debug(f"invalid chain: {self.nonces[tx.public]} != {tx.nonce}")
             return
 
-        if self.user_withdraw_nonce_on_chain[tx.chain].get(tx.public, 0) != tx.nonce:
+        if (
+            self.user_withdraw_nonce_on_chain[tx.token_chain].get(tx.public, 0)
+            != tx.nonce
+        ):
             logger.debug(f"invalid nonce: {self.nonces[tx.public]} != {tx.nonce}")
             return
 
-        balance = self.assets[tx.internal_token].get(tx.public, Decimal("0"))
+        token_info = settings.zex.verified_tokens.tokens.get(tx.token_name)
+        if token_info:
+            if tx.token_chain in token_info:
+                # Token is verified and chain is supported
+                token = tx.token_name
+            else:
+                # Token is verified, but the chain is not supported
+                # Fail transaction
+                logger.error(
+                    f"invalid chain: {tx.token_chain} for withdraw of verified token: {tx.token_name}"
+                )
+                return
+        else:
+            token = f"{tx.token_chain}:{tx.token_name}"
+
+        balance = self.assets[token].get(tx.public, Decimal("0"))
         if balance < tx.amount:
             logger.debug("balance not enough")
             return
 
-        if tx.public not in self.user_withdraw_nonce_on_chain[tx.chain]:
-            self.user_withdraw_nonce_on_chain[tx.chain][tx.public] = 0
+        if tx.public not in self.user_withdraw_nonce_on_chain[tx.token_chain]:
+            self.user_withdraw_nonce_on_chain[tx.token_chain][tx.public] = 0
 
-        self.assets[tx.internal_token][tx.public] = balance - tx.amount
+        self.assets[token][tx.public] = balance - tx.amount
 
-        if tx.chain not in self.user_withdraws_on_chain:
-            self.user_withdraws_on_chain[tx.chain] = {}
-        if tx.public not in self.user_withdraws_on_chain[tx.chain]:
-            self.user_withdraws_on_chain[tx.chain][tx.public] = []
-        self.user_withdraws_on_chain[tx.chain][tx.public].append(tx)
+        if tx.token_chain not in self.user_withdraws_on_chain:
+            self.user_withdraws_on_chain[tx.token_chain] = {}
+        if tx.public not in self.user_withdraws_on_chain[tx.token_chain]:
+            self.user_withdraws_on_chain[tx.token_chain][tx.public] = []
+        self.user_withdraws_on_chain[tx.token_chain][tx.public].append(tx)
 
-        if tx.chain not in self.withdraw_nonce_on_chain:
-            self.withdraw_nonce_on_chain[tx.chain] = 0
-        self.withdraw_nonce_on_chain[tx.chain] += 1
+        if tx.token_chain not in self.withdraw_nonce_on_chain:
+            self.withdraw_nonce_on_chain[tx.token_chain] = 0
+        self.withdraw_nonce_on_chain[tx.token_chain] += 1
 
-        self.user_withdraw_nonce_on_chain[tx.chain][tx.public] += 1
-        if tx.chain not in self.withdraws_on_chain:
-            self.withdraws_on_chain[tx.chain] = []
-        self.withdraws_on_chain[tx.chain].append(tx)
+        self.user_withdraw_nonce_on_chain[tx.token_chain][tx.public] += 1
+        if tx.token_chain not in self.withdraws_on_chain:
+            self.withdraws_on_chain[tx.token_chain] = []
+        self.withdraws_on_chain[tx.token_chain].append(tx)
+
+        asyncio.create_task(
+            self.withdraw_callback(
+                tx.public.hex(), tx.token_chain, tx.token_name, tx.amount
+            )
+        )
 
     def validate_nonce(self, public: bytes, nonce: int) -> bool:
         if self.nonces[public] != nonce:
@@ -741,7 +790,7 @@ def get_current_1m_open_time():
     return open_time * 1000
 
 
-def _parse_transaction(tx: bytes) -> tuple[int, Decimal, Decimal, int, bytes, int]:
+def _parse_transaction(tx: bytes) -> tuple[int, Decimal, Decimal, int, bytes]:
     operation, base_token_len, quote_token_len = struct.unpack(">x B B B", tx[:4])
 
     order_format = f">{base_token_len}s {quote_token_len}s d d I I 33s"
@@ -804,7 +853,7 @@ class Market:
         return data
 
     def match_instantly(self, tx: bytes, t: int) -> bool:
-        operation, amount, price, _, public = _parse_transaction(tx)
+        operation, amount, price, nonce, public = _parse_transaction(tx)
         if price <= 0 or amount <= 0:
             return False
 
@@ -813,14 +862,14 @@ class Market:
                 return False
             best_sell_price = self.sell_orders[0][0]
             if price >= best_sell_price:
-                return self._execute_instant_buy(public, amount, price, tx, t)
+                return self._execute_instant_buy(public, nonce, amount, price, tx, t)
         elif operation == SELL:
             if not self.buy_orders:
                 return False
             # Negate because buy prices are stored negatively
             best_buy_price = -self.buy_orders[0][0]
             if price <= best_buy_price:
-                return self._execute_instant_sell(public, amount, price, tx, t)
+                return self._execute_instant_sell(public, nonce, amount, price, tx, t)
         else:
             raise ValueError(f"Unsupported transaction type: {operation}")
 
@@ -829,11 +878,13 @@ class Market:
     def _execute_instant_buy(
         self,
         public: bytes,
+        nonce: int,
         amount: Decimal,
         price: Decimal,
         tx: bytes,
         t: int,
     ) -> bool:
+        initial_amount = amount
         required = amount * price
         balance = self.quote_token_balances.get(public, 0)
         if balance < required:
@@ -856,7 +907,6 @@ class Market:
             self._update_sell_order(sell_order, trade_amount, sell_price, sell_public)
             self._update_balances(public, sell_public, trade_amount, sell_price)
             self.quote_token_balances[public] -= trade_amount * sell_price
-
             amount -= trade_amount
 
         if amount > 0:
@@ -872,16 +922,31 @@ class Market:
                 self._order_book_updates["bids"][price] = self.bids_order_book[price]
             self.quote_token_balances[public] -= amount * price
 
+            # TODO: send partial fill message for taker order
+            asyncio.create_task(
+                self.zex.order_callback(
+                    public.hex(), nonce, initial_amount - amount, price
+                )
+            )
+
+        else:
+            # TODO: send completed message for taker order
+            asyncio.create_task(
+                self.zex.order_callback(public.hex(), nonce, initial_amount, price)
+            )
+
         return True
 
     def _execute_instant_sell(
         self,
         public: bytes,
+        nonce: int,
         amount: Decimal,
         price: Decimal,
         tx: bytes,
         t: int,
     ) -> bool:
+        initial_amount = amount
         balance = self.base_token_balances.get(public, 0)
         if balance < amount:
             logger.debug(
@@ -918,6 +983,19 @@ class Market:
                     self.asks_order_book[price] = amount
                 self._order_book_updates["asks"][price] = self.asks_order_book[price]
             self.base_token_balances[public] -= amount
+
+            # TODO: send partial fill message for taker order
+            asyncio.create_task(
+                self.zex.order_callback(
+                    public.hex(), nonce, initial_amount - amount, price
+                )
+            )
+
+        else:
+            # TODO: send completed message for taker order
+            asyncio.create_task(
+                self.zex.order_callback(public.hex(), nonce, initial_amount, price)
+            )
         return True
 
     def _execute_trade(
@@ -941,7 +1019,7 @@ class Market:
         self.final_id += 1
 
     def place(self, tx: bytes) -> bool:
-        operation, amount, price, _, public = _parse_transaction(tx)
+        operation, amount, price, nonce, public = _parse_transaction(tx)
         if price < 0 or amount < 0:
             return False
 
@@ -956,6 +1034,9 @@ class Market:
             balance = Decimal(str(balances_dict.get(public, 0)))
 
             required = amount * price
+            asyncio.create_task(
+                self.zex.order_callback(public.hex(), nonce, amount, price)
+            )
         elif operation == SELL:
             side = "sell"
             order_book_update_key = "asks"
@@ -970,6 +1051,7 @@ class Market:
         else:
             raise ValueError(f"Unsupported transaction type: {operation}")
 
+        asyncio.create_task(self.zex.order_callback(public.hex(), nonce, amount, price))
         if balance < required:
             logger.debug(
                 "Insufficient balance, current balance: {current_balance}, "
@@ -997,8 +1079,8 @@ class Market:
         return True
 
     def cancel(self, tx: bytes) -> bool:
-        public = tx[41:74]
-        order_slice = tx[2:41]
+        public = tx[-97:-64]
+        order_slice = tx[2:-97]
         for order in self.zex.orders[public]:
             if order_slice not in order:
                 continue
@@ -1186,6 +1268,7 @@ class Market:
         sell_price: Decimal,
         sell_public: bytes,
     ):
+        _, _, _, sell_nonce, _ = _parse_transaction(sell_order)
         with self.order_book_lock:
             if self.zex.amounts[sell_order] > trade_amount:
                 self.asks_order_book[sell_price] -= trade_amount
@@ -1194,12 +1277,26 @@ class Market:
                 ]
                 self.zex.amounts[sell_order] -= trade_amount
                 self.final_id += 1
+
+                # TODO: partial fill market maker order
+                asyncio.create_task(
+                    self.zex.order_callback(
+                        sell_public.hex(), sell_nonce, trade_amount, sell_price
+                    )
+                )
             else:
                 heapq.heappop(self.sell_orders)
                 self._remove_from_order_book("asks", sell_price, trade_amount)
                 del self.zex.amounts[sell_order]
                 del self.zex.orders[sell_public][sell_order]
                 self.final_id += 1
+
+                # TODO: fill market maker order completely
+                asyncio.create_task(
+                    self.zex.order_callback(
+                        sell_public.hex(), sell_nonce, trade_amount, sell_price
+                    )
+                )
 
     def _remove_from_order_book(self, book_type: str, price: Decimal, amount: Decimal):
         order_book = (

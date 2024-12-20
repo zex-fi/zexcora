@@ -1,3 +1,4 @@
+from decimal import Decimal
 from struct import calcsize, unpack
 import hashlib
 
@@ -58,6 +59,20 @@ def user_balances(id: int) -> list[UserAssetResponse]:
     return _user_assets(user)
 
 
+def _parse_transaction(tx: bytes) -> tuple[int, Decimal, Decimal, int, bytes]:
+    operation, base_token_len, quote_token_len = unpack(">x B B B", tx[:4])
+
+    order_format = f">{base_token_len}s {quote_token_len}s d d I I 33s"
+    order_format_size = calcsize(order_format)
+    base_token, quote_token, amount, price, t, nonce, public = unpack(
+        order_format, tx[4 : 4 + order_format_size]
+    )
+    base_token = base_token.decode("ascii")
+    quote_token = quote_token.decode("ascii")
+
+    return operation, Decimal(str(amount)), Decimal(str(price)), nonce, public
+
+
 @router.get("/user/trades")
 def user_trades(id: int) -> list[TradeResponse]:
     if id not in zex.id_to_public_lookup:
@@ -67,7 +82,9 @@ def user_trades(id: int) -> list[TradeResponse]:
     resp = {}
     for time, amount, pair, name, tx in trades:
         base_asset, quote_asset = pair.split("-")
-        price, nonce = unpack(">d4xI", tx[24:40])
+
+        _, _, price, nonce, _ = _parse_transaction(tx)
+
         trade = {
             "name": "buy" if name == BUY else "sell",
             "t": time,
@@ -110,7 +127,7 @@ def user_orders(id: int) -> list[OrderResponse]:
             "price": price,
             "t": t,
             "nonce": nonce,
-            "slice": order[1:40].hex(),
+            "slice": order[1:].hex(),
         }
         resp.append(o)
     return resp
@@ -156,7 +173,8 @@ def user_transfers(id: int) -> list[TransferResponse]:
     )
     return [
         TransferResponse(
-            token=t.token if isinstance(t, Deposit) else t.internal_token,
+            chain=t.chain,
+            name=t.name,
             amount=t.amount if isinstance(t, Deposit) else -t.amount,
             time=t.time,
         )
@@ -332,29 +350,24 @@ def get_chain_withdraws(
         raise HTTPException(404, {"error": "chain not found"})
     transactions = []
     for i, withdraw in enumerate(zex.withdraws_on_chain[chain][offset:limit]):
+        token_info = settings.zex.verified_tokens.tokens.get(withdraw.token_name)
+
+        if token_info:
+            token_contract = token_info[withdraw.token_chain]
+            token = withdraw.token_name
+        else:
+            token_contract = withdraw.token_name
+            token = f"{withdraw.token_chain}:{withdraw.token_name}"
+
         w = Withdraw(
-            chain=withdraw.chain,
-            tokenContract=zex.token_id_to_contract_on_chain_lookup[withdraw.chain][
-                withdraw.token_id
-            ],
-            amount=str(
-                int(
-                    withdraw.amount
-                    * (
-                        10
-                        ** zex.token_decimals[withdraw.chain][
-                            zex.token_id_to_contract_on_chain_lookup[withdraw.chain][
-                                withdraw.token_id
-                            ]
-                        ]
-                    )
-                )
-            ),
-            destination=withdraw.dest,
+            chain=withdraw.token_chain,
+            tokenContract=token_contract,
+            amount=str(int(withdraw.amount * (10 ** zex.token_decimals[token]))),
+            destination=withdraw.destination,
             t=withdraw.time,
             nonce=i + offset,
         )
-        transactions.append(w)
+    transactions.append(w)
     return transactions
 
 

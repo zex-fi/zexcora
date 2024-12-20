@@ -259,14 +259,16 @@ class UserDepositEntry(_message.Message):
     def __init__(self, public_key: _Optional[bytes] = ..., deposits: _Optional[_Iterable[_Union[Deposit, _Mapping]]] = ...) -> None: ...
 
 class Deposit(_message.Message):
-    __slots__ = ("token", "amount", "time")
-    TOKEN_FIELD_NUMBER: _ClassVar[int]
+    __slots__ = ("chain", "name", "amount", "time")
+    CHAIN_FIELD_NUMBER: _ClassVar[int]
+    NAME_FIELD_NUMBER: _ClassVar[int]
     AMOUNT_FIELD_NUMBER: _ClassVar[int]
     TIME_FIELD_NUMBER: _ClassVar[int]
-    token: str
+    chain: str
+    name: str
     amount: str
     time: int
-    def __init__(self, token: _Optional[str] = ..., amount: _Optional[str] = ..., time: _Optional[int] = ...) -> None: ...
+    def __init__(self, chain: _Optional[str] = ..., name: _Optional[str] = ..., amount: _Optional[str] = ..., time: _Optional[int] = ...) -> None: ...
 
 class NonceEntry(_message.Message):
     __slots__ = ("public_key", "nonce")
