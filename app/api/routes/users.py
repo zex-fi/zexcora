@@ -352,12 +352,11 @@ def get_chain_withdraws(
     for i, withdraw in enumerate(zex.withdraws_on_chain[chain][offset:limit]):
         token_info = settings.zex.verified_tokens.tokens.get(withdraw.token_name)
 
+        token = withdraw.token_name
         if token_info:
             token_contract = token_info[withdraw.token_chain]
-            token = withdraw.token_name
         else:
-            token_contract = withdraw.token_name
-            token = f"{withdraw.token_chain}:{withdraw.token_name}"
+            _, token_contract = withdraw.token_name.split(":")
 
         w = Withdraw(
             chain=withdraw.token_chain,
@@ -367,7 +366,7 @@ def get_chain_withdraws(
             t=withdraw.time,
             nonce=i + offset,
         )
-    transactions.append(w)
+        transactions.append(w)
     return transactions
 
 
