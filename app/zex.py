@@ -9,6 +9,7 @@ from typing import IO, Literal
 import asyncio
 import heapq
 import struct
+import time
 
 from eth_utils.address import to_checksum_address
 from loguru import logger
@@ -21,7 +22,7 @@ from .models.transaction import (
 )
 from .proto import zex_pb2
 from .singleton import SingletonMeta
-from .zex_types import Chain, Token, UserPublic
+from .zex_types import Chain, ContractAddress, Token, UserPublic
 
 BTC_DEPOSIT, DEPOSIT, WITHDRAW, BUY, SELL, CANCEL, REGISTER = b"xdwbscr"
 TRADES_TTL = 1000
@@ -46,7 +47,9 @@ class Zex(metaclass=SingletonMeta):
         self,
         kline_callback: Callable[[str, pd.DataFrame], None],
         depth_callback: Callable[[str, dict], None],
-        order_callback: Callable[[UserPublic, int, Decimal, Decimal], None],
+        order_callback: Callable[
+            [UserPublic, int, str, str, Decimal, Decimal, str, int, bool], None
+        ],
         deposit_callback: Callable[[UserPublic, Chain, str, Decimal], None],
         withdraw_callback: Callable[[UserPublic, Chain, str, Decimal], None],
         state_dest: str,
@@ -74,6 +77,7 @@ class Zex(metaclass=SingletonMeta):
         self.saved_state_index = 0
         self.save_state_tx_index_threshold = self.save_frequency
         self.markets: dict[str, Market] = {}
+        self.zex_balance_on_chain: dict[Token, dict[ContractAddress, Decimal]] = {}
         self.assets: dict[Token, dict[UserPublic, Decimal]] = {
             settings.zex.usdt_mainnet: {}
         }
@@ -158,6 +162,8 @@ class Zex(metaclass=SingletonMeta):
             self.register_pub(bot_pub)
 
             for chain, details in tokens.items():
+                if chain not in self.zex_balance_on_chain:
+                    self.zex_balance_on_chain[chain] = {}
                 for contract_address, decimal in details:
                     name = get_token_name(chain, contract_address)
                     if name not in self.assets:
@@ -165,6 +171,9 @@ class Zex(metaclass=SingletonMeta):
                     self.token_decimals[name] = decimal
                     self.assets[name][bot_pub] = Decimal("5_000_000")
                     self.assets[name][client_pub] = Decimal("1_000_000")
+                    self.zex_balance_on_chain[chain][contract_address] = Decimal(
+                        "5_000_000"
+                    )
 
     def to_protobuf(self) -> zex_pb2.ZexState:
         state = zex_pb2.ZexState()
@@ -538,6 +547,8 @@ class Zex(metaclass=SingletonMeta):
 
             if chain not in self.deposits:
                 self.deposits[chain] = set()
+            if chain not in self.zex_balance_on_chain:
+                self.zex_balance_on_chain[chain] = {}
 
             if (tx_hash, vout) in self.deposits[chain]:
                 logger.error(
@@ -549,8 +560,10 @@ class Zex(metaclass=SingletonMeta):
             amount = Decimal(str(amount))
 
             token_contract = to_checksum_address(token_contract.decode())
-            token_name = get_token_name(chain, token_contract)
+            if token_contract not in self.zex_balance_on_chain[chain]:
+                self.zex_balance_on_chain[chain][token_contract] = Decimal("0")
 
+            token_name = get_token_name(chain, token_contract)
             if token_name not in self.token_decimals:
                 self.token_decimals[token_name] = decimal
 
@@ -585,6 +598,7 @@ class Zex(metaclass=SingletonMeta):
                 )
             )
             self.assets[token_name][public] += amount
+            self.zex_balance_on_chain[chain][token_contract] += amount
             logger.info(
                 f"deposit on chain: {chain}, token: {token_name}, amount: {amount} for user: {public}, "
                 f"tx_hash: {tx_hash}, new balance: {self.assets[token_name][public]}"
@@ -622,25 +636,34 @@ class Zex(metaclass=SingletonMeta):
             if tx.token_chain in token_info:
                 # Token is verified and chain is supported
                 token = tx.token_name
+                token_contract = token_info[tx.token_chain]
             else:
                 # Token is verified, but the chain is not supported
                 # Fail transaction
-                logger.error(
+                logger.debug(
                     f"invalid chain: {tx.token_chain} for withdraw of verified token: {tx.token_name}"
                 )
                 return
         else:
-            token = f"{tx.token_chain}:{tx.token_name}"
+            token = tx.token_name
+            _, token_contract = tx.token_name.split(":")
 
         balance = self.assets[token].get(tx.public, Decimal("0"))
         if balance < tx.amount:
             logger.debug("balance not enough")
+            return
+        if self.zex_balance_on_chain[tx.token_chain][token_contract] < tx.amount:
+            vault_balance = self.zex_balance_on_chain[tx.token_chain][token_contract]
+            logger.debug(
+                f"vault balance: {vault_balance}, withdraw amount: {tx.amount}, vault does not have enough balance"
+            )
             return
 
         if tx.public not in self.user_withdraw_nonce_on_chain[tx.token_chain]:
             self.user_withdraw_nonce_on_chain[tx.token_chain][tx.public] = 0
 
         self.assets[token][tx.public] = balance - tx.amount
+        self.zex_balance_on_chain[tx.token_chain][token_contract] -= tx.amount
 
         if tx.token_chain not in self.user_withdraws_on_chain:
             self.user_withdraws_on_chain[tx.token_chain] = {}
@@ -924,16 +947,36 @@ class Market:
             self.quote_token_balances[public] -= amount * price
 
             # TODO: send partial fill message for taker order
+            t = int(time.time() * 1000)
             asyncio.create_task(
                 self.zex.order_callback(
-                    public.hex(), nonce, initial_amount - amount, price
+                    public.hex(),
+                    nonce,
+                    self.pair,
+                    "buy",
+                    initial_amount - amount,
+                    price,
+                    "PARTIALLY_FILLED",
+                    t,
+                    False,
                 )
             )
 
         else:
             # TODO: send completed message for taker order
+            t = int(time.time() * 1000)
             asyncio.create_task(
-                self.zex.order_callback(public.hex(), nonce, initial_amount, price)
+                self.zex.order_callback(
+                    public.hex(),
+                    nonce,
+                    self.pair,
+                    "buy",
+                    initial_amount,
+                    price,
+                    "COMPLETED",
+                    t,
+                    False,
+                )
             )
 
         return True
@@ -986,16 +1029,36 @@ class Market:
             self.base_token_balances[public] -= amount
 
             # TODO: send partial fill message for taker order
+            t = int(time.time() * 1000)
             asyncio.create_task(
                 self.zex.order_callback(
-                    public.hex(), nonce, initial_amount - amount, price
+                    public.hex(),
+                    nonce,
+                    self.pair,
+                    "sell",
+                    initial_amount - amount,
+                    price,
+                    "PARTIALLY_FILLED",
+                    t,
+                    False,
                 )
             )
 
         else:
             # TODO: send completed message for taker order
+            t = int(time.time() * 1000)
             asyncio.create_task(
-                self.zex.order_callback(public.hex(), nonce, initial_amount, price)
+                self.zex.order_callback(
+                    public.hex(),
+                    nonce,
+                    self.pair,
+                    "sell",
+                    initial_amount,
+                    price,
+                    "COMPLETED",
+                    t,
+                    False,
+                )
             )
         return True
 
@@ -1022,6 +1085,19 @@ class Market:
     def place(self, tx: bytes) -> bool:
         operation, amount, price, nonce, public = _parse_transaction(tx)
         if price < 0 or amount < 0:
+            asyncio.create_task(
+                self.zex.order_callback(
+                    public.hex(),
+                    nonce,
+                    self.pair,
+                    "buy" if operation == BUY else "sell",
+                    amount,
+                    price,
+                    "REJECTED",
+                    int(time.time() * 1000),
+                    True,
+                )
+            )
             return False
 
         if operation == BUY:
@@ -1035,9 +1111,6 @@ class Market:
             balance = Decimal(str(balances_dict.get(public, 0)))
 
             required = amount * price
-            asyncio.create_task(
-                self.zex.order_callback(public.hex(), nonce, amount, price)
-            )
         elif operation == SELL:
             side = "sell"
             order_book_update_key = "asks"
@@ -1052,7 +1125,6 @@ class Market:
         else:
             raise ValueError(f"Unsupported transaction type: {operation}")
 
-        asyncio.create_task(self.zex.order_callback(public.hex(), nonce, amount, price))
         if balance < required:
             logger.debug(
                 "Insufficient balance, current balance: {current_balance}, "
@@ -1061,6 +1133,20 @@ class Market:
                 side=side,
                 base_token=self.base_token,
                 quote_token=self.quote_token,
+            )
+
+            asyncio.create_task(
+                self.zex.order_callback(
+                    public.hex(),
+                    nonce,
+                    self.pair,
+                    side,
+                    amount,
+                    price,
+                    "REJECTED",
+                    int(time.time() * 1000),
+                    True,
+                )
             )
             return False
 
@@ -1077,6 +1163,20 @@ class Market:
         self.final_id += 1
         self.zex.amounts[tx] = amount
         self.zex.orders[public][tx] = True
+
+        asyncio.create_task(
+            self.zex.order_callback(
+                public.hex(),
+                nonce,
+                self.pair,
+                side,
+                amount,
+                price,
+                "NEW",
+                int(time.time() * 1000),
+                True,
+            )
+        )
         return True
 
     def cancel(self, tx: bytes) -> bool:
@@ -1085,7 +1185,7 @@ class Market:
         for order in self.zex.orders[public]:
             if order_slice not in order:
                 continue
-            operation, _, price, _, public = _parse_transaction(order)
+            operation, amount, price, nonce, public = _parse_transaction(order)
             amount = self.zex.amounts.pop(order)
             del self.zex.orders[public][order]
             if operation == BUY:
@@ -1116,6 +1216,19 @@ class Market:
                             price
                         ]
             self.final_id += 1
+            asyncio.create_task(
+                self.zex.order_callback(
+                    public.hex(),
+                    nonce,
+                    self.pair,
+                    "buy" if operation == BUY else "sell",
+                    amount,
+                    price,
+                    "CANCELED",
+                    int(time.time() * 1000),
+                    True,
+                )
+            )
             return True
         else:
             return False
@@ -1247,6 +1360,7 @@ class Market:
         buy_price: Decimal,
         buy_public: bytes,
     ):
+        _, _, _, nonce, _ = _parse_transaction(buy_order)
         with self.order_book_lock:
             if self.zex.amounts[buy_order] > trade_amount:
                 self.bids_order_book[buy_price] -= trade_amount
@@ -1255,12 +1369,39 @@ class Market:
                 ]
                 self.zex.amounts[buy_order] -= trade_amount
                 self.final_id += 1
+
+                asyncio.create_task(
+                    self.zex.order_callback(
+                        buy_public.hex(),
+                        nonce,
+                        self.pair,
+                        "buy",
+                        trade_amount,
+                        buy_price,
+                        "PARTIALLY_FILLED",
+                        int(time.time() * 1000),
+                        True,
+                    )
+                )
             else:
                 heapq.heappop(self.buy_orders)
                 self._remove_from_order_book("bids", buy_price, trade_amount)
                 del self.zex.amounts[buy_order]
                 del self.zex.orders[buy_public][buy_order]
                 self.final_id += 1
+                asyncio.create_task(
+                    self.zex.order_callback(
+                        buy_public.hex(),
+                        nonce,
+                        self.pair,
+                        "buy",
+                        trade_amount,
+                        buy_price,
+                        "FILLED",
+                        int(time.time() * 1000),
+                        True,
+                    )
+                )
 
     def _update_sell_order(
         self,
@@ -1269,7 +1410,7 @@ class Market:
         sell_price: Decimal,
         sell_public: bytes,
     ):
-        _, _, _, sell_nonce, _ = _parse_transaction(sell_order)
+        _, _, _, nonce, _ = _parse_transaction(sell_order)
         with self.order_book_lock:
             if self.zex.amounts[sell_order] > trade_amount:
                 self.asks_order_book[sell_price] -= trade_amount
@@ -1279,10 +1420,17 @@ class Market:
                 self.zex.amounts[sell_order] -= trade_amount
                 self.final_id += 1
 
-                # TODO: partial fill market maker order
                 asyncio.create_task(
                     self.zex.order_callback(
-                        sell_public.hex(), sell_nonce, trade_amount, sell_price
+                        sell_public.hex(),
+                        nonce,
+                        self.pair,
+                        "sell",
+                        trade_amount,
+                        sell_price,
+                        "PARTIALLY_FILLED",
+                        int(time.time() * 1000),
+                        True,
                     )
                 )
             else:
@@ -1295,7 +1443,15 @@ class Market:
                 # TODO: fill market maker order completely
                 asyncio.create_task(
                     self.zex.order_callback(
-                        sell_public.hex(), sell_nonce, trade_amount, sell_price
+                        sell_public.hex(),
+                        nonce,
+                        self.pair,
+                        "sell",
+                        trade_amount,
+                        sell_price,
+                        "FILLED",
+                        int(time.time() * 1000),
+                        True,
                     )
                 )
 

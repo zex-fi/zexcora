@@ -150,7 +150,7 @@ def setup_logging(debug_mode: bool = False):
         format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
         level=console_level,
         colorize=True,
-        serialize=True,
+        # serialize=True,
     )
 
     # File handlers
@@ -160,7 +160,7 @@ def setup_logging(debug_mode: bool = False):
         level="DEBUG",
         rotation="10 MB",
         retention="1 week",
-        serialize=True,
+        # serialize=True,
     )
 
     logger.add(
@@ -169,7 +169,7 @@ def setup_logging(debug_mode: bool = False):
         level="ERROR",
         rotation="10 MB",
         retention="1 month",
-        serialize=True,
+        # serialize=True,
     )
 
 

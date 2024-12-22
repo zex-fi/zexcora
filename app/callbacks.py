@@ -88,7 +88,17 @@ def depth_event(manager: ConnectionManager):
 
 
 def user_order_event(manager: ConnectionManager):
-    async def f(public: str, nonce: int, amount: Decimal, price: Decimal):
+    async def f(
+        public: str,
+        nonce: int,
+        symbol: str,
+        side: str,
+        amount: Decimal,
+        price: Decimal,
+        order_status: str,
+        transaction_time: int,
+        is_maker: bool,
+    ):
         subs = manager.subscriptions.copy()
         for channel, clients in subs.items():
             parts = channel.split("@")
@@ -101,7 +111,43 @@ def user_order_event(manager: ConnectionManager):
                     manager.remove(ws)
                     continue
                 try:
-                    await ws.send_json({"stream": channel, "data": public})
+                    data = {
+                        "e": "executionReport",  # Event type
+                        "E": int(time.time() * 1000),  # Event time
+                        "s": symbol,  # Symbol
+                        "c": nonce,  # Client order ID
+                        "S": side,  # Side
+                        "o": "",  # Order type
+                        "f": "GTC",  # Time in force
+                        "q": str(amount),  # Order quantity
+                        "p": str(price),  # Order price
+                        "P": "0.",  # Stop price
+                        "F": "0.",  # Iceberg quantity
+                        "g": -1,  # OrderListId
+                        "C": "",  # Original client order ID; This is the ID of the order being canceled
+                        "x": "NEW",  # Current execution type
+                        "X": order_status,  # Current order status
+                        "r": "NONE",  # Order reject reason; will be an error code.
+                        "i": nonce,  # Order ID
+                        "l": "0.00000000",  # Last executed quantity
+                        "z": "0.00000000",  # Cumulative filled quantity
+                        "L": "0.00000000",  # Last executed price
+                        "n": "0",  # Commission amount
+                        "N": None,  # Commission asset
+                        "T": transaction_time,  # Transaction time
+                        "t": -1,  # Trade ID
+                        "I": 8641984,  # Ignore
+                        "w": True,  # Is the order on the book?
+                        "m": is_maker,  # Is this trade the maker side?
+                        "M": False,  # Ignore
+                        "O": 0,  # Order creation time
+                        "Z": "0.00000000",  # Cumulative quote asset transacted quantity
+                        "Y": "0.00000000",  # Last quote asset transacted quantity (i.e. lastPrice * lastQty)
+                        "Q": "0.00000000",  # Quote Order Quantity
+                        "W": 0,  # Working Time; This is only visible if the order has been placed on the book.
+                        "V": "NONE",  # SelfTradePreventionMode
+                    }
+                    await ws.send_json({"stream": channel, "data": data})
                 except Exception as e:
                     manager.remove(ws)
                     logger.exception(e)
@@ -111,13 +157,57 @@ def user_order_event(manager: ConnectionManager):
 
 def user_deposit_event(manager: ConnectionManager):
     async def f(public: str, chain: str, name: str, amount: Decimal):
-        logger.debug("deposit")
+        subs = manager.subscriptions.copy()
+        for channel, clients in subs.items():
+            parts = channel.split("@")
+            user_public, details = parts[0], parts[1]
+            if "deposit" not in details or user_public != public:
+                continue
+
+            for ws in clients.copy():
+                if ws not in manager.active_connections:
+                    manager.remove(ws)
+                    continue
+                try:
+                    data = {
+                        "e": "deposit",  # Event type
+                        "E": int(time.time() * 1000),  # Event time
+                        "chain": chain,
+                        "name": name,
+                        "amount": str(amount),
+                    }
+                    await ws.send_json({"stream": channel, "data": data})
+                except Exception as e:
+                    manager.remove(ws)
+                    logger.exception(e)
 
     return f
 
 
 def user_withdraw_event(manager: ConnectionManager):
     async def f(public: str, chain: str, name: str, amount: Decimal):
-        logger.debug("withdraw")
+        subs = manager.subscriptions.copy()
+        for channel, clients in subs.items():
+            parts = channel.split("@")
+            user_public, details = parts[0], parts[1]
+            if "deposit" not in details or user_public != public:
+                continue
+
+            for ws in clients.copy():
+                if ws not in manager.active_connections:
+                    manager.remove(ws)
+                    continue
+                try:
+                    data = {
+                        "e": "withdraw",  # Event type
+                        "E": int(time.time() * 1000),  # Event time
+                        "chain": chain,
+                        "name": name,
+                        "amount": str(amount),
+                    }
+                    await ws.send_json({"stream": channel, "data": data})
+                except Exception as e:
+                    manager.remove(ws)
+                    logger.exception(e)
 
     return f

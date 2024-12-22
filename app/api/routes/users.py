@@ -174,7 +174,7 @@ def user_transfers(id: int) -> list[TransferResponse]:
     return [
         TransferResponse(
             chain=t.token_chain,
-            name=t.token_name,
+            token=t.token_name,
             amount=t.amount if isinstance(t, Deposit) else -t.amount,
             time=t.time,
         )
@@ -393,52 +393,46 @@ def get_user_withdraws(
 
     if nonce is not None:
         withdraw_tx = withdraws[nonce]
-        contract_address = zex.token_id_to_contract_on_chain_lookup[withdraw_tx.chain][
-            withdraw_tx.token_id
-        ]
+
+        token_info = settings.zex.verified_tokens.tokens.get(withdraw_tx.token_name)
+        if token_info:
+            token_contract = token_info[withdraw_tx.token_chain]
+            token = withdraw_tx.token_name
+        else:
+            token_contract = withdraw_tx.token_name
+            token = f"{withdraw_tx.token_chain}:{withdraw_tx.token_name}"
 
         return Withdraw(
-            chain=withdraw_tx.chain,
-            tokenContract=contract_address,
-            amount=str(
-                int(
-                    withdraw_tx.amount
-                    * (10 ** zex.token_decimals[withdraw_tx.chain][contract_address])
-                )
-            ),
+            chain=withdraw_tx.token_chain,
+            tokenContract=token_contract,
+            amount=str(int(withdraw_tx.amount * (10 ** zex.token_decimals[token]))),
             user=str(int.from_bytes(user[1:], byteorder="big")),
-            destination=Web3.to_checksum_address(withdraw_tx.dest),
+            destination=Web3.to_checksum_address(withdraw_tx.destination),
             t=withdraw_tx.time,
             nonce=withdraw_tx.nonce,
         )
     else:
-        return [
-            Withdraw(
-                chain=w.chain,
-                tokenContract=zex.token_id_to_contract_on_chain_lookup[w.chain][
-                    w.token_id
-                ],
-                amount=str(
-                    int(
-                        w.amount
-                        * (
-                            10
-                            ** zex.token_decimals[w.chain][
-                                zex.token_id_to_contract_on_chain_lookup[w.chain][
-                                    w.token_id
-                                ]
-                            ]
-                        )
-                    )
-                ),
+        result = []
+        for withdraw in zex.user_withdraws_on_chain[chain][user]:
+            token_info = settings.zex.verified_tokens.tokens.get(withdraw.token_name)
+            if token_info:
+                token_contract = token_info[withdraw.token_chain]
+                token = withdraw.token_name
+            else:
+                token_contract = withdraw.token_name
+                token = f"{withdraw.token_chain}:{withdraw.token_name}"
+
+            w = Withdraw(
+                chain=withdraw.token_chain,
+                tokenContract=token_contract,
+                amount=str(int(withdraw.amount * (10 ** zex.token_decimals[token]))),
                 user=str(int.from_bytes(user[1:], byteorder="big")),
-                destination=w.dest,
-                t=w.time,
-                nonce=w.nonce,
+                destination=withdraw.destination,
+                t=withdraw.time,
+                nonce=withdraw.nonce,
             )
-            for w in zex.user_withdraws_on_chain[chain][user]
-            if nonce is None or w.nonce == nonce
-        ]
+            result.append(w)
+        return result
 
 
 if zex.light_node:
