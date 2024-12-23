@@ -71,7 +71,6 @@ class Symbol(BaseModel):
 
 class Token(BaseModel):
     chainType: str
-    decimals: int
     price: float  # price is USDT
     change_24h: float
     name: str  # standard name of the token
