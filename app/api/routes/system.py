@@ -134,11 +134,11 @@ def get_deposit_status(chain: str, tx_hash: str, vout: int = 0):
 @router.get("/capital/config/withdraw")
 def get_withdraw_config():
     result = []
-    for token in zex.assets.keys():
-        if token in settings.zex.verified_tokens.tokens:
+    for token_name in zex.assets.keys():
+        if token_name in settings.zex.verified_tokens.tokens:
             item = {
-                "token": token,
-                "name": NAMES[token],
+                "token": token_name,
+                "name": NAMES[token_name],
                 "networkList": [
                     {
                         "addressRegex": "",
@@ -148,18 +148,18 @@ def get_withdraw_config():
                         "withdrawFee": 0,
                         "withdrawMin": 0,
                         "withdrawMax": 0,
-                        "contractAddress": address,
+                        "contractAddress": token_info.contract_address,
                     }
-                    for chain, address in settings.zex.verified_tokens.tokens[
-                        token
+                    for chain, token_info in settings.zex.verified_tokens.tokens[
+                        token_name
                     ].items()
                 ],
             }
             result.append(item)
         else:
-            chain, address = token.split(":")
+            chain, address = token_name.split(":")
             item = {
-                "token": token,
+                "token": token_name,
                 "name": "",
                 "networkList": [
                     {

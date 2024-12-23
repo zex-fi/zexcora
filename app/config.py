@@ -9,6 +9,9 @@ from pydantic_settings import (
     YamlConfigSettingsSource,
 )
 
+type Chain = str
+type TokenName = str
+
 
 class Keys(BaseModel):
     deposit_public_key: int
@@ -22,9 +25,13 @@ class Redis(BaseModel):
     password: str
 
 
+class Token(BaseModel):
+    contract_address: str
+    decimal: int
+
+
 class VerifiedTokens(BaseModel):
-    decimals: dict[str, int]
-    tokens: dict[str, dict[str, str]]
+    tokens: dict[TokenName, dict[Chain, Token]]
 
 
 class ZexSettings(BaseModel):

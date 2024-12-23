@@ -352,16 +352,16 @@ def get_chain_withdraws(
     for i, withdraw in enumerate(zex.withdraws_on_chain[chain][offset:limit]):
         token_info = settings.zex.verified_tokens.tokens.get(withdraw.token_name)
 
-        token = withdraw.token_name
         if token_info:
-            token_contract = token_info[withdraw.token_chain]
+            token_contract = token_info[withdraw.token_chain].contract_address
         else:
             _, token_contract = withdraw.token_name.split(":")
 
+        decimal = zex.contract_decimal_on_chain[withdraw.token_chain][token_contract]
         w = Withdraw(
             chain=withdraw.token_chain,
             tokenContract=token_contract,
-            amount=str(int(withdraw.amount * (10 ** zex.token_decimals[token]))),
+            amount=str(int(withdraw.amount * (10**decimal))),
             destination=withdraw.destination,
             t=withdraw.time,
             nonce=i + offset,
@@ -395,16 +395,15 @@ def get_user_withdraws(
 
         token_info = settings.zex.verified_tokens.tokens.get(withdraw_tx.token_name)
         if token_info:
-            token_contract = token_info[withdraw_tx.token_chain]
-            token = withdraw_tx.token_name
+            token_contract = token_info[withdraw_tx.token_chain].contract_address
         else:
             token_contract = withdraw_tx.token_name
-            token = f"{withdraw_tx.token_chain}:{withdraw_tx.token_name}"
 
+        decimal = zex.contract_decimal_on_chain[withdraw_tx.token_chain][token_contract]
         return Withdraw(
             chain=withdraw_tx.token_chain,
             tokenContract=token_contract,
-            amount=str(int(withdraw_tx.amount * (10 ** zex.token_decimals[token]))),
+            amount=str(int(withdraw_tx.amount * (10**decimal))),
             user=str(int.from_bytes(user[1:], byteorder="big")),
             destination=Web3.to_checksum_address(withdraw_tx.destination),
             t=withdraw_tx.time,
@@ -415,16 +414,17 @@ def get_user_withdraws(
         for withdraw in zex.user_withdraws_on_chain[chain][user]:
             token_info = settings.zex.verified_tokens.tokens.get(withdraw.token_name)
             if token_info:
-                token_contract = token_info[withdraw.token_chain]
-                token = withdraw.token_name
+                token_contract = token_info[withdraw.token_chain].contract_address
             else:
                 token_contract = withdraw.token_name
-                token = f"{withdraw.token_chain}:{withdraw.token_name}"
 
+            decimal = zex.contract_decimal_on_chain[withdraw.token_chain][
+                token_contract
+            ]
             w = Withdraw(
                 chain=withdraw.token_chain,
                 tokenContract=token_contract,
-                amount=str(int(withdraw.amount * (10 ** zex.token_decimals[token]))),
+                amount=str(int(withdraw.amount * (10**decimal))),
                 user=str(int.from_bytes(user[1:], byteorder="big")),
                 destination=withdraw.destination,
                 t=withdraw.time,

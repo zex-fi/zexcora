@@ -34,11 +34,11 @@ def chunkify(lst, n_chunks):
 
 
 def get_token_name(chain, address):
-    for symbol, tokens in settings.zex.verified_tokens.tokens.items():
+    for verified_name, tokens in settings.zex.verified_tokens.tokens.items():
         if chain not in tokens:
             continue
         if tokens[chain] == address:
-            return symbol
+            return verified_name
     return f"{chain}:{address}"
 
 
@@ -82,7 +82,11 @@ class Zex(metaclass=SingletonMeta):
             settings.zex.usdt_mainnet: {}
         }
 
-        self.token_decimals: dict[Token, int] = {}
+        self.contract_decimal_on_chain: dict[Chain, dict[ContractAddress, int]] = {
+            token_details.contract_address: token_details.decimal
+            for chains in settings.zex.verified_tokens.tokens.values()
+            for token_details in chains.values()
+        }
 
         self.amounts: dict[UserPublic, Decimal] = {}
         self.trades: dict[UserPublic, deque] = {}
@@ -142,8 +146,8 @@ class Zex(metaclass=SingletonMeta):
                 ("0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619", 18),  # WETH
             ],
             "BSC": [
-                ("0x55d398326f99059fF775485246999027B3197955", 6),
-                ("0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", 6),
+                ("0x55d398326f99059fF775485246999027B3197955", 18),
+                ("0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", 18),
                 ("0x0555E30da8f98308EdB960aa94C0Db47230d2B9c", 8),
                 ("0xF8A0BF9cF54Bb92F17374d9e9A321E6a111a51bD", 18),
             ],
@@ -168,7 +172,10 @@ class Zex(metaclass=SingletonMeta):
                     name = get_token_name(chain, contract_address)
                     if name not in self.assets:
                         self.assets[name] = {}
-                    self.token_decimals[name] = decimal
+                    if chain not in self.contract_decimal_on_chain:
+                        self.contract_decimal_on_chain[chain] = {}
+
+                    self.contract_decimal_on_chain[chain][contract_address] = decimal
                     self.assets[name][bot_pub] = Decimal("5_000_000")
                     self.assets[name][client_pub] = Decimal("1_000_000")
                     self.zex_balance_on_chain[chain][contract_address] = Decimal(
@@ -288,7 +295,7 @@ class Zex(metaclass=SingletonMeta):
             entry.user_id = user_id
         state.id_to_public_lookup.update(self.id_to_public_lookup)
 
-        state.token_decimals.update(self.token_decimals)
+        state.contract_decimal_on_chain.update(self.contract_decimal_on_chain)
 
         return state
 
@@ -408,7 +415,7 @@ class Zex(metaclass=SingletonMeta):
         }
         zex.id_to_public_lookup = dict(pb_state.id_to_public_lookup)
 
-        zex.token_decimals = dict(zex.token_decimals)
+        zex.contract_decimal_on_chain = dict(pb_state.contract_decimal_on_chain)
 
         zex.last_user_id = (
             max(zex.public_to_id_lookup.values()) if zex.public_to_id_lookup else 0
@@ -563,20 +570,22 @@ class Zex(metaclass=SingletonMeta):
             if token_contract not in self.zex_balance_on_chain[chain]:
                 self.zex_balance_on_chain[chain][token_contract] = Decimal("0")
 
-            token_name = get_token_name(chain, token_contract)
-            if token_name not in self.token_decimals:
-                self.token_decimals[token_name] = decimal
+            if chain not in self.contract_decimal_on_chain:
+                self.contract_decimal_on_chain[chain] = {}
+            if token_contract not in self.contract_decimal_on_chain[chain]:
+                self.contract_decimal_on_chain[chain][token_contract] = decimal
 
-            if self.token_decimals[token_name] != decimal:
+            if self.contract_decimal_on_chain[chain][token_contract] != decimal:
                 logger.warning(
-                    f"decimal for contract {token_name} changed "
-                    f"from {self.token_decimals[token_name]} to {decimal}"
+                    f"decimal for contract {token_contract} changed "
+                    f"from {self.contract_decimal_on_chain[chain][token_contract]} to {decimal}"
                 )
-                self.token_decimals[token_name] = decimal
+                self.contract_decimal_on_chain[chain][token_contract] = decimal
             amount /= 10 ** Decimal(decimal)
 
             public = self.id_to_public_lookup[user_id]
 
+            token_name = get_token_name(chain, token_contract)
             if token_name not in self.assets:
                 self.assets[token_name] = {}
             if public not in self.assets[token_name]:
@@ -636,7 +645,7 @@ class Zex(metaclass=SingletonMeta):
             if tx.token_chain in token_info:
                 # Token is verified and chain is supported
                 token = tx.token_name
-                token_contract = token_info[tx.token_chain]
+                token_contract = token_info[tx.token_chain].contract_address
             else:
                 # Token is verified, but the chain is not supported
                 # Fail transaction

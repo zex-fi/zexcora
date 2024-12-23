@@ -17,7 +17,7 @@ message ZexState {
     repeated UserDepositEntry user_deposits = 13;
     repeated IDLookupEntry public_to_id_lookup = 14;
     map<uint64, bytes> id_to_public_lookup = 15;
-    map<string, uint32> token_decimals = 16;
+    map<string, ContractDecimalOnChain> contract_decimal_on_chain = 16;
 }
 
 message Market {
@@ -139,4 +139,8 @@ message ContractToIDOnChainEntry {
 message IDToContractOnChainEntry {
     string chain = 1;
     map<uint64, string> id_to_contract = 2;
+}
+
+message ContractDecimalOnChain {
+    map<string, uint32> contract_decimal = 1;
 }

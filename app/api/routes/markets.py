@@ -32,7 +32,6 @@ def get_token_info(token) -> Token:
     t = Token(
         token=token,
         chainType="evm" if token[:3] not in ["BTC"] else "native_only",
-        decimals=zex.token_decimals.get(token, 8),
         price=zex.markets[f"{token}-{USDT_MAINNET}"].get_last_price()
         if f"{token}-{USDT_MAINNET}" in zex.markets
         else 0
