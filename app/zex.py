@@ -37,7 +37,7 @@ def get_token_name(chain, address):
     for verified_name, tokens in settings.zex.verified_tokens.tokens.items():
         if chain not in tokens:
             continue
-        if tokens[chain] == address:
+        if tokens[chain].contract_address == address:
             return verified_name
     return f"{chain}:{address}"
 
