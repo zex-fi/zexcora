@@ -32,48 +32,60 @@ zex:
   usdt_mainnet: "USDT"
 
   verified_tokens:
-    tokens:
+    BTC:
       BTC:
-        BTC:
-          contract_address: "0x0000000000000000000000000000000000000000"
-          decimal: 8
-      USDT:
-        POL:
-          contract_address: "0xc2132D05D31c914a87C6611C10748AEb04B58e8F"
-          decimal: 6
-        BSC:
-          contract_address: "0x55d398326f99059fF775485246999027B3197955"
-          decimal: 18
-        OPT:
-          contract_address: "0x94b008aA00579c1307B0EF2c499aD98a8ce58e58"
-          decimal: 6
-      USDC:
-        POL:
-          contract_address: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
-          decimal: 6
-        BSC:
-          contract_address: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d"
-          decimal: 18
-        OPT:
-          contract_address: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85"
-          decimal: 6
-      WBTC:
-        POL:
-          contract_address: "0x1BFD67037B42Cf73acF2047067bd4F2C47D9BfD6"
-          decimal: 8
-        BSC:
-          contract_address: "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c"
-          decimal: 8
-        OPT:
-          contract_address: "0x68f180fcCe6836688e9084f035309E29Bf0A2095"
-          decimal: 8
-      LINK:
-        POL:
-          contract_address: "0x53E0bca35eC356BD5ddDFebbD1Fc0fD03FaBad39"
-          decimal: 18
-        BSC:
-          contract_address: "0xF8A0BF9cF54Bb92F17374d9e9A321E6a111a51bD"
-          decimal: 18
-        OPT:
-          contract_address: "0x350a791Bfc2C21F9Ed5d10980Dad2e2638ffa7f6"
-          decimal: 18
+        contract_address: "0x0000000000000000000000000000000000000000"
+        balance_withdraw_limit: 0.001
+        decimal: 8
+    USDT:
+      POL:
+        contract_address: "0xc2132D05D31c914a87C6611C10748AEb04B58e8F"
+        balance_withdraw_limit: 10
+        decimal: 6
+      BSC:
+        contract_address: "0x55d398326f99059fF775485246999027B3197955"
+        balance_withdraw_limit: 10
+        decimal: 18
+      OPT:
+        contract_address: "0x94b008aA00579c1307B0EF2c499aD98a8ce58e58"
+        balance_withdraw_limit: 10
+        decimal: 6
+    USDC:
+      POL:
+        contract_address: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
+        balance_withdraw_limit: 10
+        decimal: 6
+      BSC:
+        contract_address: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d"
+        balance_withdraw_limit: 10
+        decimal: 18
+      OPT:
+        contract_address: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85"
+        balance_withdraw_limit: 10
+        decimal: 6
+    WBTC:
+      POL:
+        contract_address: "0x1BFD67037B42Cf73acF2047067bd4F2C47D9BfD6"
+        balance_withdraw_limit: 0.001
+        decimal: 8
+      BSC:
+        contract_address: "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c"
+        balance_withdraw_limit: 0.001
+        decimal: 8
+      OPT:
+        contract_address: "0x68f180fcCe6836688e9084f035309E29Bf0A2095"
+        balance_withdraw_limit: 0.001
+        decimal: 8
+    LINK:
+      POL:
+        contract_address: "0x53E0bca35eC356BD5ddDFebbD1Fc0fD03FaBad39"
+        balance_withdraw_limit: 2
+        decimal: 18
+      BSC:
+        contract_address: "0xF8A0BF9cF54Bb92F17374d9e9A321E6a111a51bD"
+        balance_withdraw_limit: 2
+        decimal: 18
+      OPT:
+        contract_address: "0x350a791Bfc2C21F9Ed5d10980Dad2e2638ffa7f6"
+        balance_withdraw_limit: 2
+        decimal: 18

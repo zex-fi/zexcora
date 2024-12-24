@@ -135,7 +135,7 @@ def get_deposit_status(chain: str, tx_hash: str, vout: int = 0):
 def get_withdraw_config():
     result = []
     for token_name in zex.assets.keys():
-        if token_name in settings.zex.verified_tokens.tokens:
+        if token_name in settings.zex.verified_tokens:
             item = {
                 "token": token_name,
                 "name": NAMES[token_name],
@@ -144,13 +144,16 @@ def get_withdraw_config():
                         "addressRegex": "",
                         "name": NETWORK_NAME[chain],
                         "network": chain,
-                        "withdrawEnable": True,
+                        "withdrawEnable": is_withdrawable(
+                            chain, token_name, token_info.contract_address
+                        ),
                         "withdrawFee": 0,
                         "withdrawMin": 0,
                         "withdrawMax": 0,
                         "contractAddress": token_info.contract_address,
+                        "decimal": token_info.decimal,
                     }
-                    for chain, token_info in settings.zex.verified_tokens.tokens[
+                    for chain, token_info in settings.zex.verified_tokens[
                         token_name
                     ].items()
                 ],
@@ -166,7 +169,7 @@ def get_withdraw_config():
                         "addressRegex": "",
                         "name": NETWORK_NAME.get(chain, chain),
                         "network": chain,
-                        "withdrawEnable": True,
+                        "withdrawEnable": is_withdrawable(chain, token_name, address),
                         "withdrawFee": 0,
                         "withdrawMin": 0,
                         "withdrawMax": 0,
@@ -176,6 +179,18 @@ def get_withdraw_config():
             }
             result.append(item)
     return result
+
+
+def is_withdrawable(chain, token_name, contract_address):
+    if token_name not in settings.zex.verified_tokens:
+        return True
+    if chain not in settings.zex.verified_tokens[token_name]:
+        return True
+
+    balance = zex.zex_balance_on_chain[chain][contract_address]
+    details = settings.zex.verified_tokens[token_name]
+    limit = details[chain].balance_withdraw_limit
+    return balance > limit
 
 
 @router.post("/register")

@@ -1,3 +1,4 @@
+from decimal import Decimal
 from pathlib import Path
 import sys
 
@@ -27,11 +28,8 @@ class Redis(BaseModel):
 
 class Token(BaseModel):
     contract_address: str
+    balance_withdraw_limit: Decimal
     decimal: int
-
-
-class VerifiedTokens(BaseModel):
-    tokens: dict[TokenName, dict[Chain, Token]]
 
 
 class ZexSettings(BaseModel):
@@ -55,7 +53,7 @@ class ZexSettings(BaseModel):
 
     usdt_mainnet: str
 
-    verified_tokens: VerifiedTokens
+    verified_tokens: dict[TokenName, dict[Chain, Token]]
 
 
 class Settings(BaseSettings):

@@ -350,7 +350,7 @@ def get_chain_withdraws(
         raise HTTPException(404, {"error": "chain not found"})
     transactions = []
     for i, withdraw in enumerate(zex.withdraws_on_chain[chain][offset:limit]):
-        token_info = settings.zex.verified_tokens.tokens.get(withdraw.token_name)
+        token_info = settings.zex.verified_tokens.get(withdraw.token_name)
 
         if token_info:
             token_contract = token_info[withdraw.token_chain].contract_address
@@ -393,7 +393,7 @@ def get_user_withdraws(
     if nonce is not None:
         withdraw_tx = withdraws[nonce]
 
-        token_info = settings.zex.verified_tokens.tokens.get(withdraw_tx.token_name)
+        token_info = settings.zex.verified_tokens.get(withdraw_tx.token_name)
         if token_info:
             token_contract = token_info[withdraw_tx.token_chain].contract_address
         else:
@@ -412,7 +412,7 @@ def get_user_withdraws(
     else:
         result = []
         for withdraw in zex.user_withdraws_on_chain[chain][user]:
-            token_info = settings.zex.verified_tokens.tokens.get(withdraw.token_name)
+            token_info = settings.zex.verified_tokens.get(withdraw.token_name)
             if token_info:
                 token_contract = token_info[withdraw.token_chain].contract_address
             else:

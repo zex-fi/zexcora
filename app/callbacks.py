@@ -1,10 +1,12 @@
 from decimal import Decimal
+from enum import Enum
 import time
 
 from loguru import logger
 import pandas as pd
 
 from .connection_manager import ConnectionManager
+from .zex_types import ExecutionType
 
 
 def kline_event(manager: ConnectionManager):
@@ -95,9 +97,18 @@ def user_order_event(manager: ConnectionManager):
         side: str,
         amount: Decimal,
         price: Decimal,
+        execution_type: ExecutionType,
         order_status: str,
+        last_filled: Decimal,
+        cumulative_filled: Decimal,
+        last_executed_price: Decimal,
         transaction_time: int,
+        is_on_orderbook: bool,
         is_maker: bool,
+        cumulative_quote_asset_quantity: Decimal,
+        last_quote_asset_quantity: Decimal,
+        quote_order_quantity: Decimal,
+        reject_reason: str = "NONE",
     ):
         subs = manager.subscriptions.copy()
         for channel, clients in subs.items():
@@ -125,25 +136,29 @@ def user_order_event(manager: ConnectionManager):
                         "F": "0.",  # Iceberg quantity
                         "g": -1,  # OrderListId
                         "C": "",  # Original client order ID; This is the ID of the order being canceled
-                        "x": "NEW",  # Current execution type
+                        "x": execution_type.value,  # Current execution type
                         "X": order_status,  # Current order status
-                        "r": "NONE",  # Order reject reason; will be an error code.
+                        "r": reject_reason,  # Order reject reason; will be an error code.
                         "i": nonce,  # Order ID
-                        "l": "0.00000000",  # Last executed quantity
-                        "z": "0.00000000",  # Cumulative filled quantity
-                        "L": "0.00000000",  # Last executed price
+                        "l": str(last_filled),  # Last executed quantity
+                        "z": str(cumulative_filled),  # Cumulative filled quantity
+                        "L": str(last_executed_price),  # Last executed price
                         "n": "0",  # Commission amount
                         "N": None,  # Commission asset
                         "T": transaction_time,  # Transaction time
                         "t": -1,  # Trade ID
                         "I": 8641984,  # Ignore
-                        "w": True,  # Is the order on the book?
+                        "w": is_on_orderbook,  # Is the order on the book?
                         "m": is_maker,  # Is this trade the maker side?
                         "M": False,  # Ignore
                         "O": 0,  # Order creation time
-                        "Z": "0.00000000",  # Cumulative quote asset transacted quantity
-                        "Y": "0.00000000",  # Last quote asset transacted quantity (i.e. lastPrice * lastQty)
-                        "Q": "0.00000000",  # Quote Order Quantity
+                        "Z": str(
+                            cumulative_quote_asset_quantity
+                        ),  # Cumulative quote asset transacted quantity
+                        "Y": str(
+                            last_quote_asset_quantity
+                        ),  # Last quote asset transacted quantity (i.e. lastPrice * lastQty)
+                        "Q": str(quote_order_quantity),  # Quote Order Quantity
                         "W": 0,  # Working Time; This is only visible if the order has been placed on the book.
                         "V": "NONE",  # SelfTradePreventionMode
                     }
