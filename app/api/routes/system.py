@@ -22,6 +22,8 @@ class MockZellular:
         self.app_name = app_name
         self.base_url = base_url
         self.threshold_percent = threshold_percent
+        self.offset = 0
+        self.len_threshold = 1_000
         host, port = base_url.split(":")
         self.r = redis.Redis(
             host=host,
@@ -41,10 +43,15 @@ class MockZellular:
     def batches(self, after=0):
         assert after >= 0, "after should be equal or bigger than 0"
         while not stop_event.is_set():
-            batches = self.r.lrange(self.app_name, after, after + 100)
+            batches = self.r.lrange(
+                self.app_name, after - self.offset, after - self.offset + 100
+            )
             for batch in batches:
                 after += 1
                 yield batch, after
+            if after - self.offset >= self.len_threshold:
+                self.r.lpop(self.app_name, after)
+                self.offset = after
             time.sleep(0.1)
 
     def get_last_finalized(self):
