@@ -16,8 +16,6 @@ from app import stop_event, zex
 from app.config import settings
 from app.verify import TransactionVerifier
 
-from . import NAMES, NETWORK_NAME
-
 
 class MockZellular:
     def __init__(self, app_name: str, base_url: str, threshold_percent: float = 67):
@@ -136,68 +134,6 @@ def get_deposit_status(chain: str, tx_hash: str, vout: int = 0):
     if (tx_hash, vout) not in zex.deposits[chain]:
         raise HTTPException(404, {"error": "transaction not found"})
     return {"status": "complete"}
-
-
-@router.get("/capital/config/withdraw")
-def get_withdraw_config():
-    result = []
-    for token_name in zex.assets.keys():
-        if token_name in settings.zex.verified_tokens:
-            item = {
-                "token": token_name,
-                "name": NAMES[token_name],
-                "networkList": [
-                    {
-                        "addressRegex": "",
-                        "name": NETWORK_NAME[chain],
-                        "network": chain,
-                        "withdrawEnable": is_withdrawable(
-                            chain, token_name, token_info.contract_address
-                        ),
-                        "withdrawFee": 0,
-                        "withdrawMin": 0,
-                        "withdrawMax": 0,
-                        "contractAddress": token_info.contract_address,
-                        "decimal": token_info.decimal,
-                    }
-                    for chain, token_info in settings.zex.verified_tokens[
-                        token_name
-                    ].items()
-                ],
-            }
-            result.append(item)
-        else:
-            chain, address = token_name.split(":")
-            item = {
-                "token": token_name,
-                "name": "",
-                "networkList": [
-                    {
-                        "addressRegex": "",
-                        "name": NETWORK_NAME.get(chain, chain),
-                        "network": chain,
-                        "withdrawEnable": is_withdrawable(chain, token_name, address),
-                        "withdrawFee": 0,
-                        "withdrawMin": 0,
-                        "withdrawMax": 0,
-                        "contractAddress": address,
-                    }
-                ],
-            }
-            result.append(item)
-    return result
-
-
-def is_withdrawable(chain, token_name, contract_address):
-    if token_name not in settings.zex.verified_tokens:
-        return True
-    if chain not in settings.zex.verified_tokens[token_name]:
-        return True
-
-    balance = zex.zex_balance_on_chain[chain][contract_address]
-    details = settings.zex.verified_tokens[token_name]
-    limit = details[chain].balance_withdraw_limit
-    return balance > limit
 
 
 @router.post("/register")

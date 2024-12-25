@@ -27,6 +27,8 @@ from app.models.response import (
 from app.models.transaction import Deposit, WithdrawTransaction
 from app.zex import BUY
 
+from . import NAMES, NETWORK_NAME
+
 router = APIRouter()
 light_router = APIRouter()
 
@@ -313,6 +315,73 @@ def get_user_addresses(id: int) -> UserAddressesResponse:
             EVM=evm_address,
         ),
     )
+
+
+def is_withdrawable(chain, token_name, contract_address):
+    if token_name not in settings.zex.verified_tokens:
+        return True
+    if chain not in settings.zex.verified_tokens[token_name]:
+        return True
+
+    balance = zex.zex_balance_on_chain[chain][contract_address]
+    details = settings.zex.verified_tokens[token_name]
+    limit = details[chain].balance_withdraw_limit
+    return balance > limit
+
+
+@router.get("/capital/config/getall")
+def get_withdraw_config(id: int):
+    if id not in zex.id_to_public_lookup:
+        raise HTTPException(404, {"error": "user not found"})
+
+    user = zex.id_to_public_lookup[id]
+    result = []
+    for token_name, balance in zex.assets.items():
+        if token_name in settings.zex.verified_tokens:
+            item = {
+                "token": token_name,
+                "name": NAMES[token_name],
+                "networkList": [
+                    {
+                        "addressRegex": "",
+                        "name": NETWORK_NAME[chain],
+                        "network": chain,
+                        "withdrawEnable": is_withdrawable(
+                            chain, token_name, token_info.contract_address
+                        ),
+                        "withdrawFee": 0,
+                        "withdrawMin": 0,
+                        "withdrawMax": 0,
+                        "contractAddress": token_info.contract_address,
+                        "decimal": token_info.decimal,
+                    }
+                    for chain, token_info in settings.zex.verified_tokens[
+                        token_name
+                    ].items()
+                ],
+            }
+            result.append(item)
+        elif user in balance and balance[user] != 0:
+            chain, address = token_name.split(":")
+            item = {
+                "token": token_name,
+                "name": "",
+                "networkList": [
+                    {
+                        "addressRegex": "",
+                        "name": NETWORK_NAME.get(chain, chain),
+                        "network": chain,
+                        "withdrawEnable": is_withdrawable(chain, token_name, address),
+                        "withdrawFee": 0,
+                        "withdrawMin": 0,
+                        "withdrawMax": 0,
+                        "contractAddress": address,
+                        "decimal": zex.contract_decimal_on_chain[chain][address],
+                    }
+                ],
+            }
+            result.append(item)
+    return result
 
 
 @router.get("/users/latest-id")
