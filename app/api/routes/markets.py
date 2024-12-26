@@ -83,7 +83,7 @@ async def exhange_info() -> ExchangeInfoResponse:
 
 @router.get("/pairs")
 async def pairs():
-    return list(zex.markets.keys())
+    return [pair for pair in zex.markets.keys() if pair in market_filter_list]
 
 
 @router.get("/klines")

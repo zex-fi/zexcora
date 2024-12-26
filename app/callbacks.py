@@ -176,7 +176,9 @@ def user_deposit_event(manager: ConnectionManager):
         for channel, clients in subs.items():
             parts = channel.split("@")
             user_public, details = parts[0], parts[1]
-            if "deposit" not in details or user_public != public:
+            if "deposit" not in details or (
+                user_public != public and user_public != "all"
+            ):
                 continue
 
             for ws in clients.copy():
@@ -205,7 +207,9 @@ def user_withdraw_event(manager: ConnectionManager):
         for channel, clients in subs.items():
             parts = channel.split("@")
             user_public, details = parts[0], parts[1]
-            if "deposit" not in details or user_public != public:
+            if "withdraw" not in details or (
+                user_public != public and user_public != "all"
+            ):
                 continue
 
             for ws in clients.copy():

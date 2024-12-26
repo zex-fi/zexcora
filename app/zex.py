@@ -172,15 +172,21 @@ class Zex(metaclass=SingletonMeta):
                 if chain not in self.zex_balance_on_chain:
                     self.zex_balance_on_chain[chain] = {}
                 for contract_address, decimal in details:
-                    name = get_token_name(chain, contract_address)
-                    if name not in self.assets:
-                        self.assets[name] = {}
+                    token_name = get_token_name(chain, contract_address)
+                    if token_name not in self.assets:
+                        self.assets[token_name] = {}
                     if chain not in self.contract_decimal_on_chain:
                         self.contract_decimal_on_chain[chain] = {}
 
+                    pair = f"{token_name}-{settings.zex.usdt_mainnet}"
+                    if pair not in self.markets:
+                        self.markets[pair] = Market(
+                            token_name, settings.zex.usdt_mainnet, self
+                        )
+
                     self.contract_decimal_on_chain[chain][contract_address] = decimal
-                    self.assets[name][bot_pub] = Decimal("5_000_000")
-                    self.assets[name][client_pub] = Decimal("1_000_000")
+                    self.assets[token_name][bot_pub] = Decimal("5_000_000")
+                    self.assets[token_name][client_pub] = Decimal("1_000_000")
                     self.zex_balance_on_chain[chain][contract_address] = Decimal(
                         "5_000_000"
                     )

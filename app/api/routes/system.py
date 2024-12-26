@@ -42,7 +42,8 @@ class MockZellular:
 
     def batches(self, after=0):
         assert after >= 0, "after should be equal or bigger than 0"
-        self.offset = after - self.r.llen(self.app_name)
+        if after != 0:
+            self.offset = after - self.r.llen(self.app_name)
 
         while not stop_event.is_set():
             batches = self.r.lrange(
