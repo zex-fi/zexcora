@@ -11,13 +11,13 @@ import heapq
 import struct
 import time
 
-from eth_utils.address import to_checksum_address
 from loguru import logger
 import pandas as pd
 
 from .config import settings
 from .models.transaction import (
     Deposit,
+    DepositTransaction,
     WithdrawTransaction,
 )
 from .proto import zex_pb2
@@ -26,11 +26,6 @@ from .zex_types import Chain, ContractAddress, ExecutionType, Token, UserPublic
 
 BTC_DEPOSIT, DEPOSIT, WITHDRAW, BUY, SELL, CANCEL, REGISTER = b"xdwbscr"
 TRADES_TTL = 1000
-
-
-def chunkify(lst, n_chunks):
-    for i in range(0, len(lst), n_chunks):
-        yield lst[i : i + n_chunks]
 
 
 def get_token_name(chain, address):
@@ -474,6 +469,7 @@ class Zex(metaclass=SingletonMeta):
                 continue
 
             if name == DEPOSIT or name == BTC_DEPOSIT:
+                tx = DepositTransaction.from_tx(tx)
                 self.deposit(tx)
             elif name == WITHDRAW:
                 tx = WithdrawTransaction.from_tx(tx)
@@ -530,97 +526,84 @@ class Zex(metaclass=SingletonMeta):
             self.saved_state_index = self.last_tx_index
             self.save_state()
 
-    def deposit(self, tx: bytes):
-        header_format = ">xx 3s H"
-        header_size = struct.calcsize(header_format)
-        chain, count = struct.unpack(header_format, tx[:header_size])
-        chain = chain.upper().decode()
-
-        deposit_format = ">66s 42s 32s B I Q B"
-        deposit_size = struct.calcsize(deposit_format)
-
-        deposits = list(
-            chunkify(tx[header_size : header_size + deposit_size * count], deposit_size)
-        )
-        for chunk in deposits:
-            tx_hash, token_contract, amount, decimal, t, user_id, vout = struct.unpack(
-                deposit_format, chunk[:deposit_size]
-            )
-            amount = int.from_bytes(amount, byteorder="big")
-            tx_hash = tx_hash.decode()
-
-            if user_id < 1:
+    def deposit(self, tx: DepositTransaction):
+        for deposit in tx.deposits:
+            if deposit.user_id < 1:
                 logger.critical(
-                    f"invalid user id: {user_id}, tx_hash: {tx_hash}, vout: {vout}, "
-                    f"token_contract: {token_contract}, amount: {amount}, decimal: {decimal}"
+                    f"invalid user id: {deposit.user_id}, tx_hash: {deposit.tx_hash}, vout: {deposit.vout}, "
+                    f"token_contract: {deposit.token_contract}, amount: {deposit.amount}, decimal: {deposit.decimal}"
                 )
                 continue
-            if self.last_user_id < user_id:
+            if self.last_user_id < deposit.user_id:
                 logger.error(
-                    f"deposit for missing user: {user_id}, tx_hash: {tx_hash}, vout: {vout}, "
-                    f"token_contract: {token_contract}, amount: {amount}, decimal: {decimal}"
+                    f"deposit for missing user: {deposit.user_id}, tx_hash: {deposit.tx_hash}, vout: {deposit.vout}, "
+                    f"token_contract: {deposit.token_contract}, amount: {deposit.amount}, decimal: {deposit.decimal}"
                 )
                 continue
 
-            if chain not in self.deposits:
-                self.deposits[chain] = set()
-            if chain not in self.zex_balance_on_chain:
-                self.zex_balance_on_chain[chain] = {}
+            if deposit.chain not in self.deposits:
+                self.deposits[deposit.chain] = set()
+            if deposit.chain not in self.zex_balance_on_chain:
+                self.zex_balance_on_chain[deposit.chain] = {}
 
-            if (tx_hash, vout) in self.deposits[chain]:
+            if (deposit.tx_hash, deposit.vout) in self.deposits[deposit.chain]:
                 logger.error(
-                    f"chain: {chain}, tx_hash: {tx_hash}, vout: {vout} has already been deposited"
+                    f"chain: {deposit.chain}, tx_hash: {deposit.tx_hash}, vout: {deposit.vout} has already been deposited"
                 )
                 continue
-            self.deposits[chain].add((tx_hash, vout))
+            self.deposits[deposit.chain].add((deposit.tx_hash, deposit.vout))
 
-            amount = Decimal(str(amount))
+            if deposit.token_contract not in self.zex_balance_on_chain[deposit.chain]:
+                self.zex_balance_on_chain[deposit.chain][deposit.token_contract] = (
+                    Decimal("0")
+                )
 
-            token_contract = to_checksum_address(token_contract.decode())
-            if token_contract not in self.zex_balance_on_chain[chain]:
-                self.zex_balance_on_chain[chain][token_contract] = Decimal("0")
+            if deposit.chain not in self.contract_decimal_on_chain:
+                self.contract_decimal_on_chain[deposit.chain] = {}
+            if (
+                deposit.token_contract
+                not in self.contract_decimal_on_chain[deposit.chain]
+            ):
+                self.contract_decimal_on_chain[deposit.chain][
+                    deposit.token_contract
+                ] = deposit.decimal
 
-            if chain not in self.contract_decimal_on_chain:
-                self.contract_decimal_on_chain[chain] = {}
-            if token_contract not in self.contract_decimal_on_chain[chain]:
-                self.contract_decimal_on_chain[chain][token_contract] = decimal
-
-            if self.contract_decimal_on_chain[chain][token_contract] != decimal:
+            if (
+                self.contract_decimal_on_chain[deposit.chain][deposit.token_contract]
+                != deposit.decimal
+            ):
                 logger.warning(
-                    f"decimal for contract {token_contract} changed "
-                    f"from {self.contract_decimal_on_chain[chain][token_contract]} to {decimal}"
+                    f"decimal for contract {deposit.token_contract} changed "
+                    f"from {self.contract_decimal_on_chain[deposit.chain][deposit.token_contract]} to {deposit.decimal}"
                 )
-                self.contract_decimal_on_chain[chain][token_contract] = decimal
-            amount /= 10 ** Decimal(decimal)
+                self.contract_decimal_on_chain[deposit.chain][
+                    deposit.token_contract
+                ] = deposit.decimal
 
-            public = self.id_to_public_lookup[user_id]
+            public = self.id_to_public_lookup[deposit.user_id]
 
-            token_name = get_token_name(chain, token_contract)
-            if token_name not in self.assets:
-                self.assets[token_name] = {}
-            if public not in self.assets[token_name]:
-                self.assets[token_name][public] = Decimal("0")
+            if deposit.token_name not in self.assets:
+                self.assets[deposit.token_name] = {}
+            if public not in self.assets[deposit.token_name]:
+                self.assets[deposit.token_name][public] = Decimal("0")
 
-            pair = f"{token_name}-{settings.zex.usdt_mainnet}"
+            pair = f"{deposit.token_name}-{settings.zex.usdt_mainnet}"
             if pair not in self.markets:
-                self.markets[pair] = Market(token_name, settings.zex.usdt_mainnet, self)
+                self.markets[pair] = Market(
+                    deposit.token_name, settings.zex.usdt_mainnet, self
+                )
 
             if public not in self.user_deposits:
                 self.user_deposits[public] = []
 
-            self.user_deposits[public].append(
-                Deposit(
-                    token_chain=chain,
-                    token_name=token_name,
-                    amount=amount,
-                    time=t,
-                )
+            self.user_deposits[public].append(deposit)
+            self.assets[deposit.token_name][public] += deposit.amount
+            self.zex_balance_on_chain[deposit.chain][deposit.token_contract] += (
+                deposit.amount
             )
-            self.assets[token_name][public] += amount
-            self.zex_balance_on_chain[chain][token_contract] += amount
             logger.info(
-                f"deposit on chain: {chain}, token: {token_name}, amount: {amount} for user: {public}, "
-                f"tx_hash: {tx_hash}, new balance: {self.assets[token_name][public]}"
+                f"deposit on chain: {deposit.chain}, token: {deposit.token_name}, amount: {deposit.amount} for user: {public}, "
+                f"tx_hash: {deposit.tx_hash}, new balance: {self.assets[deposit.token_name][public]}"
             )
 
             if public not in self.trades:
@@ -631,7 +614,9 @@ class Zex(metaclass=SingletonMeta):
                 self.nonces[public] = 0
 
             asyncio.create_task(
-                self.deposit_callback(public.hex(), chain, token_name, amount)
+                self.deposit_callback(
+                    public.hex(), deposit.chain, deposit.token_name, deposit.amount
+                )
             )
 
     def withdraw(self, tx: WithdrawTransaction):
@@ -1402,6 +1387,57 @@ class Market:
             return self.kline["Volume"].iloc[prev_24h_index:].sum()
         return self.kline["Volume"].sum()
 
+    def get_open_time_24h(self):
+        if len(self.kline) == 0:
+            return 0
+        # Calculate the total time span of our data
+        total_span = self.kline.index[-1] - self.kline.index[0]
+
+        ms_in_24h = 24 * 60 * 60 * 1000
+        if total_span > ms_in_24h:
+            target_time = self.kline.index[-1] - 24 * 60 * 60 * 1000
+            prev_24h_index = self.kline.index.get_indexer(
+                [target_time],
+                method="pad",
+            )[0].item()
+
+            return self.kline.index[prev_24h_index]
+        return self.kline.index[0]
+
+    def get_close_time_24h(self):
+        if len(self.kline) == 0:
+            return 0
+        # Calculate the total time span of our data
+        total_span = self.kline.index[-1] - self.kline.index[0]
+
+        ms_in_24h = 24 * 60 * 60 * 1000
+        if total_span > ms_in_24h:
+            target_time = self.kline.index[-1] - 24 * 60 * 60 * 1000
+            prev_24h_index = self.kline.index.get_indexer(
+                [target_time],
+                method="pad",
+            )[0].item()
+
+            return self.kline["CloseTime"].iloc[prev_24h_index]
+        return self.kline["CloseTime"].iloc[0]
+
+    def get_open_24h(self):
+        if len(self.kline) == 0:
+            return 0
+        # Calculate the total time span of our data
+        total_span = self.kline.index[-1] - self.kline.index[0]
+
+        ms_in_24h = 24 * 60 * 60 * 1000
+        if total_span > ms_in_24h:
+            target_time = self.kline.index[-1] - 24 * 60 * 60 * 1000
+            prev_24h_index = self.kline.index.get_indexer(
+                [target_time],
+                method="pad",
+            )[0].item()
+
+            return self.kline["Open"].iloc[prev_24h_index]
+        return self.kline["Open"].iloc[0]
+
     def get_high_24h(self):
         if len(self.kline) == 0:
             return 0
@@ -1435,6 +1471,23 @@ class Market:
 
             return self.kline["Low"].iloc[prev_24h_index:].min()
         return self.kline["Low"].min()
+
+    def get_trade_num_24h(self):
+        if len(self.kline) == 0:
+            return 0
+        # Calculate the total time span of our data
+        total_span = self.kline.index[-1] - self.kline.index[0]
+
+        ms_in_24h = 24 * 60 * 60 * 1000
+        if total_span > ms_in_24h:
+            target_time = self.kline.index[-1] - 24 * 60 * 60 * 1000
+            prev_24h_index = self.kline.index.get_indexer(
+                [target_time],
+                method="pad",
+            )[0].item()
+
+            return self.kline["NumberOfTrades"].iloc[prev_24h_index:].sum()
+        return self.kline["NumberOfTrades"].sum()
 
     def _update_buy_order(
         self,

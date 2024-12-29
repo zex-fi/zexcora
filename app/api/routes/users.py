@@ -177,6 +177,7 @@ def user_transfers(id: int) -> list[TransferResponse]:
         TransferResponse(
             chain=t.token_chain,
             token=t.token_name,
+            txHash=t.tx_hash if isinstance(t, Deposit) else "",
             amount=t.amount if isinstance(t, Deposit) else -t.amount,
             time=t.time,
         )
@@ -339,11 +340,12 @@ def get_withdraw_config(id: int):
     for token_name, balance in zex.assets.items():
         if token_name in settings.zex.verified_tokens:
             item = {
-                "token": token_name,
+                "coin": token_name,
                 "name": NAMES[token_name],
                 "networkList": [
                     {
                         "addressRegex": "",
+                        "coin": token_name,
                         "name": NETWORK_NAME[chain],
                         "network": chain,
                         "withdrawEnable": is_withdrawable(
@@ -364,11 +366,12 @@ def get_withdraw_config(id: int):
         elif user in balance and balance[user] != 0:
             chain, address = token_name.split(":")
             item = {
-                "token": token_name,
+                "coin": token_name,
                 "name": "",
                 "networkList": [
                     {
                         "addressRegex": "",
+                        "coin": token_name,
                         "name": NETWORK_NAME.get(chain, chain),
                         "network": chain,
                         "withdrawEnable": is_withdrawable(chain, token_name, address),

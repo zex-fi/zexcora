@@ -20,7 +20,7 @@ ENV PYTHONFAULTHANDLER=1 \
   POETRY_VIRTUALENVS_CREATE=false \
   POETRY_CACHE_DIR='/var/cache/pypoetry' \
   POETRY_HOME='/usr/local' \
-  POETRY_VERSION=1.8.3
+  POETRY_VERSION=1.8.5
 
 WORKDIR /zex
 COPY pyproject.toml poetry.lock ./

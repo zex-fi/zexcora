@@ -133,7 +133,7 @@ class ZexBot:
         if volume < self.base_volume * 0.001:
             volume = round(self.base_volume, self.volume_digits)
         with self.lock:
-            time.sleep(0.1)
+            time.sleep(0.5)
             resp = httpx.get(f"http://{HOST}:{PORT}/v1/user/nonce?id={self.user_id}")
             self.nonce = resp.json()["nonce"]
             tx = self.create_order(price, volume, maker=maker)

@@ -40,6 +40,7 @@ class ZexSettings(BaseModel):
     state_source: str
     state_dest: Path
     state_save_frequency: int
+    tx_transmit_delay: float
     mainnet: bool
     use_redis: bool
     verbose: bool

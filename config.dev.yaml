@@ -6,8 +6,9 @@ zex:
   state_source: ""
   state_dest: zex_state.pb
   state_save_frequency: 500
+  tx_transmit_delay: 0.01
   mainnet: false
-  use_redis: true
+  use_redis: false
   verbose: true
 
   keys:
@@ -21,6 +22,7 @@ zex:
 
   redis:
     url: 127.0.0.1:6379
+    # url: 142.93.99.161:6379
     password: zex_super_secure_password
 
   chains:

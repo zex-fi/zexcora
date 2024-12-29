@@ -55,18 +55,44 @@ class UserAddressesResponse(BaseModel):
 class TransferResponse(BaseModel):
     chain: str
     token: str
+    txHash: str
     amount: float
     time: int
 
 
+class Filter(BaseModel):
+    filterType: str
+    minPrice: str
+    maxPrice: str
+    tickSize: str
+    stepSize: str
+    limit: int
+    minTrailingAboveDelta: int
+    maxTrailingAboveDelta: int
+    minTrailingBelowDelta: int
+    maxTrailingBelowDelta: int
+    bidMultiplierUp: str
+    bidMultiplierDown: str
+    askMultiplierUp: str
+    askMultiplierDown: str
+    avgPriceMins: int
+    minNotional: str
+    applyMinToMarket: bool
+    maxNotional: str
+    applyMaxToMarket: bool
+    maxNumOrders: int
+
+
 class Symbol(BaseModel):
     symbol: str
-    lastPrice: float
-    volume24h: float
-    priceChange24h: float
-    high24h: float
-    low24h: float
-    priceChange7D: float
+    status: str
+    baseAsset: str
+    baseAssetPrecision: int
+    quoteAsset: str
+    quotePrecision: int
+    quoteAssetPrecision: int
+    orderTypes: list[str]
+    filters: list[Filter]
 
 
 class Token(BaseModel):
@@ -84,9 +110,62 @@ class Chain(BaseModel):
 
 class ExchangeInfoResponse(BaseModel):
     timezone: str
+    serverTime: int
     symbols: list[Symbol]
     tokens: list[Token]
     chains: list[Chain]
+
+
+class StatisticsMiniResponse(BaseModel):
+    symbol: str
+    openPrice: str
+    highPrice: str
+    lowPrice: str
+    lastPrice: str
+    volume: str
+    quoteVolume: str
+    openTime: int
+    closeTime: int
+    firstId: int
+    lastId: int
+    count: int
+
+
+class StatisticsFullResponse(StatisticsMiniResponse):
+    priceChange: str
+    priceChangePercent: str
+    weightedAvgPrice: str
+
+
+class PriceResponse(BaseModel):
+    symbol: str
+    price: str
+
+
+class BookTickerResponse(BaseModel):
+    symbol: str
+    bidPrice: str
+    bidQty: str
+    askPrice: str
+    askQty: str
+
+
+class TickerResponse(BaseModel):
+    symbol: str
+    priceChange: str
+    priceChangePercent: str
+    weightedAvgPrice: str
+    openPrice: str
+    highPrice: str
+    lowPrice: str
+    lastPrice: str
+    volume: str
+    quoteVolume: str
+    openTime: int
+    closeTime: int
+    firstId: int
+    lastId: int
+    count: int
 
 
 class Withdraw(BaseModel):

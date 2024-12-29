@@ -17,7 +17,78 @@ services:
         max-file: "3"
 
     depends_on:
-      - redis
+      - centrifugo
+      - zsequencer1
+      - zsequencer2
+      - zsequencer3
+
+  zsequencer1:
+    container_name: zsequencer-node1
+    image: zellular/zsequencer:latest
+    network_mode: host
+    ports:
+      - "6001:6001"
+    volumes:
+      - "./zsequencer/node1/bls_key1.json:/app/bls_key.json"
+      - "./zsequencer/node1/ecdsa_key1.json:/app/ecdsa_key.json"
+      - db1:/db
+      - "./zsequencer/node1/apps.json:/app/apps.json"
+      - "./zsequencer/node1/nodes.json:/app/nodes.json"
+    environment:
+      - ZSEQUENCER_BLS_KEY_FILE=/app/bls_key.json
+      - ZSEQUENCER_ECDSA_KEY_FILE=/app/ecdsa_key.json
+      - ZSEQUENCER_SNAPSHOT_PATH=/db
+      - ZSEQUENCER_APPS_FILE=/app/apps.json
+      - ZSEQUENCER_NODES_FILE=/app/nodes.json
+    env_file:
+      - zsequencer/node1/.env
+
+  zsequencer2:
+    container_name: zsequencer-node2
+    image: zellular/zsequencer:latest
+    network_mode: host
+    ports:
+      - "6002:6001"
+    volumes:
+      - "./zsequencer/node2/bls_key2.json:/app/bls_key.json"
+      - "./zsequencer/node2/ecdsa_key2.json:/app/ecdsa_key.json"
+      - db2:/db
+      - "./zsequencer/node2/apps.json:/app/apps.json"
+      - "./zsequencer/node2/nodes.json:/app/nodes.json"
+    environment:
+      - ZSEQUENCER_BLS_KEY_FILE=/app/bls_key.json
+      - ZSEQUENCER_ECDSA_KEY_FILE=/app/ecdsa_key.json
+      - ZSEQUENCER_SNAPSHOT_PATH=/db
+      - ZSEQUENCER_APPS_FILE=/app/apps.json
+      - ZSEQUENCER_NODES_FILE=/app/nodes.json
+    env_file:
+      - zsequencer/node2/.env
+    depends_on:
+      - zsequencer1
+
+  zsequencer3:
+    container_name: zsequencer-node3
+    image: zellular/zsequencer:latest
+    network_mode: host
+    ports:
+      - "6003:6001"
+    volumes:
+      - "./zsequencer/node3/bls_key3.json:/app/bls_key.json"
+      - "./zsequencer/node3/ecdsa_key3.json:/app/ecdsa_key.json"
+      - db3:/db
+      - "./zsequencer/node3/apps.json:/app/apps.json"
+      - "./zsequencer/node3/nodes.json:/app/nodes.json"
+    environment:
+      - ZSEQUENCER_BLS_KEY_FILE=/app/bls_key.json
+      - ZSEQUENCER_ECDSA_KEY_FILE=/app/ecdsa_key.json
+      - ZSEQUENCER_SNAPSHOT_PATH=/db
+      - ZSEQUENCER_APPS_FILE=/app/apps.json
+      - ZSEQUENCER_NODES_FILE=/app/nodes.json
+    env_file:
+      - zsequencer/node3/.env
+
+    depends_on:
+      - zsequencer1
 
   log-viewer:
     image: amir20/dozzle:latest
@@ -26,47 +97,21 @@ services:
     ports:
       - "8080:8080"
 
-  filebeat:
-    image: docker.elastic.co/beats/filebeat:8.7.0
+  centrifugo:
+    container_name: centrifugo
+    image: centrifugo/centrifugo:v5
     volumes:
-      - ./filebeat.yaml:/usr/share/filebeat/filebeat.yml:ro
-      - logs:/zex/logs:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    command: filebeat -e -strict.perms=false
-    depends_on:
-      - zex
-
-  elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.7.0
-    environment:
-      - discovery.type=single-node
-      - xpack.security.enabled=false
-      - ES_JAVA_OPTS=-Xms750m -Xmx750m
+      - ./config.json:/centrifugo/config.json
+    command: centrifugo -c config.json
     ports:
-      - "9200:9200"
-    volumes:
-      - elasticsearch_data:/usr/share/elasticsearch/data
-
-  kibana:
-    image: docker.elastic.co/kibana/kibana:8.7.0
-    ports:
-      - "5601:5601"
-    depends_on:
-      - elasticsearch
-
-  redis:
-    container_name: zsequencer-redis
-    image: redis:alpine
-    command: ["redis-server", "/redis.conf"]
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis-data:/data
-      - ./redis.conf:/redis.conf
-
-    restart: unless-stopped
+      - 8000:8000
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
 
 volumes:
   logs:
-  elasticsearch_data:
-  redis-data:
+  db1:
+  db2:
+  db3:

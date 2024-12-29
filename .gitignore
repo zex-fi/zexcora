@@ -179,3 +179,5 @@ redis-data/
 logs/
 *.log
 *.zip
+
+zsequencer/
