@@ -288,7 +288,7 @@ class Zex(metaclass=SingletonMeta):
             entry.public_key = public
             for deposit in deposits:
                 pb_deposit = entry.deposits.add()
-                pb_deposit.chain = deposit.token_chain
+                pb_deposit.chain = deposit.chain
                 pb_deposit.name = deposit.token_name
                 pb_deposit.amount = str(deposit.amount)
                 pb_deposit.time = deposit.time
