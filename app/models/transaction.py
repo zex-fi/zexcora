@@ -83,7 +83,7 @@ class DepositTransaction(BaseModel):
 
         return DepositTransaction(
             version=version,
-            operation=operation,
+            operation=chr(operation),
             chain=chain,
             deposits=deposits,
         )
