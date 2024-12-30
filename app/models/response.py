@@ -112,8 +112,6 @@ class ExchangeInfoResponse(BaseModel):
     timezone: str
     serverTime: int
     symbols: list[Symbol]
-    tokens: list[Token]
-    chains: list[Chain]
 
 
 class StatisticsMiniResponse(BaseModel):
