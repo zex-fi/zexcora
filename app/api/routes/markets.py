@@ -236,7 +236,7 @@ async def klines(
 
 @router.get("/ticker/tradingDay")
 def get_price_statistics(
-    symbol: str | None, symbols: str | None
+    symbol: str | None = None, symbols: str | None = None
 ) -> StatisticsMiniResponse | list[StatisticsMiniResponse]:
     if symbol and symbols:
         raise HTTPException(
@@ -261,7 +261,7 @@ def get_price_statistics(
 
 
 @router.get("/ticker/price")
-def get_price(symbol: str | None, symbols: str | None):
+def get_price(symbol: str | None = None, symbols: str | None = None):
     if symbol and symbols:
         raise HTTPException(
             400, {"error": "only one of symbol or symbols should be used"}
@@ -282,7 +282,7 @@ def get_price(symbol: str | None, symbols: str | None):
         raise HTTPException(400, {"error": f"invalid symbol {s}"})
 
     if symbol:
-        return {{"symbol": symbol, "price": str(zex.markets[symbol].get_last_price())}}
+        return {"symbol": symbol, "price": str(zex.markets[symbol].get_last_price())}
     return [
         {
             "symbol": s,
@@ -293,7 +293,7 @@ def get_price(symbol: str | None, symbols: str | None):
 
 
 @router.get("/ticker/bookTicker")
-def get_book_ticker(symbol: str | None, symbols: str | None):
+def get_book_ticker(symbol: str | None = None, symbols: str | None = None):
     if symbol and symbols:
         raise HTTPException(
             400, {"error": "only one of symbol or symbols should be used"}
@@ -318,7 +318,7 @@ def get_book_ticker(symbol: str | None, symbols: str | None):
 
 @router.get("/ticker")
 def get_ticker(
-    symbol: str | None, symbols: str | None
+    symbol: str | None = None, symbols: str | None = None
 ) -> StatisticsFullResponse | list[StatisticsFullResponse]:  # noqa: F821
     if symbol and symbols:
         raise HTTPException(
@@ -344,19 +344,23 @@ def get_ticker(
         market = zex.markets[s]
         r = StatisticsFullResponse(
             symbol=s,
-            openPrice=market.get_open_24h(),
-            highPrice=market.get_high_24h(),
-            lowPrice=market.get_low_24h(),
-            lastPrice=market.get_last_price(),
-            volume=market.get_volume_24h(),
+            openPrice=np.format_float_positional(market.get_open_24h(), trim="0"),
+            highPrice=np.format_float_positional(market.get_high_24h(), trim="0"),
+            lowPrice=np.format_float_positional(market.get_low_24h(), trim="0"),
+            lastPrice=np.format_float_positional(market.get_last_price(), trim="0"),
+            volume=np.format_float_positional(market.get_volume_24h(), trim="0"),
             quoteVolume="",
-            openTime=market.get_open_time_24h(),
+            openTime=np.format_float_positional(market.get_open_time_24h(), trim="0"),
             closeTime=int(time.time() * 1000),
             firstId=0,
             lastId=0,
-            count=market.get_trade_num_24h(),
-            priceChange=market.get_price_change_24h(),
-            priceChangePercent=market.get_price_change_24h_percent(),
+            count=np.format_float_positional(market.get_trade_num_24h(), trim="0"),
+            priceChange=np.format_float_positional(
+                market.get_price_change_24h(), trim="0"
+            ),
+            priceChangePercent=np.format_float_positional(
+                market.get_price_change_24h_percent(), trim="0"
+            ),
             weightedAvgPrice="0",
         )
         response.append(r)
