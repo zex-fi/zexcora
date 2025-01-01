@@ -624,28 +624,25 @@ class Zex(metaclass=SingletonMeta):
             logger.debug(f"invalid amount: {tx.amount}")
             return
 
-        if tx.token_chain not in self.user_withdraw_nonce_on_chain:
+        if tx.chain not in self.user_withdraw_nonce_on_chain:
             logger.debug(f"invalid chain: {self.nonces[tx.public]} != {tx.nonce}")
             return
 
-        if (
-            self.user_withdraw_nonce_on_chain[tx.token_chain].get(tx.public, 0)
-            != tx.nonce
-        ):
+        if self.user_withdraw_nonce_on_chain[tx.chain].get(tx.public, 0) != tx.nonce:
             logger.debug(f"invalid nonce: {self.nonces[tx.public]} != {tx.nonce}")
             return
 
         token_info = settings.zex.verified_tokens.get(tx.token_name)
         if token_info:
-            if tx.token_chain in token_info:
+            if tx.chain in token_info:
                 # Token is verified and chain is supported
                 token = tx.token_name
-                token_contract = token_info[tx.token_chain].contract_address
+                token_contract = token_info[tx.chain].contract_address
             else:
                 # Token is verified, but the chain is not supported
                 # Fail transaction
                 logger.debug(
-                    f"invalid chain: {tx.token_chain} for withdraw of verified token: {tx.token_name}"
+                    f"invalid chain: {tx.chain} for withdraw of verified token: {tx.token_name}"
                 )
                 return
         else:
@@ -656,38 +653,41 @@ class Zex(metaclass=SingletonMeta):
         if balance < tx.amount:
             logger.debug("balance not enough")
             return
-        if self.zex_balance_on_chain[tx.token_chain][token_contract] < tx.amount:
-            vault_balance = self.zex_balance_on_chain[tx.token_chain][token_contract]
+        if self.zex_balance_on_chain[tx.chain][token_contract] < tx.amount:
+            vault_balance = self.zex_balance_on_chain[tx.chain][token_contract]
             logger.debug(
                 f"vault balance: {vault_balance}, withdraw amount: {tx.amount}, vault does not have enough balance"
             )
             return
 
-        if tx.public not in self.user_withdraw_nonce_on_chain[tx.token_chain]:
-            self.user_withdraw_nonce_on_chain[tx.token_chain][tx.public] = 0
+        if tx.public not in self.user_withdraw_nonce_on_chain[tx.chain]:
+            self.user_withdraw_nonce_on_chain[tx.chain][tx.public] = 0
 
         self.assets[token][tx.public] = balance - tx.amount
-        self.zex_balance_on_chain[tx.token_chain][token_contract] -= tx.amount
+        self.zex_balance_on_chain[tx.chain][token_contract] -= tx.amount
 
-        if tx.token_chain not in self.user_withdraws_on_chain:
-            self.user_withdraws_on_chain[tx.token_chain] = {}
-        if tx.public not in self.user_withdraws_on_chain[tx.token_chain]:
-            self.user_withdraws_on_chain[tx.token_chain][tx.public] = []
-        self.user_withdraws_on_chain[tx.token_chain][tx.public].append(tx)
+        if tx.chain not in self.user_withdraws_on_chain:
+            self.user_withdraws_on_chain[tx.chain] = {}
+        if tx.public not in self.user_withdraws_on_chain[tx.chain]:
+            self.user_withdraws_on_chain[tx.chain][tx.public] = []
+        self.user_withdraws_on_chain[tx.chain][tx.public].append(tx)
 
-        if tx.token_chain not in self.withdraw_nonce_on_chain:
-            self.withdraw_nonce_on_chain[tx.token_chain] = 0
-        self.withdraw_nonce_on_chain[tx.token_chain] += 1
+        if tx.chain not in self.withdraw_nonce_on_chain:
+            self.withdraw_nonce_on_chain[tx.chain] = 0
+        self.withdraw_nonce_on_chain[tx.chain] += 1
 
-        self.user_withdraw_nonce_on_chain[tx.token_chain][tx.public] += 1
-        if tx.token_chain not in self.withdraws_on_chain:
-            self.withdraws_on_chain[tx.token_chain] = []
-        self.withdraws_on_chain[tx.token_chain].append(tx)
+        self.user_withdraw_nonce_on_chain[tx.chain][tx.public] += 1
+        if tx.chain not in self.withdraws_on_chain:
+            self.withdraws_on_chain[tx.chain] = []
+        self.withdraws_on_chain[tx.chain].append(tx)
+
+        logger.info(
+            f"withdraw on chain: {tx.chain}, token: {tx.token_name}, amount: {tx.amount} for user: {tx.public}, "
+            f"new balance: {self.assets[tx.token_name][tx.public]}"
+        )
 
         asyncio.create_task(
-            self.withdraw_callback(
-                tx.public.hex(), tx.token_chain, tx.token_name, tx.amount
-            )
+            self.withdraw_callback(tx.public.hex(), tx.chain, tx.token_name, tx.amount)
         )
 
     def validate_nonce(self, public: bytes, nonce: int) -> bool:

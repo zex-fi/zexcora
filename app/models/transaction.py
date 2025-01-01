@@ -92,7 +92,7 @@ class DepositTransaction(BaseModel):
 class WithdrawTransaction(BaseModel):
     version: int
     operation: str
-    token_chain: str
+    chain: str
     # name if token is verified else checksum contract address
     token_name: str
     amount: Decimal
@@ -109,16 +109,16 @@ class WithdrawTransaction(BaseModel):
         version, operation, token_len = unpack(">B B B", tx[:3])
 
         withdraw_format = f">3s {token_len}s d 20s I I 33s"
-        token_chain, token_name, amount, destination, t, nonce, public = unpack(
+        chain, token_name, amount, destination, t, nonce, public = unpack(
             withdraw_format, tx[3 : 3 + calcsize(withdraw_format)]
         )
-        token_chain = token_chain.decode("ascii")
+        chain = chain.decode("ascii")
         token_name = token_name.decode("ascii")
 
         return WithdrawTransaction(
             version=version,
             operation=chr(operation),
-            token_chain=token_chain,
+            chain=chain,
             token_name=token_name,
             amount=Decimal(str(amount)),
             destination="0x" + destination.hex(),
