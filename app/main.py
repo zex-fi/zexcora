@@ -150,7 +150,7 @@ def setup_logging(debug_mode: bool = False):
         format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
         level=console_level,
         colorize=debug_mode,
-        serialize=not debug_mode,
+        serialize=False,
     )
 
     # File handlers
@@ -179,5 +179,4 @@ if __name__ == "__main__":
         app,
         host=settings.zex.host,
         port=settings.zex.port,
-        # log_level="debug" if settings.zex.verbose else "info",
     )

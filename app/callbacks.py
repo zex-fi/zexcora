@@ -1,5 +1,4 @@
 from decimal import Decimal
-from enum import Enum
 import time
 
 from loguru import logger

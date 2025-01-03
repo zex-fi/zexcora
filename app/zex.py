@@ -420,7 +420,9 @@ class Zex(metaclass=SingletonMeta):
         }
         zex.id_to_public_lookup = dict(pb_state.id_to_public_lookup)
 
-        zex.contract_decimal_on_chain = dict(pb_state.contract_decimal_on_chain)
+        zex.contract_decimal_on_chain = {
+            k: v.contract_decimal for k, v in pb_state.contract_decimal_on_chain.items()
+        }
 
         zex.last_user_id = (
             max(zex.public_to_id_lookup.values()) if zex.public_to_id_lookup else 0
