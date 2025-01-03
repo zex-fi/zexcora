@@ -2,7 +2,6 @@ services:
   zex:
     image: zex:dev
     container_name: zex-dev
-    network_mode: host
     volumes:
       - ./config.dev.yaml:/config.yaml
       - ./init_db.sql:/zex/init_db.sql
@@ -17,15 +16,26 @@ services:
         max-file: "3"
 
     depends_on:
+      - zex-state
       - centrifugo
       - zsequencer1
       - zsequencer2
       - zsequencer3
 
+  zex-state:
+    image: codeskyblue/gohttpserver
+    container_name: zex-state
+    command: --xheaders --addr :80
+    expose:
+      - 80
+    volumes:
+      - ./zex_state.pb:/app/public/zex_state.pb:ro
+    ports:
+      - 15785:80
+
   zsequencer1:
     container_name: zsequencer-node1
     image: zellular/zsequencer:latest
-    network_mode: host
     ports:
       - "6001:6001"
     volumes:
@@ -46,7 +56,6 @@ services:
   zsequencer2:
     container_name: zsequencer-node2
     image: zellular/zsequencer:latest
-    network_mode: host
     ports:
       - "6002:6001"
     volumes:
@@ -69,7 +78,6 @@ services:
   zsequencer3:
     container_name: zsequencer-node3
     image: zellular/zsequencer:latest
-    network_mode: host
     ports:
       - "6003:6001"
     volumes:

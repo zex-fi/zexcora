@@ -3,7 +3,7 @@ zex:
   port: 15782
   api_prefix: "/v1"
   light_node: false
-  state_source: ""
+  state_source: "http://zex-state/zex_state.pb"
   state_dest: zex_state.pb
   state_save_frequency: 500
   tx_transmit_delay: 0.01
