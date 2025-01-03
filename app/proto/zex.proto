@@ -115,10 +115,14 @@ message UserDepositEntry {
 }
 
 message Deposit {
-    string chain = 1;
-    string name = 2;
-    string amount = 3;
-    uint64 time = 4;
+    string tx_hash = 1;
+    string chain = 2;
+    string token_contract = 3;
+    string amount = 4;
+    uint32 decimal = 5;
+    uint64 time = 6;
+    uint64 user_id = 7;
+    uint32 vout = 8;
 }
 
 message NonceEntry {

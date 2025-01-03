@@ -259,16 +259,24 @@ class UserDepositEntry(_message.Message):
     def __init__(self, public_key: _Optional[bytes] = ..., deposits: _Optional[_Iterable[_Union[Deposit, _Mapping]]] = ...) -> None: ...
 
 class Deposit(_message.Message):
-    __slots__ = ("chain", "name", "amount", "time")
+    __slots__ = ("tx_hash", "chain", "token_contract", "amount", "decimal", "time", "user_id", "vout")
+    TX_HASH_FIELD_NUMBER: _ClassVar[int]
     CHAIN_FIELD_NUMBER: _ClassVar[int]
-    NAME_FIELD_NUMBER: _ClassVar[int]
+    TOKEN_CONTRACT_FIELD_NUMBER: _ClassVar[int]
     AMOUNT_FIELD_NUMBER: _ClassVar[int]
+    DECIMAL_FIELD_NUMBER: _ClassVar[int]
     TIME_FIELD_NUMBER: _ClassVar[int]
+    USER_ID_FIELD_NUMBER: _ClassVar[int]
+    VOUT_FIELD_NUMBER: _ClassVar[int]
+    tx_hash: str
     chain: str
-    name: str
+    token_contract: str
     amount: str
+    decimal: int
     time: int
-    def __init__(self, chain: _Optional[str] = ..., name: _Optional[str] = ..., amount: _Optional[str] = ..., time: _Optional[int] = ...) -> None: ...
+    user_id: int
+    vout: int
+    def __init__(self, tx_hash: _Optional[str] = ..., chain: _Optional[str] = ..., token_contract: _Optional[str] = ..., amount: _Optional[str] = ..., decimal: _Optional[int] = ..., time: _Optional[int] = ..., user_id: _Optional[int] = ..., vout: _Optional[int] = ...) -> None: ...
 
 class NonceEntry(_message.Message):
     __slots__ = ("public_key", "nonce")

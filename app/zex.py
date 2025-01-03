@@ -288,10 +288,14 @@ class Zex(metaclass=SingletonMeta):
             entry.public_key = public
             for deposit in deposits:
                 pb_deposit = entry.deposits.add()
+                pb_deposit.tx_hash = deposit.tx_hash
                 pb_deposit.chain = deposit.chain
-                pb_deposit.name = deposit.token_name
+                pb_deposit.token_contract = deposit.token_contract
                 pb_deposit.amount = str(deposit.amount)
+                pb_deposit.decimal = deposit.decimal
                 pb_deposit.time = deposit.time
+                pb_deposit.user_id = deposit.user_id
+                pb_deposit.vout = deposit.vout
 
         for public, user_id in self.public_to_id_lookup.items():
             entry = state.public_to_id_lookup.add()
@@ -405,10 +409,14 @@ class Zex(metaclass=SingletonMeta):
         zex.user_deposits = {
             e.public_key: [
                 Deposit(
-                    token_chain=pb_deposit.chain,
-                    token_name=pb_deposit.name,
+                    tx_hash=pb_deposit.tx_hash,
+                    chain=pb_deposit.chain,
+                    token_contract=pb_deposit.token_contract,
                     amount=Decimal(pb_deposit.amount),
+                    decimal=pb_deposit.decimal,
                     time=pb_deposit.time,
+                    user_id=pb_deposit.user_id,
+                    vout=pb_deposit.vout,
                 )
                 for pb_deposit in e.deposits
             ]
