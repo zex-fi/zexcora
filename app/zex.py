@@ -11,6 +11,7 @@ import heapq
 import struct
 import time
 
+from eth_utils.address import to_checksum_address
 from loguru import logger
 import pandas as pd
 
@@ -72,7 +73,7 @@ class Zex(metaclass=SingletonMeta):
         self.saved_state_index = 0
         self.save_state_tx_index_threshold = self.save_frequency
         self.markets: dict[str, Market] = {}
-        self.zex_balance_on_chain: dict[Token, dict[ContractAddress, Decimal]] = {}
+        self.zex_balance_on_chain: dict[Chain, dict[ContractAddress, Decimal]] = {}
         self.assets: dict[Token, dict[UserPublic, Decimal]] = {
             settings.zex.usdt_mainnet: {}
         }
@@ -98,14 +99,14 @@ class Zex(metaclass=SingletonMeta):
         ] = {}
 
         self.withdraws_on_chain: dict[Chain, list[WithdrawTransaction]] = {}
-        self.deposits: dict[Chain, set[tuple[str, int]]] = {
+        self.deposits_on_chain: dict[Chain, set[tuple[str, int]]] = {
             chain: set() for chain in settings.zex.chains
         }
         self.user_withdraw_nonce_on_chain: dict[Chain, dict[UserPublic, int]] = {
-            k: {} for k in self.deposits.keys()
+            k: {} for k in self.deposits_on_chain.keys()
         }
         self.withdraw_nonce_on_chain: dict[Chain, int] = {
-            k: 0 for k in self.deposits.keys()
+            k: 0 for k in self.deposits_on_chain.keys()
         }
         self.nonces: dict[bytes, int] = {}
         self.pair_lookup: dict[str, tuple[str, str, str]] = {}
@@ -271,7 +272,7 @@ class Zex(metaclass=SingletonMeta):
 
         state.withdraw_nonce_on_chain.update(self.withdraw_nonce_on_chain)
 
-        for address, deposits in self.deposits.items():
+        for address, deposits in self.deposits_on_chain.items():
             pb_deposits = state.deposits[address]
             for deposit in deposits:
                 entry = pb_deposits.deposits.add()
@@ -399,7 +400,7 @@ class Zex(metaclass=SingletonMeta):
                 entry.public_key: entry.nonce for entry in pb_withdraw_nonces.nonces
             }
 
-        zex.deposits = {
+        zex.deposits_on_chain = {
             chain: {(item.tx_hash, item.vout) for item in e.deposits}
             for chain, e in pb_state.deposits.items()
         }
@@ -551,17 +552,25 @@ class Zex(metaclass=SingletonMeta):
                 )
                 continue
 
-            if deposit.chain not in self.deposits:
-                self.deposits[deposit.chain] = set()
+            if deposit.chain not in self.deposits_on_chain:
+                self.deposits_on_chain[deposit.chain] = set()
             if deposit.chain not in self.zex_balance_on_chain:
                 self.zex_balance_on_chain[deposit.chain] = {}
+            if deposit.chain not in self.withdraw_nonce_on_chain:
+                self.withdraw_nonce_on_chain[deposit.chain] = 0
+            if deposit.chain not in self.withdraws_on_chain:
+                self.withdraws_on_chain[deposit.chain] = []
+            if deposit.chain not in self.user_withdraw_nonce_on_chain:
+                self.user_withdraw_nonce_on_chain[deposit.chain] = {}
+            if deposit.chain not in self.user_withdraws_on_chain:
+                self.user_withdraws_on_chain[deposit.chain] = {}
 
-            if (deposit.tx_hash, deposit.vout) in self.deposits[deposit.chain]:
+            if (deposit.tx_hash, deposit.vout) in self.deposits_on_chain[deposit.chain]:
                 logger.error(
                     f"chain: {deposit.chain}, tx_hash: {deposit.tx_hash}, vout: {deposit.vout} has already been deposited"
                 )
                 continue
-            self.deposits[deposit.chain].add((deposit.tx_hash, deposit.vout))
+            self.deposits_on_chain[deposit.chain].add((deposit.tx_hash, deposit.vout))
 
             if deposit.token_contract not in self.zex_balance_on_chain[deposit.chain]:
                 self.zex_balance_on_chain[deposit.chain][deposit.token_contract] = (
@@ -635,7 +644,10 @@ class Zex(metaclass=SingletonMeta):
             return
 
         if tx.chain not in self.user_withdraw_nonce_on_chain:
-            logger.debug(f"invalid chain: {self.nonces[tx.public]} != {tx.nonce}")
+            logger.debug("chain not found in user_withdraw_nonce_on_chain")
+            return
+        if tx.chain not in self.zex_balance_on_chain:
+            logger.debug("chain not found in zex_balance_on_chain")
             return
 
         if self.user_withdraw_nonce_on_chain[tx.chain].get(tx.public, 0) != tx.nonce:
@@ -658,10 +670,19 @@ class Zex(metaclass=SingletonMeta):
         else:
             token = tx.token_name
             _, token_contract = tx.token_name.split(":")
+            try:
+                token_contract = to_checksum_address(token_contract)
+            except Exception as e:
+                logger.debug(f"invalid token contract address: {e}")
+                return
 
         balance = self.assets[token].get(tx.public, Decimal("0"))
         if balance < tx.amount:
             logger.debug("balance not enough")
+            return
+
+        if token_contract not in self.zex_balance_on_chain[tx.chain]:
+            logger.debug("token contract address not found")
             return
         if self.zex_balance_on_chain[tx.chain][token_contract] < tx.amount:
             vault_balance = self.zex_balance_on_chain[tx.chain][token_contract]
@@ -682,8 +703,6 @@ class Zex(metaclass=SingletonMeta):
             self.user_withdraws_on_chain[tx.chain][tx.public] = []
         self.user_withdraws_on_chain[tx.chain][tx.public].append(tx)
 
-        if tx.chain not in self.withdraw_nonce_on_chain:
-            self.withdraw_nonce_on_chain[tx.chain] = 0
         self.withdraw_nonce_on_chain[tx.chain] += 1
 
         self.user_withdraw_nonce_on_chain[tx.chain][tx.public] += 1
