@@ -7,6 +7,10 @@ services:
       - ./init_db.sql:/zex/init_db.sql
       - ./zex_state.pb:/zex/zex_state.pb
       - logs:/zex/logs
+    expose:
+      - 15782
+    ports:
+      - 15782:15782
     environment:
       - LOG_DIR=/zex/logs
     logging:

@@ -3,6 +3,7 @@ import json
 import re
 import time
 
+from eth_utils.address import to_checksum_address
 from fastapi import APIRouter, HTTPException
 import numpy as np
 import pandas as pd
@@ -34,9 +35,47 @@ token_filter_list = (
 )
 
 
+def normalize_symbol(symbol):
+    if symbol.count("-") != 1:
+        raise HTTPException(400, {"error": "invalid symbol"})
+    if symbol.count(":") == 0:
+        # all verified path
+        pair = symbol.upper()
+    else:
+        base_token, quote_token = symbol.split("-")
+        if base_token.count(":") == 0:
+            base_token = base_token.upper()
+        elif base_token.count(":") == 1 and base_token[3] == ":":
+            base_chain, base_contract_address = base_token.split(":")
+            try:
+                base_token = (
+                    f"{base_chain.upper()}:{to_checksum_address(base_contract_address)}"
+                )
+            except Exception:
+                raise HTTPException(400, {"error": "invalid base token"})
+        else:
+            raise HTTPException(400, {"error": "invalid base token"})
+
+        if quote_token.count(":") == 0:
+            quote_token = quote_token.upper()
+        elif quote_token.count(":") == 1 and quote_token[3] == ":":
+            quote_chain, quote_contract_address = quote_token.split(":")
+            try:
+                quote_token = f"{quote_chain.upper()}:{to_checksum_address(quote_contract_address)}"
+            except Exception:
+                raise HTTPException(400, {"error": "invalid quote token"})
+        else:
+            raise HTTPException(400, {"error": "invalid quote token"})
+
+        pair = f"{base_token}-{quote_token}"
+    return pair
+
+
 @router.get("/depth")
 async def depth(symbol: str, limit: int = 500):
-    return zex.get_order_book(symbol.upper(), limit)
+    pair = normalize_symbol(symbol)
+
+    return zex.get_order_book(pair, limit)
 
 
 def get_token_info(token) -> Token:
@@ -89,17 +128,17 @@ def parse_symbol_list(input_str: str) -> list[str]:
 
     Args:
         input_str: String that could be either:
-            - JSON array string: '["BTCUSDT","BNBUSDT"]'
-            - URL-encoded JSON: '%5B%22BTCUSDT%22,%22BNBUSDT%22%5D'
+            - JSON array string: '["BTC-USDT","BNB-USDT"]'
+            - URL-encoded JSON: '%5B%22BTC-USDT%22,%22BNB-USDT%22%5D'
 
     Returns:
         list: Python list of strings
 
     Examples:
-        >>> parse_symbol_list('["BTCUSDT","BNBUSDT"]')
-        ['BTCUSDT', 'BNBUSDT']
-        >>> parse_symbol_list("%5B%22BTCUSDT%22,%22BNBUSDT%22%5D")
-        ['BTCUSDT', 'BNBUSDT']
+        >>> parse_symbol_list('["BTC-USDT","BNB-USDT"]')
+        ['BTC-USDT', 'BNB-USDT']
+        >>> parse_symbol_list("%5B%22BTC-USDT%22,%22BNB-USDT%22%5D")
+        ['BTC-USDT', 'BNB-USDT']
     """
     try:
         # First try to decode as URL-encoded string
@@ -144,7 +183,9 @@ async def klines(
     endTime: int | None = None,
     limit: int = 500,
 ):
-    base_klines = zex.get_kline(symbol.upper())
+    pair = normalize_symbol(symbol)
+
+    base_klines = zex.get_kline(pair)
     if len(base_klines) == 0:
         return []
 
