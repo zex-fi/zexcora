@@ -173,9 +173,9 @@ async def server_time():
 
 @router.get("/status/deposit")
 def get_deposit_status(chain: str, tx_hash: str, vout: int = 0):
-    if chain not in zex.deposits:
+    if chain not in zex.deposits_on_chain:
         raise HTTPException(404, {"error": "chain not found"})
-    if (tx_hash, vout) not in zex.deposits[chain]:
+    if (tx_hash, vout) not in zex.deposits_on_chain[chain]:
         raise HTTPException(404, {"error": "transaction not found"})
     return {"status": "complete"}
 

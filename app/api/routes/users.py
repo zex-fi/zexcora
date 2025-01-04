@@ -324,6 +324,14 @@ def is_withdrawable(chain, token_name, contract_address):
     if chain not in settings.zex.verified_tokens[token_name]:
         return True
 
+    if chain not in zex.zex_balance_on_chain:
+        logger.error(f"chain={chain} not found")
+        return False
+    if contract_address not in zex.zex_balance_on_chain[chain]:
+        logger.error(
+            f"chain={chain}, token={token_name}, contract address={contract_address} not found"
+        )
+        return False
     balance = zex.zex_balance_on_chain[chain][contract_address]
     details = settings.zex.verified_tokens[token_name]
     limit = details[chain].balance_withdraw_limit

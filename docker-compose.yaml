@@ -18,13 +18,11 @@ services:
       options:
         max-size: "100m"
         max-file: "3"
-
+    networks:
+      - zex
     depends_on:
       - zex-state
       - centrifugo
-      - zsequencer1
-      - zsequencer2
-      - zsequencer3
 
   zex-state:
     image: codeskyblue/gohttpserver
@@ -36,71 +34,8 @@ services:
       - ./zex_state.pb:/app/public/zex_state.pb:ro
     ports:
       - 15785:80
-
-  zsequencer1:
-    container_name: zsequencer-node1
-    image: zellular/zsequencer:latest
-    ports:
-      - "6001:6001"
-    volumes:
-      - "./zsequencer/node1/bls_key1.json:/app/bls_key.json"
-      - "./zsequencer/node1/ecdsa_key1.json:/app/ecdsa_key.json"
-      - db1:/db
-      - "./zsequencer/node1/apps.json:/app/apps.json"
-      - "./zsequencer/node1/nodes.json:/app/nodes.json"
-    environment:
-      - ZSEQUENCER_BLS_KEY_FILE=/app/bls_key.json
-      - ZSEQUENCER_ECDSA_KEY_FILE=/app/ecdsa_key.json
-      - ZSEQUENCER_SNAPSHOT_PATH=/db
-      - ZSEQUENCER_APPS_FILE=/app/apps.json
-      - ZSEQUENCER_NODES_FILE=/app/nodes.json
-    env_file:
-      - zsequencer/node1/.env
-
-  zsequencer2:
-    container_name: zsequencer-node2
-    image: zellular/zsequencer:latest
-    ports:
-      - "6002:6001"
-    volumes:
-      - "./zsequencer/node2/bls_key2.json:/app/bls_key.json"
-      - "./zsequencer/node2/ecdsa_key2.json:/app/ecdsa_key.json"
-      - db2:/db
-      - "./zsequencer/node2/apps.json:/app/apps.json"
-      - "./zsequencer/node2/nodes.json:/app/nodes.json"
-    environment:
-      - ZSEQUENCER_BLS_KEY_FILE=/app/bls_key.json
-      - ZSEQUENCER_ECDSA_KEY_FILE=/app/ecdsa_key.json
-      - ZSEQUENCER_SNAPSHOT_PATH=/db
-      - ZSEQUENCER_APPS_FILE=/app/apps.json
-      - ZSEQUENCER_NODES_FILE=/app/nodes.json
-    env_file:
-      - zsequencer/node2/.env
-    depends_on:
-      - zsequencer1
-
-  zsequencer3:
-    container_name: zsequencer-node3
-    image: zellular/zsequencer:latest
-    ports:
-      - "6003:6001"
-    volumes:
-      - "./zsequencer/node3/bls_key3.json:/app/bls_key.json"
-      - "./zsequencer/node3/ecdsa_key3.json:/app/ecdsa_key.json"
-      - db3:/db
-      - "./zsequencer/node3/apps.json:/app/apps.json"
-      - "./zsequencer/node3/nodes.json:/app/nodes.json"
-    environment:
-      - ZSEQUENCER_BLS_KEY_FILE=/app/bls_key.json
-      - ZSEQUENCER_ECDSA_KEY_FILE=/app/ecdsa_key.json
-      - ZSEQUENCER_SNAPSHOT_PATH=/db
-      - ZSEQUENCER_APPS_FILE=/app/apps.json
-      - ZSEQUENCER_NODES_FILE=/app/nodes.json
-    env_file:
-      - zsequencer/node3/.env
-
-    depends_on:
-      - zsequencer1
+    networks:
+      - zex
 
   log-viewer:
     image: amir20/dozzle:latest
@@ -108,6 +43,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     ports:
       - "8080:8080"
+    networks:
+      - zex
 
   centrifugo:
     container_name: centrifugo
@@ -121,9 +58,15 @@ services:
       nofile:
         soft: 65535
         hard: 65535
+    networks:
+      - zex
 
 volumes:
   logs:
   db1:
   db2:
   db3:
+
+networks:
+  zex:
+    external: true

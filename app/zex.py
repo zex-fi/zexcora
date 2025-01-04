@@ -183,9 +183,9 @@ class Zex(metaclass=SingletonMeta):
                     self.contract_decimal_on_chain[chain][contract_address] = decimal
                     self.assets[token_name][bot_pub] = Decimal("5_000_000")
                     self.assets[token_name][client_pub] = Decimal("1_000_000")
-                    self.zex_balance_on_chain[chain][contract_address] = Decimal(
-                        "5_000_000"
-                    )
+                    # self.zex_balance_on_chain[chain][contract_address] = Decimal(
+                    #     "5_000_000"
+                    # )
 
     def to_protobuf(self) -> zex_pb2.ZexState:
         state = zex_pb2.ZexState()

@@ -1,5 +1,5 @@
 zex:
-  host: "127.0.0.1"
+  host: "0.0.0.0"
   port: 15782
   api_prefix: "/v1"
   light_node: false
