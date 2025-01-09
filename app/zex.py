@@ -638,6 +638,25 @@ class Zex(metaclass=SingletonMeta):
                 )
             )
 
+    def is_withdrawable(self, chain, token_name, contract_address):
+        if token_name not in settings.zex.verified_tokens:
+            return True
+        if chain not in settings.zex.verified_tokens[token_name]:
+            return True
+
+        if chain not in self.zex_balance_on_chain:
+            logger.error(f"chain={chain} not found")
+            return False
+        if contract_address not in self.zex_balance_on_chain[chain]:
+            logger.error(
+                f"chain={chain}, token={token_name}, contract address={contract_address} not found"
+            )
+            return False
+        balance = self.zex_balance_on_chain[chain][contract_address]
+        details = settings.zex.verified_tokens[token_name]
+        limit = details[chain].balance_withdraw_limit
+        return balance > limit
+
     def withdraw(self, tx: WithdrawTransaction):
         if tx.amount <= 0:
             logger.debug(f"invalid amount: {tx.amount}")
@@ -684,10 +703,15 @@ class Zex(metaclass=SingletonMeta):
         if token_contract not in self.zex_balance_on_chain[tx.chain]:
             logger.debug("token contract address not found")
             return
-        if self.zex_balance_on_chain[tx.chain][token_contract] < tx.amount:
-            vault_balance = self.zex_balance_on_chain[tx.chain][token_contract]
+        vault_balance = self.zex_balance_on_chain[tx.chain][token_contract]
+        if vault_balance < tx.amount:
+            logger.error(
+                f"vault balance: {vault_balance}, withdraw amount: {tx.amount}, user balance before deduction: {balance}, vault does not have enough balance"
+            )
+            return
+        if not self.is_withdrawable(tx.chain, token, token_contract):
             logger.debug(
-                f"vault balance: {vault_balance}, withdraw amount: {tx.amount}, vault does not have enough balance"
+                f"withdraw of token: {token}, contract: {token_contract} is disabled"
             )
             return
 
@@ -737,7 +761,7 @@ class Zex(metaclass=SingletonMeta):
             "e": "depthUpdate",  # Event type
             "E": now,  # Event time
             "T": now,  # Transaction time
-            "s": pair.upper(),
+            "s": pair,
             "U": order_book_update["U"],
             "u": order_book_update["u"],
             "pu": order_book_update["pu"],
