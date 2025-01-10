@@ -361,7 +361,9 @@ def get_withdraw_config(id: int):
                         ),
                         "withdrawFee": 0,
                         "withdrawMin": 0,
-                        "withdrawMax": 0,
+                        "withdrawMax": zex.zex_balance_on_chain[chain][
+                            token_info.contract_address
+                        ],
                         "contractAddress": token_info.contract_address,
                         "decimal": token_info.decimal,
                     }
@@ -385,7 +387,7 @@ def get_withdraw_config(id: int):
                         "withdrawEnable": is_withdrawable(chain, token_name, address),
                         "withdrawFee": 0,
                         "withdrawMin": 0,
-                        "withdrawMax": 0,
+                        "withdrawMax": zex.zex_balance_on_chain[chain][address],
                         "contractAddress": address,
                         "decimal": zex.contract_decimal_on_chain[chain][address],
                     }
