@@ -18,6 +18,7 @@ message ZexState {
     repeated IDLookupEntry public_to_id_lookup = 14;
     map<uint64, bytes> id_to_public_lookup = 15;
     map<string, ContractDecimalOnChain> contract_decimal_on_chain = 16;
+    map<string, BalanceOnChain> zex_balance_on_chain = 17;
 }
 
 message Market {
@@ -147,4 +148,8 @@ message IDToContractOnChainEntry {
 
 message ContractDecimalOnChain {
     map<string, uint32> contract_decimal = 1;
+}
+
+message BalanceOnChain {
+    map<string, string> balance = 1;
 }

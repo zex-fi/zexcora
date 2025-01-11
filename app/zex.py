@@ -307,6 +307,9 @@ class Zex(metaclass=SingletonMeta):
         for chain, details in self.contract_decimal_on_chain.items():
             state.contract_decimal_on_chain[chain].contract_decimal.update(details)
 
+        for chain, balances in self.zex_balance_on_chain.items():
+            state.zex_balance_on_chain[chain].update(balances)
+
         return state
 
     @classmethod
@@ -431,6 +434,10 @@ class Zex(metaclass=SingletonMeta):
 
         zex.contract_decimal_on_chain = {
             k: v.contract_decimal for k, v in pb_state.contract_decimal_on_chain.items()
+        }
+
+        zex.zex_balance_on_chain = {
+            k: v.balance for k, v in pb_state.zex_balance_on_chain.items()
         }
 
         zex.last_user_id = (
