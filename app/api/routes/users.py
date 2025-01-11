@@ -36,11 +36,11 @@ light_router = APIRouter()
 # @timed_lru_cache(seconds=10)
 def _user_assets(user: bytes) -> list[UserAssetResponse]:
     result = []
-    for asset in zex.assets:
-        if zex.assets[asset].get(user, 0) == 0:
+    for asset in zex.state_manager.assets:
+        if zex.state_manager.assets[asset].get(user, 0) == 0:
             continue
 
-        balance = zex.assets[asset][user]
+        balance = zex.state_manager.assets[asset][user]
         result.append(
             UserAssetResponse(
                 asset=asset,
@@ -161,13 +161,13 @@ def user_transfers(id: int) -> list[TransferResponse]:
     if id not in zex.id_to_public_lookup:
         raise HTTPException(404, {"error": "user not found"})
     user = zex.id_to_public_lookup[id]
-    if user not in zex.user_deposits:
+    if user not in zex.state_manager.user_deposits:
         return []
-    all_deposits = zex.user_deposits.get(user, []).copy()
+    all_deposits = zex.state_manager.user_deposits.get(user, []).copy()
     all_withdraws = [
         x
-        for chain in zex.user_withdraws_on_chain.keys()
-        for x in zex.user_withdraws_on_chain[chain].get(user, [])
+        for state in zex.state_manager.chain_states.values()
+        for x in state.user_withdraws.get(user, [])
     ]
 
     sorted_transfers: list[WithdrawTransaction | Deposit] = sorted(
@@ -324,15 +324,15 @@ def is_withdrawable(chain, token_name, contract_address):
     if chain not in settings.zex.verified_tokens[token_name]:
         return True
 
-    if chain not in zex.zex_balance_on_chain:
+    if chain not in zex.state_manager.chain_states:
         logger.error(f"chain={chain} not found")
         return False
-    if contract_address not in zex.zex_balance_on_chain[chain]:
+    if contract_address not in zex.state_manager.chain_states[chain].balances:
         logger.error(
             f"chain={chain}, token={token_name}, contract address={contract_address} not found"
         )
         return False
-    balance = zex.zex_balance_on_chain[chain][contract_address]
+    balance = zex.state_manager.chain_states[chain].balances[contract_address]
     details = settings.zex.verified_tokens[token_name]
     limit = details[chain].balance_withdraw_limit
     return balance > limit
@@ -345,7 +345,7 @@ def get_withdraw_config(id: int):
 
     user = zex.id_to_public_lookup[id]
     result = []
-    for token_name, balance in zex.assets.items():
+    for token_name, balances in zex.state_manager.assets.items():
         if token_name in settings.zex.verified_tokens:
             item = {
                 "coin": token_name,
@@ -375,7 +375,7 @@ def get_withdraw_config(id: int):
                 ],
             }
             result.append(item)
-        elif user in balance and balance[user] != 0:
+        elif user in balances and balances[user] != 0:
             chain, address = token_name.split(":")
             item = {
                 "coin": token_name,
@@ -393,7 +393,9 @@ def get_withdraw_config(id: int):
                             zex.zex_balance_on_chain[chain].get(address, 0)
                         ),
                         "contractAddress": address,
-                        "decimal": zex.contract_decimal_on_chain[chain][address],
+                        "decimal": zex.state_manager.chain_states[
+                            chain
+                        ].contract_decimals[address],
                     }
                 ],
             }

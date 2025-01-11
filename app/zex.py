@@ -1,6 +1,7 @@
 from collections import deque
 from collections.abc import Callable
 from copy import deepcopy
+from dataclasses import dataclass
 from decimal import Decimal, FloatOperation, getcontext
 from io import BytesIO
 from threading import Lock
@@ -15,7 +16,7 @@ from eth_utils.address import to_checksum_address
 from loguru import logger
 import pandas as pd
 
-from .config import settings
+from .config import Settings, settings
 from .models.transaction import (
     Deposit,
     DepositTransaction,
@@ -30,6 +31,7 @@ TRADES_TTL = 1000
 
 
 def get_token_name(chain, address):
+    """Get the token name for a given chain and contract address."""
     for verified_name, tokens in settings.zex.verified_tokens.items():
         if chain not in tokens:
             continue
@@ -38,87 +40,535 @@ def get_token_name(chain, address):
     return f"{chain}:{address}"
 
 
+@dataclass
+class ChainState:
+    """Manages state for a specific blockchain."""
+
+    deposits: set[tuple[str, int]]
+    balances: dict[str, Decimal]  # contract_address -> balance
+    withdraw_nonce: int
+    user_withdraw_nonces: dict[bytes, int]  # public_key -> nonce
+    user_withdraws: dict[bytes, list[WithdrawTransaction]]  # public_key -> withdraws
+    withdraws: list[WithdrawTransaction]
+    contract_decimals: dict[str, int]  # contract_address -> decimal
+
+    @classmethod
+    def create_empty(cls):
+        return cls(
+            deposits=set(),
+            balances={},
+            withdraw_nonce=0,
+            user_withdraw_nonces={},
+            user_withdraws={},
+            withdraws=[],
+            contract_decimals={},
+        )
+
+    def to_protobuf(self, chain: str, pb_state: zex_pb2.ZexState):
+        """Serialize chain state to protobuf."""
+        # Serialize deposits
+        pb_deposits = pb_state.deposits[chain]
+        for tx_hash, vout in self.deposits:
+            entry = pb_deposits.deposits.add()
+            entry.tx_hash = tx_hash
+            entry.vout = vout
+
+        # Serialize withdraws
+        pb_withdraws = pb_state.withdraws_on_chain[chain]
+        pb_withdraws.raw_txs.extend([w.raw_tx for w in self.withdraws])
+
+        # Serialize user withdraws
+        pb_user_withdraws = pb_state.user_withdraws_on_chain[chain]
+        for public, withdraw_list in self.user_withdraws.items():
+            entry = pb_user_withdraws.withdraws.add()
+            entry.public_key = public
+            entry.raw_txs.extend([w.raw_tx for w in withdraw_list])
+
+        # Serialize user withdraw nonces
+        pb_withdraw_nonces = pb_state.user_withdraw_nonce_on_chain[chain]
+        for public, nonce in self.user_withdraw_nonces.items():
+            entry = pb_withdraw_nonces.nonces.add()
+            entry.public_key = public
+            entry.nonce = nonce
+
+        # Serialize withdraw nonce
+        pb_state.withdraw_nonce_on_chain[chain] = self.withdraw_nonce
+
+        # Serialize contract decimals
+        pb_state.contract_decimal_on_chain[chain].contract_decimal.update(
+            self.contract_decimals
+        )
+
+    @classmethod
+    def from_protobuf(cls, chain: str, pb_state: zex_pb2.ZexState) -> "ChainState":
+        """Deserialize chain state from protobuf."""
+        # Deserialize deposits
+        deposits = {
+            (item.tx_hash, item.vout) for item in pb_state.deposits[chain].deposits
+        }
+
+        # Deserialize withdraws
+        withdraws = [
+            WithdrawTransaction.from_tx(raw_tx)
+            for raw_tx in pb_state.withdraws_on_chain[chain].raw_txs
+        ]
+
+        # Deserialize user withdraws
+        user_withdraws = {
+            entry.public_key: [
+                WithdrawTransaction.from_tx(raw_tx) for raw_tx in entry.raw_txs
+            ]
+            for entry in pb_state.user_withdraws_on_chain[chain].withdraws
+        }
+
+        # Deserialize user withdraw nonces
+        user_withdraw_nonces = {
+            entry.public_key: entry.nonce
+            for entry in pb_state.user_withdraw_nonce_on_chain[chain].nonces
+        }
+
+        # Deserialize contract decimals
+        contract_decimals = dict(
+            pb_state.contract_decimal_on_chain[chain].contract_decimal
+        )
+
+        return cls(
+            deposits=deposits,
+            balances={},  # This will be populated from assets
+            withdraw_nonce=pb_state.withdraw_nonce_on_chain[chain],
+            user_withdraw_nonces=user_withdraw_nonces,
+            user_withdraws=user_withdraws,
+            withdraws=withdraws,
+            contract_decimals=contract_decimals,
+        )
+
+
+class StateManager:
+    """Manages the overall state of the Zex exchange."""
+
+    def __init__(self):
+        self.chain_states: dict[str, ChainState] = {}
+        self.assets: dict[str, dict[bytes, Decimal]] = {
+            settings.zex.usdt_mainnet: {}
+        }  # token -> {public_key -> amount}
+        self.user_deposits: dict[bytes, list[Deposit]] = {}
+        self.markets: dict[str, Market] = {}
+
+    def ensure_chain_initialized(self, chain: str) -> ChainState:
+        """Ensures a chain's state is initialized."""
+        if chain not in self.chain_states:
+            self.chain_states[chain] = ChainState.create_empty()
+        return self.chain_states[chain]
+
+    def ensure_token_initialized(self, token: str, public: bytes):
+        """Ensures a token's state is initialized."""
+        if token not in self.assets:
+            self.assets[token] = {}
+        if public not in self.assets[token]:
+            self.assets[token][public] = Decimal("0")
+
+    def ensure_market_initialized(
+        self, token_name: str, quote_token: str, zex_instance
+    ):
+        """Ensures a market is initialized."""
+        if token_name == quote_token:
+            logger.error("base token and quote token can not be the same")
+            return None
+        pair = f"{token_name}-{quote_token}"
+        if pair not in self.markets:
+            self.markets[pair] = Market(token_name, quote_token, zex_instance)
+        return self.markets[pair]
+
+    def to_protobuf(self, pb_state: zex_pb2.ZexState):
+        """Serialize state manager to protobuf."""
+        # Serialize chain states
+        for chain, chain_state in self.chain_states.items():
+            chain_state.to_protobuf(chain, pb_state)
+
+        # Serialize user deposits
+        for public, deposits in self.user_deposits.items():
+            entry = pb_state.user_deposits.add()
+            entry.public_key = public
+            for deposit in deposits:
+                pb_deposit = entry.deposits.add()
+                pb_deposit.tx_hash = deposit.tx_hash
+                pb_deposit.chain = deposit.chain
+                pb_deposit.token_contract = deposit.token_contract
+                pb_deposit.amount = str(deposit.amount)
+                pb_deposit.decimal = deposit.decimal
+                pb_deposit.time = deposit.time
+                pb_deposit.user_id = deposit.user_id
+                pb_deposit.vout = deposit.vout
+
+        # Serialize assets (balances)
+        for token, balances in self.assets.items():
+            pb_balance = pb_state.balances[token]
+            for public, amount in balances.items():
+                entry = pb_balance.balances.add()
+                entry.public_key = public
+                entry.amount = str(amount)
+
+        # Serialize markets
+        for pair, market in self.markets.items():
+            pb_market = pb_state.markets[pair]
+            pb_market.base_token = market.base_token
+            pb_market.quote_token = market.quote_token
+
+            # Serialize order books
+            for order in market.buy_orders:
+                pb_order = pb_market.buy_orders.add()
+                pb_order.price = str(-order[0])  # Negate price for buy orders
+                pb_order.tx = order[1]
+            for order in market.sell_orders:
+                pb_order = pb_market.sell_orders.add()
+                pb_order.price = str(order[0])
+                pb_order.tx = order[1]
+
+            # Serialize order book state
+            for price, amount in market.bids_order_book.items():
+                entry = pb_market.bids_order_book.add()
+                entry.price = str(price)
+                entry.amount = str(amount)
+            for price, amount in market.asks_order_book.items():
+                entry = pb_market.asks_order_book.add()
+                entry.price = str(price)
+                entry.amount = str(amount)
+
+            pb_market.first_id = market.first_id
+            pb_market.final_id = market.final_id
+            pb_market.last_update_id = market.last_update_id
+
+            # Serialize kline data
+            buffer = BytesIO()
+            market.kline.to_pickle(buffer)
+            pb_market.kline = buffer.getvalue()
+
+    @classmethod
+    def from_protobuf(
+        cls, pb_state: zex_pb2.ZexState, zex_instance: "Zex"
+    ) -> "StateManager":
+        """Deserialize state manager from protobuf."""
+        state_manager = cls()
+
+        # Deserialize chain states
+        for chain in pb_state.deposits.keys():
+            state_manager.chain_states[chain] = ChainState.from_protobuf(
+                chain, pb_state
+            )
+
+        # Deserialize user deposits
+        state_manager.user_deposits = {
+            e.public_key: [
+                Deposit(
+                    tx_hash=pb_deposit.tx_hash,
+                    chain=pb_deposit.chain,
+                    token_contract=pb_deposit.token_contract,
+                    amount=Decimal(pb_deposit.amount),
+                    decimal=pb_deposit.decimal,
+                    time=pb_deposit.time,
+                    user_id=pb_deposit.user_id,
+                    vout=pb_deposit.vout,
+                )
+                for pb_deposit in e.deposits
+            ]
+            for e in pb_state.user_deposits
+        }
+
+        # Deserialize assets (balances)
+        state_manager.assets = {
+            token: {e.public_key: Decimal(e.amount) for e in pb_balance.balances}
+            for token, pb_balance in pb_state.balances.items()
+        }
+
+        for pair, pb_market in pb_state.markets.items():
+            market = Market(pb_market.base_token, pb_market.quote_token, zex_instance)
+            market.buy_orders = [
+                (-Decimal(o.price), o.tx) for o in pb_market.buy_orders
+            ]
+            market.sell_orders = [
+                (Decimal(o.price), o.tx) for o in pb_market.sell_orders
+            ]
+
+            market.bids_order_book = {
+                Decimal(e.price): Decimal(e.amount) for e in pb_market.bids_order_book
+            }
+            market.asks_order_book = {
+                Decimal(e.price): Decimal(e.amount) for e in pb_market.asks_order_book
+            }
+
+            market.first_id = pb_market.first_id
+            market.final_id = pb_market.final_id
+            market.last_update_id = pb_market.last_update_id
+            market.kline = pd.read_pickle(BytesIO(pb_market.kline))
+            state_manager.markets[pair] = market
+
+        # Update chain balances from assets
+        for token, balances in state_manager.assets.items():
+            if ":" in token:  # Non-verified token
+                chain, contract = token.split(":")
+                if chain in state_manager.chain_states:
+                    state_manager.chain_states[chain].balances[contract] = sum(
+                        balances.values()
+                    )
+            else:  # Verified token
+                for chain, token_info in settings.zex.verified_tokens.get(
+                    token, {}
+                ).items():
+                    if chain in state_manager.chain_states:
+                        state_manager.chain_states[chain].balances[
+                            token_info.contract_address
+                        ] = sum(balances.values())
+
+        return state_manager
+
+
+class DepositManager:
+    """Handles deposit-related operations."""
+
+    def __init__(self, state_manager: StateManager, settings):
+        self.state = state_manager
+        self.settings = settings
+
+    def validate_deposit(self, deposit: Deposit) -> bool:
+        """Validates a deposit transaction."""
+        if deposit.user_id < 1:
+            logger.critical(
+                f"invalid user id: {deposit.user_id}, tx_hash: {deposit.tx_hash}, "
+                f"vout: {deposit.vout}, token_contract: {deposit.token_contract}, "
+                f"amount: {deposit.amount}, decimal: {deposit.decimal}"
+            )
+            return False
+
+        chain_state = self.state.ensure_chain_initialized(deposit.chain)
+        if (deposit.tx_hash, deposit.vout) in chain_state.deposits:
+            logger.error(
+                f"chain: {deposit.chain}, tx_hash: {deposit.tx_hash}, "
+                f"vout: {deposit.vout} has already been deposited"
+            )
+            return False
+
+        return True
+
+    def process_deposit(self, deposit: Deposit, public: bytes):
+        """Processes a validated deposit."""
+        chain_state = self.state.ensure_chain_initialized(deposit.chain)
+
+        # Update contract decimals
+        if deposit.token_contract not in chain_state.contract_decimals:
+            chain_state.contract_decimals[deposit.token_contract] = deposit.decimal
+        elif chain_state.contract_decimals[deposit.token_contract] != deposit.decimal:
+            logger.warning(
+                f"decimal for contract {deposit.token_contract} changed from "
+                f"{chain_state.contract_decimals[deposit.token_contract]} to {deposit.decimal}"
+            )
+            chain_state.contract_decimals[deposit.token_contract] = deposit.decimal
+
+        self.state.ensure_token_initialized(deposit.token_name, public)
+        if deposit.token_contract not in chain_state.balances:
+            chain_state.balances[deposit.token_contract] = Decimal("0")
+
+        # Record deposit
+        chain_state.deposits.add((deposit.tx_hash, deposit.vout))
+        if public not in self.state.user_deposits:
+            self.state.user_deposits[public] = []
+        self.state.user_deposits[public].append(deposit)
+
+        # Update balances
+        self.state.assets[deposit.token_name][public] += deposit.amount
+        chain_state.balances[deposit.token_contract] += deposit.amount
+
+        logger.info(
+            f"deposit on chain: {deposit.chain}, token: {deposit.token_name}, "
+            f"amount: {deposit.amount} for user: {public}, tx_hash: {deposit.tx_hash}, "
+            f"new balance: {self.state.assets[deposit.token_name][public]}"
+        )
+
+
+class WithdrawManager:
+    """Handles withdrawal-related operations."""
+
+    def __init__(self, state_manager: StateManager, settings: Settings):
+        self.state = state_manager
+        self.settings = settings
+
+    def validate_withdraw(
+        self, tx: WithdrawTransaction
+    ) -> tuple[bool, str | None, str | None]:
+        """Validates a withdrawal transaction."""
+        if tx.amount <= 0:
+            logger.debug(f"invalid amount: {tx.amount}")
+            return False, None, None
+
+        chain_state = self.state.chain_states.get(tx.chain)
+        if not chain_state:
+            logger.debug("chain not found")
+            return False, None, None
+
+        if chain_state.user_withdraw_nonces.get(tx.public, 0) != tx.nonce:
+            logger.debug(
+                f"invalid nonce: {chain_state.user_withdraw_nonces.get(tx.public, 0)} != {tx.nonce}"
+            )
+            return False, None, None
+
+        # Validate token and get contract address
+        token_info = self.settings.zex.verified_tokens.get(tx.token_name)
+        if token_info:
+            if tx.chain in token_info:
+                token = tx.token_name
+                token_contract = token_info[tx.chain].contract_address
+            else:
+                logger.debug(
+                    f"invalid chain: {tx.chain} for withdraw of verified token: {tx.token_name}"
+                )
+                return False, None, None
+        else:
+            token = tx.token_name
+            try:
+                _, token_contract = tx.token_name.split(":")
+                token_contract = to_checksum_address(token_contract)
+            except Exception as e:
+                logger.debug(f"invalid token contract address: {e}")
+                return False, None, None
+
+        return True, token, token_contract
+
+    def check_balances(
+        self, tx: WithdrawTransaction, token: str, token_contract: str
+    ) -> bool:
+        """Checks if balances are sufficient for withdrawal."""
+        chain_state = self.state.chain_states[tx.chain]
+
+        # Check user balance
+        balance = self.state.assets[token].get(tx.public, Decimal("0"))
+        if balance < tx.amount:
+            logger.debug("balance not enough")
+            return False
+
+        # Check vault balance
+        if token_contract not in chain_state.balances:
+            logger.debug("token contract address not found")
+            return False
+        vault_balance = chain_state.balances[token_contract]
+        if vault_balance < tx.amount:
+            logger.error(
+                f"vault balance: {vault_balance}, withdraw amount: {tx.amount}, "
+                f"user balance before deduction: {balance}, vault does not have enough balance"
+            )
+            return False
+
+        return True
+
+    def process_withdraw(
+        self, tx: WithdrawTransaction, token: str, token_contract: str
+    ):
+        """Processes a validated withdrawal."""
+        chain_state = self.state.chain_states[tx.chain]
+
+        # Update balances
+        self.state.assets[token][tx.public] -= tx.amount
+        chain_state.balances[token_contract] -= tx.amount
+
+        # Update withdrawal records
+        if tx.public not in chain_state.user_withdraws:
+            chain_state.user_withdraws[tx.public] = []
+        chain_state.user_withdraws[tx.public].append(tx)
+
+        # Update nonces
+        chain_state.withdraw_nonce += 1
+        if tx.public not in chain_state.user_withdraw_nonces:
+            chain_state.user_withdraw_nonces[tx.public] = 0
+        chain_state.user_withdraw_nonces[tx.public] += 1
+
+        chain_state.withdraws.append(tx)
+
+        logger.info(
+            f"withdraw on chain: {tx.chain}, token: {tx.token_name}, "
+            f"amount: {tx.amount} for user: {tx.public}, "
+            f"new balance: {self.state.assets[tx.token_name][tx.public]}"
+        )
+
+
 class Zex(metaclass=SingletonMeta):
+    """Core exchange class handling deposits, withdrawals, and order matching."""
+
     def __init__(
         self,
         kline_callback: Callable[[str, pd.DataFrame], None],
         depth_callback: Callable[[str, dict], None],
-        order_callback: Callable[
-            [UserPublic, int, str, str, Decimal, Decimal, str, int, bool], None
-        ],
+        order_callback: Callable[..., None],
         deposit_callback: Callable[[UserPublic, Chain, str, Decimal], None],
         withdraw_callback: Callable[[UserPublic, Chain, str, Decimal], None],
         state_dest: str,
         light_node: bool = False,
         benchmark_mode=False,
     ):
+        """Initialize the Zex exchange."""
+        self.state_manager = StateManager()
+
+        self._initialize_context()
+        self._initialize_callbacks(
+            kline_callback,
+            depth_callback,
+            order_callback,
+            deposit_callback,
+            withdraw_callback,
+        )
+        self._initialize_state(state_dest, light_node, benchmark_mode)
+        self._initialize_test_mode_if_enabled()
+
+    def _initialize_context(self):
+        """Set up the Decimal context to trap floating-point operations."""
         c = getcontext()
         c.traps[FloatOperation] = True
 
+    def _initialize_callbacks(
+        self,
+        kline_callback,
+        depth_callback,
+        order_callback,
+        deposit_callback,
+        withdraw_callback,
+    ):
+        """Initialize callback functions."""
         self.kline_callback = kline_callback
         self.depth_callback = depth_callback
         self.order_callback = order_callback
         self.deposit_callback = deposit_callback
         self.withdraw_callback = withdraw_callback
 
+    def _initialize_state(self, state_dest, light_node, benchmark_mode):
+        """Initialize the exchange state."""
         self.state_dest = state_dest
         self.light_node = light_node
-        self.save_frequency = (
-            settings.zex.state_save_frequency
-        )  # save state every N transactions
+
+        # save state every N transactions
+        self.save_frequency = settings.zex.state_save_frequency
 
         self.benchmark_mode = benchmark_mode
 
         self.last_tx_index = 0
         self.saved_state_index = 0
         self.save_state_tx_index_threshold = self.save_frequency
-        self.markets: dict[str, Market] = {}
-        self.zex_balance_on_chain: dict[Chain, dict[ContractAddress, Decimal]] = {}
-        self.assets: dict[Token, dict[UserPublic, Decimal]] = {
-            settings.zex.usdt_mainnet: {}
-        }
-
-        self.contract_decimal_on_chain: dict[Chain, dict[ContractAddress, int]] = {}
-        for _, details in settings.zex.verified_tokens.items():
-            for chain, token_info in details.items():
-                if chain not in self.contract_decimal_on_chain:
-                    self.contract_decimal_on_chain[chain] = {}
-                self.contract_decimal_on_chain[chain][token_info.contract_address] = (
-                    token_info.decimal
-                )
-
         self.amounts: dict[UserPublic, Decimal] = {}
         self.trades: dict[UserPublic, deque] = {}
         self.orders: dict[UserPublic, dict[bytes, Literal[True]]] = {}
-        self.user_deposits: dict[UserPublic, list[Deposit]] = {}
         self.public_to_id_lookup: dict[UserPublic, int] = {}
         self.id_to_public_lookup: dict[int, UserPublic] = {}
 
-        self.user_withdraws_on_chain: dict[
-            Chain, dict[UserPublic, list[WithdrawTransaction]]
-        ] = {}
-
-        self.withdraws_on_chain: dict[Chain, list[WithdrawTransaction]] = {}
-        self.deposits_on_chain: dict[Chain, set[tuple[str, int]]] = {
-            chain: set() for chain in settings.zex.chains
-        }
-        self.user_withdraw_nonce_on_chain: dict[Chain, dict[UserPublic, int]] = {
-            k: {} for k in self.deposits_on_chain.keys()
-        }
-        self.withdraw_nonce_on_chain: dict[Chain, int] = {
-            k: 0 for k in self.deposits_on_chain.keys()
-        }
         self.nonces: dict[bytes, int] = {}
         self.pair_lookup: dict[str, tuple[str, str, str]] = {}
 
         self.last_user_id_lock = Lock()
         self.last_user_id = 0
-
         self.test_mode = not settings.zex.mainnet
-        if self.test_mode:
-            self.initialize_test_mode()
 
-    def initialize_test_mode(self):
+    def _initialize_test_mode_if_enabled(self):
+        """Initialize test mode if enabled."""
+        if self.test_mode:
+            self._initialize_test_mode()
+
+    def _initialize_test_mode(self):
+        """Initialize test mode with predefined data."""
         from secp256k1 import PrivateKey
 
         client_private = (
@@ -164,75 +614,89 @@ class Zex(metaclass=SingletonMeta):
             bot_pub = bot_priv.pubkey.serialize()
             self.register_pub(bot_pub)
 
-            for chain, details in tokens.items():
-                if chain not in self.zex_balance_on_chain:
-                    self.zex_balance_on_chain[chain] = {}
-                for contract_address, decimal in details:
-                    token_name = get_token_name(chain, contract_address)
-                    if token_name not in self.assets:
-                        self.assets[token_name] = {}
-                    if chain not in self.contract_decimal_on_chain:
-                        self.contract_decimal_on_chain[chain] = {}
+            for idx1, (chain, details) in enumerate(tokens.items()):
+                for idx2, (contract_address, decimal) in enumerate(details):
+                    tx = DepositTransaction(
+                        version=1,
+                        operation="d",
+                        chain=chain,
+                        deposits=[
+                            Deposit(
+                                tx_hash=f"0x0{idx1}{idx2}1",
+                                chain=chain,
+                                token_contract=contract_address,
+                                amount=Decimal("1_000"),
+                                decimal=decimal,
+                                time=1,
+                                user_id=1,
+                                vout=0,
+                            ),
+                            Deposit(
+                                tx_hash=f"0x0{idx1}{idx2}2",
+                                chain=chain,
+                                token_contract=contract_address,
+                                amount=Decimal("5_000"),
+                                decimal=decimal,
+                                time=1,
+                                user_id=2,
+                                vout=0,
+                            ),
+                        ],
+                    )
+                    deposit_manager = DepositManager(self.state_manager, settings)
 
-                    pair = f"{token_name}-{settings.zex.usdt_mainnet}"
-                    if pair not in self.markets:
-                        self.markets[pair] = Market(
-                            token_name, settings.zex.usdt_mainnet, self
-                        )
+                    for deposit in tx.deposits:
+                        if not deposit_manager.validate_deposit(deposit):
+                            continue
 
-                    self.contract_decimal_on_chain[chain][contract_address] = decimal
-                    self.assets[token_name][bot_pub] = Decimal("5_000_000")
-                    self.assets[token_name][client_pub] = Decimal("1_000_000")
-                    # self.zex_balance_on_chain[chain][contract_address] = Decimal(
-                    #     "5_000_000"
-                    # )
+                        public = self.id_to_public_lookup[deposit.user_id]
+                        deposit_manager.process_deposit(deposit, public)
+
+                        # Initialize related state if needed
+                        if public not in self.trades:
+                            self.trades[public] = deque()
+                        if public not in self.orders:
+                            self.orders[public] = {}
+                        if public not in self.nonces:
+                            self.nonces[public] = 0
+
+                        if deposit.token_name != settings.zex.usdt_mainnet:
+                            # Ensure market exists
+                            self.state_manager.ensure_market_initialized(
+                                deposit.token_name, settings.zex.usdt_mainnet, self
+                            )
 
     def to_protobuf(self) -> zex_pb2.ZexState:
         state = zex_pb2.ZexState()
-
         state.last_tx_index = self.last_tx_index
 
-        for pair, market in self.markets.items():
-            pb_market = state.markets[pair]
-            pb_market.base_token = market.base_token
-            pb_market.quote_token = market.quote_token
-            for order in market.buy_orders:
-                pb_order = pb_market.buy_orders.add()
-                pb_order.price = str(-order[0])  # Negate price for buy orders
-                pb_order.tx = order[1]
-            for order in market.sell_orders:
-                pb_order = pb_market.sell_orders.add()
-                pb_order.price = str(order[0])
-                pb_order.tx = order[1]
-            for price, amount in market.bids_order_book.items():
-                entry = pb_market.bids_order_book.add()
-                entry.price = str(price)
-                entry.amount = str(amount)
-            for price, amount in market.asks_order_book.items():
-                entry = pb_market.asks_order_book.add()
-                entry.price = str(price)
-                entry.amount = str(amount)
-            pb_market.first_id = market.first_id
-            pb_market.final_id = market.final_id
-            pb_market.last_update_id = market.last_update_id
+        # Serialize state manager
+        self.state_manager.to_protobuf(state)
 
-            # TODO: find a better solution since loading pickle is dangerous
-            buffer = BytesIO()
-            market.kline.to_pickle(buffer)
-            pb_market.kline = buffer.getvalue()
+        self._serialize_amounts(state)
+        self._serialize_trades(state)
+        self._serialize_orders(state)
+        self._serialize_nonces(state)
+        self._serialize_user_lookups(state)
 
-        for token, balances in self.assets.items():
-            pb_balance = state.balances[token]
-            for public, amount in balances.items():
-                entry = pb_balance.balances.add()
-                entry.public_key = public
-                entry.amount = str(amount)
+        # Serialize user lookups
+        for public, user_id in self.public_to_id_lookup.items():
+            entry = state.public_to_id_lookup.add()
+            entry.public_key = public
+            entry.user_id = user_id
+        state.id_to_public_lookup.update(self.id_to_public_lookup)
 
+        return state
+
+    def _serialize_amounts(self, state: zex_pb2.ZexState):
+        """Serialize transaction amounts to protobuf."""
         for tx, amount in self.amounts.items():
             entry = state.amounts.add()
             entry.tx = tx
             entry.amount = str(amount)
 
+    def _serialize_trades(self, state: zex_pb2.ZexState):
+        """Serialize user trades to protobuf."""
         for public, trades in self.trades.items():
             entry = state.trades.add()
             entry.public_key = public
@@ -246,71 +710,27 @@ class Zex(metaclass=SingletonMeta):
                     pb_trade.order,
                 ) = trade[0], str(trade[1]), trade[2], trade[3], trade[4]
 
+    def _serialize_orders(self, state: zex_pb2.ZexState):
+        """Serialize user orders to protobuf."""
         for public, orders in self.orders.items():
             entry = state.orders.add()
             entry.public_key = public
             entry.orders.extend(orders.keys())
 
-        for address, withdraws in self.withdraws_on_chain.items():
-            pb_withdraws = state.withdraws_on_chain[address]
-            entry = pb_withdraws.withdraws.add()
-            entry.raw_txs.extend([w.raw_tx for w in withdraws])
-
-        for address, withdraws in self.user_withdraws_on_chain.items():
-            pb_withdraws = state.user_withdraws_on_chain[address]
-            for public, withdraw_list in withdraws.items():
-                entry = pb_withdraws.withdraws.add()
-                entry.public_key = public
-                entry.raw_txs.extend([w.raw_tx for w in withdraw_list])
-
-        for address, withdraw_nonces in self.user_withdraw_nonce_on_chain.items():
-            pb_withdraw_nonces = state.user_withdraw_nonce_on_chain[address]
-            for public, nonce in withdraw_nonces.items():
-                entry = pb_withdraw_nonces.nonces.add()
-                entry.public_key = public
-                entry.nonce = nonce
-
-        state.withdraw_nonce_on_chain.update(self.withdraw_nonce_on_chain)
-
-        for address, deposits in self.deposits_on_chain.items():
-            pb_deposits = state.deposits[address]
-            for deposit in deposits:
-                entry = pb_deposits.deposits.add()
-                entry.tx_hash = deposit[0]
-                entry.vout = deposit[1]
-
+    def _serialize_nonces(self, state: zex_pb2.ZexState):
+        """Serialize user nonces to protobuf."""
         for public, nonce in self.nonces.items():
             entry = state.nonces.add()
             entry.public_key = public
             entry.nonce = nonce
 
-        for public, deposits in self.user_deposits.items():
-            entry = state.user_deposits.add()
-            entry.public_key = public
-            for deposit in deposits:
-                pb_deposit = entry.deposits.add()
-                pb_deposit.tx_hash = deposit.tx_hash
-                pb_deposit.chain = deposit.chain
-                pb_deposit.token_contract = deposit.token_contract
-                pb_deposit.amount = str(deposit.amount)
-                pb_deposit.decimal = deposit.decimal
-                pb_deposit.time = deposit.time
-                pb_deposit.user_id = deposit.user_id
-                pb_deposit.vout = deposit.vout
-
+    def _serialize_user_lookups(self, state: zex_pb2.ZexState):
+        """Serialize user ID lookups to protobuf."""
         for public, user_id in self.public_to_id_lookup.items():
             entry = state.public_to_id_lookup.add()
             entry.public_key = public
             entry.user_id = user_id
         state.id_to_public_lookup.update(self.id_to_public_lookup)
-
-        for chain, details in self.contract_decimal_on_chain.items():
-            state.contract_decimal_on_chain[chain].contract_decimal.update(details)
-
-        for chain, balances in self.zex_balance_on_chain.items():
-            state.zex_balance_on_chain[chain].update(balances)
-
-        return state
 
     @classmethod
     def from_protobuf(
@@ -333,37 +753,37 @@ class Zex(metaclass=SingletonMeta):
             state_dest,
             light_node,
         )
-
         zex.last_tx_index = pb_state.last_tx_index
 
-        zex.assets = {
-            token: {e.public_key: Decimal(e.amount) for e in pb_balance.balances}
-            for token, pb_balance in pb_state.balances.items()
+        zex.state_manager = StateManager.from_protobuf(pb_state, zex)
+
+        # Deserialize state components
+        zex._deserialize_amounts(pb_state)
+        zex._deserialize_trades(pb_state)
+        zex._deserialize_orders(pb_state)
+        zex._deserialize_nonces(pb_state)
+        zex._deserialize_user_lookups(pb_state)
+
+        # Deserialize user lookups
+        zex.public_to_id_lookup = {
+            entry.public_key: entry.user_id for entry in pb_state.public_to_id_lookup
         }
-        for pair, pb_market in pb_state.markets.items():
-            market = Market(pb_market.base_token, pb_market.quote_token, zex)
-            market.buy_orders = [
-                (-Decimal(o.price), o.tx) for o in pb_market.buy_orders
-            ]
-            market.sell_orders = [
-                (Decimal(o.price), o.tx) for o in pb_market.sell_orders
-            ]
+        zex.id_to_public_lookup = dict(pb_state.id_to_public_lookup)
 
-            market.bids_order_book = {
-                Decimal(e.price): Decimal(e.amount) for e in pb_market.bids_order_book
-            }
-            market.asks_order_book = {
-                Decimal(e.price): Decimal(e.amount) for e in pb_market.asks_order_book
-            }
+        # Set last user ID
+        zex.last_user_id = (
+            max(zex.public_to_id_lookup.values()) if zex.public_to_id_lookup else 0
+        )
 
-            market.first_id = pb_market.first_id
-            market.final_id = pb_market.final_id
-            market.last_update_id = pb_market.last_update_id
-            market.kline = pd.read_pickle(BytesIO(pb_market.kline))
-            zex.markets[pair] = market
+        return zex
 
-        zex.amounts = {e.tx: Decimal(e.amount) for e in pb_state.amounts}
-        zex.trades = {
+    def _deserialize_amounts(self, pb_state: zex_pb2.ZexState):
+        """Deserialize transaction amounts from protobuf."""
+        self.amounts = {e.tx: Decimal(e.amount) for e in pb_state.amounts}
+
+    def _deserialize_trades(self, pb_state: zex_pb2.ZexState):
+        """Deserialize user trades from protobuf."""
+        self.trades = {
             e.public_key: deque(
                 (
                     trade.t,
@@ -376,75 +796,23 @@ class Zex(metaclass=SingletonMeta):
             )
             for e in pb_state.trades
         }
-        zex.orders = {
+
+    def _deserialize_orders(self, pb_state: zex_pb2.ZexState):
+        """Deserialize user orders from protobuf."""
+        self.orders = {
             e.public_key: {order: True for order in e.orders} for e in pb_state.orders
         }
 
-        zex.withdraws_on_chain = {}
-        for chain, pb_withdraws in pb_state.withdraws_on_chain.items():
-            zex.withdraws_on_chain[chain] = {}
-            for entry in pb_withdraws.withdraws:
-                zex.withdraws_on_chain[chain] = [
-                    WithdrawTransaction.from_tx(raw_tx) for raw_tx in entry.raw_txs
-                ]
-        zex.withdraw_nonce_on_chain = dict(pb_state.withdraw_nonce_on_chain)
+    def _deserialize_nonces(self, pb_state: zex_pb2.ZexState):
+        """Deserialize user nonces from protobuf."""
+        self.nonces = {e.public_key: e.nonce for e in pb_state.nonces}
 
-        zex.user_withdraws_on_chain = {}
-        for chain, pb_withdraws in pb_state.user_withdraws_on_chain.items():
-            zex.user_withdraws_on_chain[chain] = {}
-            for entry in pb_withdraws.withdraws:
-                zex.user_withdraws_on_chain[chain][entry.public_key] = [
-                    WithdrawTransaction.from_tx(raw_tx) for raw_tx in entry.raw_txs
-                ]
-
-        zex.user_withdraw_nonce_on_chain = {}
-        for chain, pb_withdraw_nonces in pb_state.user_withdraw_nonce_on_chain.items():
-            zex.user_withdraw_nonce_on_chain[chain] = {
-                entry.public_key: entry.nonce for entry in pb_withdraw_nonces.nonces
-            }
-
-        zex.deposits_on_chain = {
-            chain: {(item.tx_hash, item.vout) for item in e.deposits}
-            for chain, e in pb_state.deposits.items()
-        }
-
-        zex.nonces = {e.public_key: e.nonce for e in pb_state.nonces}
-
-        zex.user_deposits = {
-            e.public_key: [
-                Deposit(
-                    tx_hash=pb_deposit.tx_hash,
-                    chain=pb_deposit.chain,
-                    token_contract=pb_deposit.token_contract,
-                    amount=Decimal(pb_deposit.amount),
-                    decimal=pb_deposit.decimal,
-                    time=pb_deposit.time,
-                    user_id=pb_deposit.user_id,
-                    vout=pb_deposit.vout,
-                )
-                for pb_deposit in e.deposits
-            ]
-            for e in pb_state.user_deposits
-        }
-
-        zex.public_to_id_lookup = {
+    def _deserialize_user_lookups(self, pb_state: zex_pb2.ZexState):
+        """Deserialize user ID lookups from protobuf."""
+        self.public_to_id_lookup = {
             entry.public_key: entry.user_id for entry in pb_state.public_to_id_lookup
         }
-        zex.id_to_public_lookup = dict(pb_state.id_to_public_lookup)
-
-        zex.contract_decimal_on_chain = {
-            k: v.contract_decimal for k, v in pb_state.contract_decimal_on_chain.items()
-        }
-
-        zex.zex_balance_on_chain = {
-            k: v.balance for k, v in pb_state.zex_balance_on_chain.items()
-        }
-
-        zex.last_user_id = (
-            max(zex.public_to_id_lookup.values()) if zex.public_to_id_lookup else 0
-        )
-
-        return zex
+        self.id_to_public_lookup = dict(pb_state.id_to_public_lookup)
 
     def save_state(self):
         state = self.to_protobuf()
@@ -495,12 +863,9 @@ class Zex(metaclass=SingletonMeta):
             elif name in (BUY, SELL):
                 base_token, quote_token, pair = self._get_tx_pair(tx)
 
-                if pair not in self.markets:
-                    if base_token not in self.assets:
-                        self.assets[base_token] = {}
-                    if quote_token not in self.assets:
-                        self.assets[quote_token] = {}
-                    self.markets[pair] = Market(base_token, quote_token, self)
+                market = self.state_manager.ensure_market_initialized(
+                    base_token, quote_token, self
+                )
                 t = int(unix_time())
                 # fast route check for instant match
                 logger.debug(
@@ -513,10 +878,10 @@ class Zex(metaclass=SingletonMeta):
                 if not self.validate_nonce(public, nonce):
                     continue
 
-                if self.markets[pair].match_instantly(tx, t):
+                if market.match_instantly(tx, t):
                     modified_pairs.add(pair)
                     continue
-                ok = self.markets[pair].place(tx)
+                ok = market.place(tx)
                 if not ok:
                     continue
 
@@ -524,7 +889,7 @@ class Zex(metaclass=SingletonMeta):
 
             elif name == CANCEL:
                 base_token, quote_token, pair = self._get_tx_pair(tx[1:])
-                success = self.markets[pair].cancel(tx)
+                success = self.state_manager.markets[pair].cancel(tx)
                 if success:
                     modified_pairs.add(pair)
             elif name == REGISTER:
@@ -544,100 +909,30 @@ class Zex(metaclass=SingletonMeta):
             self.saved_state_index = self.last_tx_index
             self.save_state()
 
+    # Modified Zex class methods to use the new managers
     def deposit(self, tx: DepositTransaction):
+        """Process a deposit transaction."""
+        deposit_manager = DepositManager(self.state_manager, settings)
+
         for deposit in tx.deposits:
-            if deposit.user_id < 1:
-                logger.critical(
-                    f"invalid user id: {deposit.user_id}, tx_hash: {deposit.tx_hash}, vout: {deposit.vout}, "
-                    f"token_contract: {deposit.token_contract}, amount: {deposit.amount}, decimal: {deposit.decimal}"
-                )
+            if not deposit_manager.validate_deposit(deposit):
                 continue
-            if self.last_user_id < deposit.user_id:
-                logger.error(
-                    f"deposit for missing user: {deposit.user_id}, tx_hash: {deposit.tx_hash}, vout: {deposit.vout}, "
-                    f"token_contract: {deposit.token_contract}, amount: {deposit.amount}, decimal: {deposit.decimal}"
-                )
-                continue
-
-            if deposit.chain not in self.deposits_on_chain:
-                self.deposits_on_chain[deposit.chain] = set()
-            if deposit.chain not in self.zex_balance_on_chain:
-                self.zex_balance_on_chain[deposit.chain] = {}
-            if deposit.chain not in self.withdraw_nonce_on_chain:
-                self.withdraw_nonce_on_chain[deposit.chain] = 0
-            if deposit.chain not in self.withdraws_on_chain:
-                self.withdraws_on_chain[deposit.chain] = []
-            if deposit.chain not in self.user_withdraw_nonce_on_chain:
-                self.user_withdraw_nonce_on_chain[deposit.chain] = {}
-            if deposit.chain not in self.user_withdraws_on_chain:
-                self.user_withdraws_on_chain[deposit.chain] = {}
-
-            if (deposit.tx_hash, deposit.vout) in self.deposits_on_chain[deposit.chain]:
-                logger.error(
-                    f"chain: {deposit.chain}, tx_hash: {deposit.tx_hash}, vout: {deposit.vout} has already been deposited"
-                )
-                continue
-            self.deposits_on_chain[deposit.chain].add((deposit.tx_hash, deposit.vout))
-
-            if deposit.token_contract not in self.zex_balance_on_chain[deposit.chain]:
-                self.zex_balance_on_chain[deposit.chain][deposit.token_contract] = (
-                    Decimal("0")
-                )
-
-            if deposit.chain not in self.contract_decimal_on_chain:
-                self.contract_decimal_on_chain[deposit.chain] = {}
-            if (
-                deposit.token_contract
-                not in self.contract_decimal_on_chain[deposit.chain]
-            ):
-                self.contract_decimal_on_chain[deposit.chain][
-                    deposit.token_contract
-                ] = deposit.decimal
-
-            if (
-                self.contract_decimal_on_chain[deposit.chain][deposit.token_contract]
-                != deposit.decimal
-            ):
-                logger.warning(
-                    f"decimal for contract {deposit.token_contract} changed "
-                    f"from {self.contract_decimal_on_chain[deposit.chain][deposit.token_contract]} to {deposit.decimal}"
-                )
-                self.contract_decimal_on_chain[deposit.chain][
-                    deposit.token_contract
-                ] = deposit.decimal
 
             public = self.id_to_public_lookup[deposit.user_id]
+            deposit_manager.process_deposit(deposit, public)
 
-            if deposit.token_name not in self.assets:
-                self.assets[deposit.token_name] = {}
-            if public not in self.assets[deposit.token_name]:
-                self.assets[deposit.token_name][public] = Decimal("0")
-
-            pair = f"{deposit.token_name}-{settings.zex.usdt_mainnet}"
-            if pair not in self.markets:
-                self.markets[pair] = Market(
-                    deposit.token_name, settings.zex.usdt_mainnet, self
-                )
-
-            if public not in self.user_deposits:
-                self.user_deposits[public] = []
-
-            self.user_deposits[public].append(deposit)
-            self.assets[deposit.token_name][public] += deposit.amount
-            self.zex_balance_on_chain[deposit.chain][deposit.token_contract] += (
-                deposit.amount
-            )
-            logger.info(
-                f"deposit on chain: {deposit.chain}, token: {deposit.token_name}, amount: {deposit.amount} for user: {public}, "
-                f"tx_hash: {deposit.tx_hash}, new balance: {self.assets[deposit.token_name][public]}"
-            )
-
+            # Initialize related state if needed
             if public not in self.trades:
                 self.trades[public] = deque()
             if public not in self.orders:
                 self.orders[public] = {}
             if public not in self.nonces:
                 self.nonces[public] = 0
+
+            # Ensure market exists
+            self.state_manager.ensure_market_initialized(
+                deposit.token_name, settings.zex.usdt_mainnet, self
+            )
 
             asyncio.create_task(
                 self.deposit_callback(
@@ -651,100 +946,41 @@ class Zex(metaclass=SingletonMeta):
         if chain not in settings.zex.verified_tokens[token_name]:
             return True
 
-        if chain not in self.zex_balance_on_chain:
+        if chain not in self.state_manager.chain_states:
             logger.error(f"chain={chain} not found")
             return False
-        if contract_address not in self.zex_balance_on_chain[chain]:
+        if contract_address not in self.state_manager.chain_states[chain].balances:
             logger.error(
                 f"chain={chain}, token={token_name}, contract address={contract_address} not found"
             )
             return False
-        balance = self.zex_balance_on_chain[chain][contract_address]
+        balance = self.state_manager.chain_states[chain].balances[contract_address]
         details = settings.zex.verified_tokens[token_name]
         limit = details[chain].balance_withdraw_limit
         return withdraw_amount <= balance or balance > limit
 
     def withdraw(self, tx: WithdrawTransaction):
-        if tx.amount <= 0:
-            logger.debug(f"invalid amount: {tx.amount}")
+        """Process a withdrawal transaction."""
+        withdraw_manager = WithdrawManager(self.state_manager, settings)
+
+        # Validate withdrawal
+        valid, token, token_contract = withdraw_manager.validate_withdraw(tx)
+        if not valid:
             return
 
-        if tx.chain not in self.user_withdraw_nonce_on_chain:
-            logger.debug("chain not found in user_withdraw_nonce_on_chain")
-            return
-        if tx.chain not in self.zex_balance_on_chain:
-            logger.debug("chain not found in zex_balance_on_chain")
+        # Check balances
+        if not withdraw_manager.check_balances(tx, token, token_contract):
             return
 
-        if self.user_withdraw_nonce_on_chain[tx.chain].get(tx.public, 0) != tx.nonce:
-            logger.debug(f"invalid nonce: {self.nonces[tx.public]} != {tx.nonce}")
-            return
-
-        token_info = settings.zex.verified_tokens.get(tx.token_name)
-        if token_info:
-            if tx.chain in token_info:
-                # Token is verified and chain is supported
-                token = tx.token_name
-                token_contract = token_info[tx.chain].contract_address
-            else:
-                # Token is verified, but the chain is not supported
-                # Fail transaction
-                logger.debug(
-                    f"invalid chain: {tx.chain} for withdraw of verified token: {tx.token_name}"
-                )
-                return
-        else:
-            token = tx.token_name
-            _, token_contract = tx.token_name.split(":")
-            try:
-                token_contract = to_checksum_address(token_contract)
-            except Exception as e:
-                logger.debug(f"invalid token contract address: {e}")
-                return
-
-        balance = self.assets[token].get(tx.public, Decimal("0"))
-        if balance < tx.amount:
-            logger.debug("balance not enough")
-            return
-
-        if token_contract not in self.zex_balance_on_chain[tx.chain]:
-            logger.debug("token contract address not found")
-            return
-        vault_balance = self.zex_balance_on_chain[tx.chain][token_contract]
-        if vault_balance < tx.amount:
-            logger.error(
-                f"vault balance: {vault_balance}, withdraw amount: {tx.amount}, user balance before deduction: {balance}, vault does not have enough balance"
-            )
-            return
-        if not self.is_withdrawable(tx.chain, token, token_contract, tx.amount):
+        # Check if withdrawal is allowed
+        if not self.is_withdrawable(tx.chain, token, token_contract):
             logger.debug(
                 f"withdraw of token: {token}, contract: {token_contract} is disabled"
             )
             return
 
-        if tx.public not in self.user_withdraw_nonce_on_chain[tx.chain]:
-            self.user_withdraw_nonce_on_chain[tx.chain][tx.public] = 0
-
-        self.assets[token][tx.public] = balance - tx.amount
-        self.zex_balance_on_chain[tx.chain][token_contract] -= tx.amount
-
-        if tx.chain not in self.user_withdraws_on_chain:
-            self.user_withdraws_on_chain[tx.chain] = {}
-        if tx.public not in self.user_withdraws_on_chain[tx.chain]:
-            self.user_withdraws_on_chain[tx.chain][tx.public] = []
-        self.user_withdraws_on_chain[tx.chain][tx.public].append(tx)
-
-        self.withdraw_nonce_on_chain[tx.chain] += 1
-
-        self.user_withdraw_nonce_on_chain[tx.chain][tx.public] += 1
-        if tx.chain not in self.withdraws_on_chain:
-            self.withdraws_on_chain[tx.chain] = []
-        self.withdraws_on_chain[tx.chain].append(tx)
-
-        logger.info(
-            f"withdraw on chain: {tx.chain}, token: {tx.token_name}, amount: {tx.amount} for user: {tx.public}, "
-            f"new balance: {self.assets[tx.token_name][tx.public]}"
-        )
+        # Process withdrawal
+        withdraw_manager.process_withdraw(tx, token, token_contract)
 
         asyncio.create_task(
             self.withdraw_callback(tx.public.hex(), tx.chain, tx.token_name, tx.amount)
@@ -762,7 +998,7 @@ class Zex(metaclass=SingletonMeta):
         return True
 
     def get_order_book_update(self, pair: str):
-        order_book_update = self.markets[pair].get_order_book_update()
+        order_book_update = self.state_manager.markets[pair].get_order_book_update()
         now = int(unix_time() * 1000)
         return {
             "e": "depthUpdate",  # Event type
@@ -781,7 +1017,7 @@ class Zex(metaclass=SingletonMeta):
         }
 
     def get_order_book(self, pair: str, limit: int):
-        if pair not in self.markets:
+        if pair not in self.state_manager.markets:
             now = int(unix_time() * 1000)
             return {
                 "lastUpdateId": 0,
@@ -790,12 +1026,12 @@ class Zex(metaclass=SingletonMeta):
                 "bids": [],
                 "asks": [],
             }
-        with self.markets[pair].order_book_lock:
+        with self.state_manager.markets[pair].order_book_lock:
             order_book = {
-                "bids": deepcopy(self.markets[pair].bids_order_book),
-                "asks": deepcopy(self.markets[pair].asks_order_book),
+                "bids": deepcopy(self.state_manager.markets[pair].bids_order_book),
+                "asks": deepcopy(self.state_manager.markets[pair].asks_order_book),
             }
-        last_update_id = self.markets[pair].last_update_id
+        last_update_id = self.state_manager.markets[pair].last_update_id
         now = int(unix_time() * 1000)
         return {
             "lastUpdateId": last_update_id,
@@ -816,7 +1052,7 @@ class Zex(metaclass=SingletonMeta):
         }
 
     def get_kline(self, pair: str) -> pd.DataFrame:
-        if pair not in self.markets:
+        if pair not in self.state_manager.markets:
             kline = pd.DataFrame(
                 columns=[
                     "OpenTime",
@@ -830,7 +1066,7 @@ class Zex(metaclass=SingletonMeta):
                 ],
             ).set_index("OpenTime")
             return kline
-        return self.markets[pair].kline
+        return self.state_manager.markets[pair].kline
 
     def _get_tx_pair(self, tx: bytes):
         base_token, quote_token = self._extract_base_and_quote_token(tx)
@@ -860,8 +1096,6 @@ class Zex(metaclass=SingletonMeta):
             self.trades[public] = deque()
         if public not in self.orders:
             self.orders[public] = {}
-        if public not in self.user_deposits:
-            self.user_deposits[public] = []
         if public not in self.nonces:
             self.nonces[public] = 0
 
@@ -923,8 +1157,8 @@ class Market:
             ]
         ).set_index("OpenTime")
 
-        self.base_token_balances = zex.assets[base_token]
-        self.quote_token_balances = zex.assets[quote_token]
+        self.base_token_balances = zex.state_manager.assets[base_token]
+        self.quote_token_balances = zex.state_manager.assets[quote_token]
 
     def get_order_book_update(self):
         with self.order_book_lock:

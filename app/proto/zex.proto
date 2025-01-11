@@ -18,7 +18,6 @@ message ZexState {
     repeated IDLookupEntry public_to_id_lookup = 14;
     map<uint64, bytes> id_to_public_lookup = 15;
     map<string, ContractDecimalOnChain> contract_decimal_on_chain = 16;
-    map<string, BalanceOnChain> zex_balance_on_chain = 17;
 }
 
 message Market {
@@ -85,11 +84,8 @@ message UserWithdraws {
     repeated UserWithdrawEntry withdraws = 1;
 }
 
-message WithdrawsOnChainEntry {
-    repeated bytes raw_txs = 1;
-}
 message WithdrawsOnChain {
-    repeated WithdrawsOnChainEntry withdraws = 1;
+    repeated bytes raw_txs = 1;
 }
 
 message WithdrawNonceEntry {
@@ -148,8 +144,4 @@ message IDToContractOnChainEntry {
 
 message ContractDecimalOnChain {
     map<string, uint32> contract_decimal = 1;
-}
-
-message BalanceOnChain {
-    map<string, string> balance = 1;
 }
