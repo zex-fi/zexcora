@@ -645,7 +645,7 @@ class Zex(metaclass=SingletonMeta):
                 )
             )
 
-    def is_withdrawable(self, chain, token_name, contract_address):
+    def is_withdrawable(self, chain, token_name, contract_address, withdraw_amount):
         if token_name not in settings.zex.verified_tokens:
             return True
         if chain not in settings.zex.verified_tokens[token_name]:
@@ -662,7 +662,7 @@ class Zex(metaclass=SingletonMeta):
         balance = self.zex_balance_on_chain[chain][contract_address]
         details = settings.zex.verified_tokens[token_name]
         limit = details[chain].balance_withdraw_limit
-        return balance > limit
+        return withdraw_amount <= balance or balance > limit
 
     def withdraw(self, tx: WithdrawTransaction):
         if tx.amount <= 0:
@@ -716,7 +716,7 @@ class Zex(metaclass=SingletonMeta):
                 f"vault balance: {vault_balance}, withdraw amount: {tx.amount}, user balance before deduction: {balance}, vault does not have enough balance"
             )
             return
-        if not self.is_withdrawable(tx.chain, token, token_contract):
+        if not self.is_withdrawable(tx.chain, token, token_contract, tx.amount):
             logger.debug(
                 f"withdraw of token: {token}, contract: {token_contract} is disabled"
             )
