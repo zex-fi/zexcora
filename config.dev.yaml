@@ -5,7 +5,7 @@ zex:
   light_node: false
   state_source: "http://zex-state/zex_state.pb"
   state_dest: zex_state.pb
-  state_save_frequency: 500
+  state_save_frequency: 100
   tx_transmit_delay: 0.01
   mainnet: false
   use_redis: false

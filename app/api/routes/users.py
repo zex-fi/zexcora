@@ -362,7 +362,7 @@ def get_withdraw_config(id: int):
                         "withdrawFee": "0",
                         "withdrawMin": "0",
                         "withdrawMax": str(
-                            zex.zex_balance_on_chain[chain].get(
+                            zex.state_manager.chain_states[chain].balances.get(
                                 token_info.contract_address, 0
                             )
                         ),
@@ -372,6 +372,7 @@ def get_withdraw_config(id: int):
                     for chain, token_info in settings.zex.verified_tokens[
                         token_name
                     ].items()
+                    if chain in zex.state_manager.chain_states
                 ],
             }
             result.append(item)
@@ -390,7 +391,9 @@ def get_withdraw_config(id: int):
                         "withdrawFee": "0",
                         "withdrawMin": "0",
                         "withdrawMax": str(
-                            zex.zex_balance_on_chain[chain].get(address, 0)
+                            zex.state_manager.chain_states[chain].balances.get(
+                                address, 0
+                            )
                         ),
                         "contractAddress": address,
                         "decimal": zex.state_manager.chain_states[
@@ -414,30 +417,35 @@ def get_withdraw_nonce(id: int, chain: str) -> WithdrawNonce:
         raise HTTPException(404, {"error": "user not found"})
     user = zex.id_to_public_lookup[id]
     chain = chain.upper()
-    if chain not in zex.user_withdraw_nonce_on_chain:
+    if chain not in zex.state_manager.chain_states:
         raise HTTPException(404, {"error": f"{chain} not found"})
     return WithdrawNonce(
         chain=chain,
-        nonce=zex.user_withdraw_nonce_on_chain[chain].get(user, 0),
+        nonce=zex.state_manager.chain_states[chain].user_withdraw_nonces.get(user, 0),
     )
 
 
 def get_withdraw_nonce_on_chain(chain: str):
     chain = chain.upper()
-    if chain not in zex.withdraw_nonce_on_chain:
+    if chain not in zex.state_manager.chain_states:
         raise HTTPException(404, {"error": "no withdraw on chain"})
-    if zex.withdraw_nonce_on_chain[chain] == 0:
+    if zex.state_manager.chain_states[chain].withdraw_nonce == 0:
         raise HTTPException(404, {"error": "no withdraw on chain"})
-    return {"chain": chain, "nonce": zex.withdraw_nonce_on_chain[chain] - 1}
+    return {
+        "chain": chain,
+        "nonce": zex.state_manager.chain_states[chain].withdraw_nonce - 1,
+    }
 
 
 def get_chain_withdraws(
     chain: str, offset: int, limit: int | None = None
 ) -> list[Withdraw]:
-    if chain not in zex.withdraws_on_chain:
+    if chain not in zex.state_manager.chain_states:
         raise HTTPException(404, {"error": "chain not found"})
     transactions = []
-    for i, withdraw in enumerate(zex.withdraws_on_chain[chain][offset:limit]):
+    for i, withdraw in enumerate(
+        zex.state_manager.chain_states[chain].withdraws[offset:limit]
+    ):
         token_info = settings.zex.verified_tokens.get(withdraw.token_name)
 
         if token_info:
@@ -445,7 +453,9 @@ def get_chain_withdraws(
         else:
             _, token_contract = withdraw.token_name.split(":")
 
-        decimal = zex.contract_decimal_on_chain[withdraw.chain][token_contract]
+        decimal = zex.state_manager.chain_states[withdraw.chain].contract_decimals[
+            token_contract
+        ]
         w = Withdraw(
             chain=withdraw.chain,
             tokenContract=token_contract,
@@ -468,12 +478,12 @@ def get_user_withdraws(
 
     user = zex.id_to_public_lookup[id]
     chain = chain.upper()
-    if chain not in zex.user_withdraws_on_chain:
+    if chain not in zex.state_manager.chain_states:
         raise HTTPException(404, {"error": f"{chain} not found"})
-    if user not in zex.user_withdraws_on_chain[chain]:
+    if user not in zex.state_manager.chain_states[chain].user_withdraws:
         return []
 
-    withdraws = zex.user_withdraws_on_chain[chain].get(user, [])
+    withdraws = zex.state_manager.chain_states[chain].user_withdraws.get(user, [])
     if nonce and nonce >= len(withdraws):
         logger.debug(f"invalid nonce: maximum nonce is {len(withdraws) - 1}")
         raise HTTPException(400, {"error": "invalid nonce"})
@@ -487,7 +497,9 @@ def get_user_withdraws(
         else:
             token_contract = withdraw_tx.token_name
 
-        decimal = zex.contract_decimal_on_chain[withdraw_tx.chain][token_contract]
+        decimal = zex.state_manager.chain_states[withdraw_tx.chain].contract_decimals[
+            token_contract
+        ]
         return Withdraw(
             chain=withdraw_tx.chain,
             tokenContract=token_contract,
@@ -499,14 +511,16 @@ def get_user_withdraws(
         )
     else:
         result = []
-        for withdraw in zex.user_withdraws_on_chain[chain][user]:
+        for withdraw in zex.state_manager.chain_states[chain].user_withdraws[user]:
             token_info = settings.zex.verified_tokens.get(withdraw.token_name)
             if token_info:
                 token_contract = token_info[withdraw.chain].contract_address
             else:
                 token_contract = withdraw.token_name
 
-            decimal = zex.contract_decimal_on_chain[withdraw.chain][token_contract]
+            decimal = zex.state_manager.chain_states[withdraw.chain].contract_decimals[
+                token_contract
+            ]
             w = Withdraw(
                 chain=withdraw.chain,
                 tokenContract=token_contract,
