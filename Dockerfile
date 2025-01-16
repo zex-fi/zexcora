@@ -1,4 +1,4 @@
-FROM python:3.11
+FROM python:3.12
 
 RUN pip3 install cmake && \
   git clone https://github.com/herumi/mcl.git && \
@@ -20,13 +20,16 @@ ENV PYTHONFAULTHANDLER=1 \
   POETRY_VIRTUALENVS_CREATE=false \
   POETRY_CACHE_DIR='/var/cache/pypoetry' \
   POETRY_HOME='/usr/local' \
-  POETRY_VERSION=1.8.3
+  POETRY_VERSION=1.8.5
 
 WORKDIR /zex
 COPY pyproject.toml poetry.lock ./
 RUN curl -sSL https://install.python-poetry.org | python3 - && /usr/local/bin/poetry install
 COPY . .
 RUN /usr/local/bin/poetry install
+
+RUN mkdir -p /app/logs
+ENV LOG_DIR=/app/logs
 
 EXPOSE 15782
 CMD ["python", "app/main.py", "/config.yaml"]

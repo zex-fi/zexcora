@@ -1,4 +1,4 @@
-from struct import pack, unpack
+from typing import Literal
 
 from fastapi import APIRouter
 
@@ -7,23 +7,17 @@ from app import zex
 router = APIRouter()
 
 
-@router.get("/orders/{pair}/{name}")
-def pair_orders(pair, name):
-    pair = pair.split("_")
-    pair = (
-        pair[0].encode()
-        + pack(">I", int(pair[1]))
-        + pair[2].encode()
-        + pack(">I", int(pair[3]))
-    )
-    q = zex.markets.get(pair)
-    if not q:
+@router.get("/orders")
+def pair_orders(pair: str, side: Literal["buy"] | Literal["sell"]):
+    if pair not in zex.markets:
         return []
-    q = q.buy_orders if name == "buy" else q.sell_orders
+    market = zex.markets[pair]
+    orders = market.buy_orders if side.lower() == "buy" else market.sell_orders
+
     return [
         {
-            "amount": unpack(">d", o[16:24])[0],
-            "price": unpack(">d", o[24:32])[0],
+            "price": price,
+            "tx": tx.hex(),
         }
-        for price, index, o in q
+        for price, tx in orders
     ]

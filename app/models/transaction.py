@@ -1,135 +1,91 @@
 from decimal import Decimal
-from struct import unpack
+from struct import calcsize, unpack
 
+from eth_typing import ChecksumAddress
+from eth_utils.address import to_checksum_address
 from pydantic import BaseModel
 
+from app.config import settings
 
-class MarketTransaction:
-    def __init__(self, tx: bytes):
-        assert len(tx) == 145, f"invalid transaction len(tx): {len(tx)}"
-        self.raw_tx = tx
 
-    @property
-    def version(self):
-        return self.raw_tx[0]
+def chunkify(lst, n_chunks):
+    for i in range(0, len(lst), n_chunks):
+        yield lst[i : i + n_chunks]
 
-    @property
-    def operation(self):
-        return self.raw_tx[1]
 
-    @property
-    def base_chain(self):
-        return self.raw_tx[2:5].upper().decode()
-
-    @property
-    def base_token_id(self):
-        return unpack(">I", self.raw_tx[5:9])[0]
-
-    @property
-    def quote_chain(self):
-        return self.raw_tx[9:12].upper().decode()
-
-    @property
-    def quote_token_id(self):
-        return unpack(">I", self.raw_tx[12:16])[0]
-
-    @property
-    def amount(self):
-        return unpack(">d", self.raw_tx[16:24])[0]
-
-    @property
-    def price(self):
-        return unpack(">d", self.raw_tx[24:32])[0]
-
-    @property
-    def time(self):
-        return unpack(">I", self.raw_tx[32:36])[0]
-
-    @property
-    def nonce(self):
-        return unpack(">I", self.raw_tx[36:40])[0]
-
-    @property
-    def public(self):
-        return self.raw_tx[40:73]
-
-    @property
-    def signature(self):
-        return self.raw_tx[73:137]
-
-    @property
-    def index(self):
-        return unpack(">Q", self.raw_tx[137:145])[0]
-
-    @property
-    def pair(self):
-        return f"{self.base_chain}:{self.base_token_id}-{self.quote_chain}:{self.quote_token_id}"
-
-    @property
-    def base_token(self):
-        return f"{self.base_chain}:{self.base_token_id}"
-
-    @property
-    def quote_token(self):
-        return f"{self.quote_chain}:{self.quote_token_id}"
-
-    @property
-    def order_slice(self):
-        return self.raw_tx[2:41]
-
-    def hex(self):
-        return self.raw_tx.hex()
-
-    def __lt__(self, other: "MarketTransaction"):
-        return self.time < other.time
-
-    def __eq__(self, other):
-        if id(self) == id(other):
-            return True
-        if not isinstance(other, MarketTransaction):
-            return False
-
-        return self.signature == other.signature
+def get_token_name(chain, address):
+    for verified_name, tokens in settings.zex.verified_tokens.items():
+        if chain not in tokens:
+            continue
+        if tokens[chain].contract_address == address:
+            return verified_name
+    return f"{chain}:{address}"
 
 
 class Deposit(BaseModel):
-    token: str
+    tx_hash: str
+    chain: str
+    token_contract: ChecksumAddress
     amount: Decimal
+    decimal: int
     time: int
+    user_id: int
+    vout: int
+
+    @property
+    def token_name(self):
+        return get_token_name(self.chain, self.token_contract)
 
 
 class DepositTransaction(BaseModel):
     version: int
     operation: str
     chain: str
-    from_block: int
-    to_block: int
     deposits: list[Deposit]
-    signature: bytes
 
     @classmethod
     def from_tx(cls, tx: bytes) -> "DepositTransaction":
+        header_format = ">B B 3s H"
+        header_size = calcsize(header_format)
+        version, operation, chain, count = unpack(header_format, tx[:header_size])
+        chain = chain.upper().decode()
+
+        deposit_format = ">66s 42s 32s B I Q B"
+        deposit_size = calcsize(deposit_format)
+        raw_deposits = list(
+            chunkify(tx[header_size : header_size + deposit_size * count], deposit_size)
+        )
+
         deposits = []
-        deposit_count = unpack(">H", tx[21:23])[0]
-        for i in range(deposit_count):
-            offset = 23 + i * 49
+
+        for chunk in raw_deposits:
+            tx_hash, token_contract, amount, decimal, t, user_id, vout = unpack(
+                deposit_format, chunk[:deposit_size]
+            )
+            amount = int.from_bytes(amount, byteorder="big")
+            tx_hash = tx_hash.decode()
+
+            amount = Decimal(str(amount))
+            amount /= 10 ** Decimal(decimal)
+
             deposits.append(
                 Deposit(
-                    token=unpack(">I", tx[offset : offset + 4])[0],
-                    amount=unpack(">d", tx[offset + 4 : offset + 8])[0],
-                    time=unpack(">I", tx[offset + 8 : offset + 12])[0],
-                    public=tx[offset + 12 : offset + 33],
+                    tx_hash=tx_hash,
+                    chain=chain,
+                    token_contract=to_checksum_address(token_contract.decode()),
+                    amount=amount,
+                    decimal=decimal,
+                    time=t,
+                    user_id=user_id,
+                    vout=vout,
                 )
             )
 
         return DepositTransaction(
-            version=tx[0],
-            operation=tx[1],
-            chain=tx[2:5],
-            from_block=unpack(">Q", tx[5:13])[0],
-            to_block=unpack(">Q", tx[13:21])[0],
+            version=version,
+            operation=chr(operation),
+            chain=chain,
             deposits=deposits,
-            signature=tx[-32:],
         )
 
 
@@ -137,9 +93,10 @@ class WithdrawTransaction(BaseModel):
     version: int
     operation: str
     chain: str
-    token_id: int
+    # name if token is verified else checksum contract address
+    token_name: str
     amount: Decimal
-    dest: str
+    destination: str
     time: int
     nonce: int
     public: bytes
@@ -149,24 +106,28 @@ class WithdrawTransaction(BaseModel):
 
     @classmethod
     def from_tx(cls, tx: bytes) -> "WithdrawTransaction":
-        assert len(tx) == 142, f"invalid transaction len(tx): {len(tx)}"
+        version, operation, token_len = unpack(">B B B", tx[:3])
+
+        withdraw_format = f">3s {token_len}s d 20s I I 33s"
+        chain, token_name, amount, destination, t, nonce, public = unpack(
+            withdraw_format, tx[3 : 3 + calcsize(withdraw_format)]
+        )
+        chain = chain.decode("ascii")
+        token_name = token_name.decode("ascii")
+
         return WithdrawTransaction(
-            version=tx[0],
-            operation=chr(tx[1]),
-            chain=tx[2:5].upper(),
-            token_id=unpack(">I", tx[5:9])[0],
-            amount=Decimal(str(unpack(">d", tx[9:17])[0])),
-            dest="0x" + tx[17:37].hex(),
-            time=unpack(">I", tx[37:41])[0],
-            nonce=unpack(">I", tx[41:45])[0],
-            public=tx[45:78],
-            signature=tx[78:142],
+            version=version,
+            operation=chr(operation),
+            chain=chain,
+            token_name=token_name,
+            amount=Decimal(str(amount)),
+            destination="0x" + destination.hex(),
+            time=t,
+            nonce=nonce,
+            public=public,
+            signature=tx[-64:],
             raw_tx=tx,
         )
-
-    @property
-    def internal_token(self):
-        return f"{self.chain}:{self.token_id}"
 
     def hex(self):
         return self.raw_tx.hex()
