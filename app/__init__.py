@@ -35,9 +35,19 @@ def initialize_zex():
             state_dest=settings.zex.state_dest,
             light_node=settings.zex.light_node,
         )
-
-    response = httpx.get(settings.zex.state_source)
-    if response.status_code != 200 or len(response.content) == 0:
+    try:
+        response = httpx.get(settings.zex.state_source)
+        if response.status_code != 200 or len(response.content) == 0:
+            return Zex(
+                kline_callback=kline_event(manager),
+                depth_callback=depth_event(manager),
+                order_callback=user_order_event(manager),
+                deposit_callback=user_deposit_event(manager),
+                withdraw_callback=user_withdraw_event(manager),
+                state_dest=settings.zex.state_dest,
+                light_node=settings.zex.light_node,
+            )
+    except httpx.ConnectError:
         return Zex(
             kline_callback=kline_event(manager),
             depth_callback=depth_event(manager),

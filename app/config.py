@@ -1,6 +1,6 @@
 from decimal import Decimal
 from pathlib import Path
-import sys
+import os
 
 from pydantic import BaseModel
 from pydantic_settings import (
@@ -58,8 +58,9 @@ class ZexSettings(BaseModel):
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(yaml_file=sys.argv[1], extra="forbid")
-
+    model_config = SettingsConfigDict(
+        yaml_file=os.environ["CONFIG_PATH"], extra="forbid"
+    )
     zex: ZexSettings
 
     @classmethod
