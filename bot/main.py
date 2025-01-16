@@ -14,38 +14,35 @@ private_seed_int = int.from_bytes(bytearray.fromhex(private_seed), byteorder="bi
 def start_threads() -> list[tuple[Thread, ZexBot]]:
     threads: list[tuple[Thread, ZexBot]] = []
     lock = Lock()
-    for base_chain, x in PAIRS.items():
-        for base_token_id, y in x.items():
-            for quote_chain, z in y.items():
-                for quote_token_id, bid_ask_digits in z.items():
-                    buyer_bot = ZexBot(
-                        private_key=private_seed_int.to_bytes(32, "big"),
-                        pair=f"{base_chain}:{base_token_id}-{quote_chain}:{quote_token_id}",
-                        side="buy",
-                        binance_name=bid_ask_digits["binance_name"],
-                        volume_digits=bid_ask_digits["volume_digits"],
-                        price_digits=bid_ask_digits["price_digits"],
-                        lock=lock,
-                        seed=0,
-                    )
-                    seller_bot = ZexBot(
-                        private_key=private_seed_int.to_bytes(32, "big"),
-                        pair=f"{base_chain}:{base_token_id}-{quote_chain}:{quote_token_id}",
-                        side="sell",
-                        binance_name=bid_ask_digits["binance_name"],
-                        volume_digits=bid_ask_digits["volume_digits"],
-                        price_digits=bid_ask_digits["price_digits"],
-                        lock=lock,
-                        seed=1,
-                    )
-                    print(
-                        f"buyer id: {buyer_bot.user_id}, seller id: {seller_bot.user_id},{base_chain}:{base_token_id}-{quote_chain}:{quote_token_id}"
-                    )
-                    t1 = Thread(target=buyer_bot.run)
-                    t2 = Thread(target=seller_bot.run)
-                    t1.start()
-                    t2.start()
-                    threads.extend([(t1, buyer_bot), (t2, seller_bot)])
+    for pair in PAIRS:
+        buyer_bot = ZexBot(
+            private_key=private_seed_int.to_bytes(32, "big"),
+            pair=pair["pair"],
+            side="buy",
+            binance_name=pair["binance_name"],
+            volume_digits=pair["volume_digits"],
+            price_digits=pair["price_digits"],
+            lock=lock,
+            seed=0,
+        )
+        seller_bot = ZexBot(
+            private_key=private_seed_int.to_bytes(32, "big"),
+            pair=pair["pair"],
+            side="sell",
+            binance_name=pair["binance_name"],
+            volume_digits=pair["volume_digits"],
+            price_digits=pair["price_digits"],
+            lock=lock,
+            seed=1,
+        )
+        print(
+            f"buyer id: {buyer_bot.user_id}, seller id: {seller_bot.user_id}, pair: {pair}"
+        )
+        t1 = Thread(target=buyer_bot.run)
+        t2 = Thread(target=seller_bot.run)
+        t1.start()
+        t2.start()
+        threads.extend([(t1, buyer_bot), (t2, seller_bot)])
     return threads
 
 

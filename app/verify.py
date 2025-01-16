@@ -1,6 +1,8 @@
+from dataclasses import dataclass
 from hashlib import sha256
 from itertools import repeat
-from struct import unpack
+from struct import calcsize, unpack
+from struct import error as struct_error
 import multiprocessing
 
 from eth_account.messages import encode_defunct
@@ -20,120 +22,440 @@ from app.singleton import SingletonMeta
 
 from .config import settings
 
-BTC_XMR_DEPOSIT, DEPOSIT, WITHDRAW, BUY, SELL, CANCEL, REGISTER = b"xdwbscr"
+BTC_DEPOSIT, DEPOSIT, WITHDRAW, BUY, SELL, CANCEL, REGISTER = b"xdwbscr"
 
 w3 = Web3()
 
 
+class MessageFormatError(Exception):
+    """Custom exception for message formatting errors."""
+
+    pass
+
+
 def order_msg(tx: bytes) -> bytes:
-    """Format order message for verification."""
-    msg = f"""v: {tx[0]}\nname: {"buy" if tx[1] == BUY else "sell"}\nbase token: {tx[2:5].decode("ascii")}:{unpack(">I", tx[5:9])[0]}\nquote token: {tx[9:12].decode("ascii")}:{unpack(">I", tx[12:16])[0]}\namount: {np.format_float_positional(unpack(">d", tx[16:24])[0], trim="0")}\nprice: {np.format_float_positional(unpack(">d", tx[24:32])[0], trim="0")}\nt: {unpack(">I", tx[32:36])[0]}\nnonce: {unpack(">I", tx[36:40])[0]}\npublic: {tx[40:73].hex()}\n"""
-    msg = "".join(("\x19Ethereum Signed Message:\n", str(len(msg)), msg))
-    return msg.encode()
+    """
+    Format order message for verification.
+
+    Args:
+        tx: Transaction bytes containing order data
+
+    Returns:
+        Formatted message bytes
+
+    Raises:
+        MessageFormatError: If message formatting fails
+    """
+    try:
+        if len(tx) < 4:
+            raise MessageFormatError("Transaction too short for header")
+
+        # Unpack header
+        try:
+            version, side, base_token_len, quote_token_len = unpack(">B B B B", tx[:4])
+        except struct_error as e:
+            raise MessageFormatError(f"Failed to unpack header: {e}")
+
+        # Validate token lengths
+        if base_token_len == 0 or quote_token_len == 0:
+            raise MessageFormatError("Invalid token length")
+
+        # Create and validate format string
+        order_format = f">{base_token_len}s {quote_token_len}s d d I I 33s"
+        order_format_size = calcsize(order_format)
+
+        if len(tx) < 4 + order_format_size:
+            raise MessageFormatError("Transaction too short for order data")
+
+        # Unpack order data
+        try:
+            base_token, quote_token, amount, price, t, nonce, public = unpack(
+                order_format, tx[4 : 4 + order_format_size]
+            )
+        except struct_error as e:
+            raise MessageFormatError(f"Failed to unpack order data: {e}")
+
+        # Decode tokens
+        try:
+            base_token = base_token.decode("ascii")
+            quote_token = quote_token.decode("ascii")
+        except UnicodeDecodeError as e:
+            raise MessageFormatError(f"Invalid token encoding: {e}")
+
+        # Validate side
+        if side not in (BUY, SELL):
+            raise MessageFormatError(f"Invalid order side: {side}")
+
+        # Format message
+        try:
+            public = public.hex()
+            msg = f"""v: {version}
+name: {"buy" if side == BUY else "sell"}
+base token: {base_token}
+quote token: {quote_token}
+amount: {np.format_float_positional(amount, trim="0")}
+price: {np.format_float_positional(price, trim="0")}
+t: {t}
+nonce: {nonce}
+public: {public}
+"""
+            msg = "".join(("\x19Ethereum Signed Message:\n", str(len(msg)), msg))
+            logger.debug("Order message created successfully", message=msg)
+            return msg.encode()
+        except Exception as e:
+            raise MessageFormatError(f"Failed to format message: {e}")
+
+    except MessageFormatError:
+        raise
+    except Exception as e:
+        raise MessageFormatError(f"Unexpected error formatting order message: {e}")
 
 
 def withdraw_msg(tx: bytes) -> bytes:
-    """Format withdrawal message for verification."""
-    msg = f"v: {tx[0]}\n"
-    msg += "name: withdraw\n"
-    msg += f'token: {tx[2:5].decode("ascii")}:{unpack(">I", tx[5:9])[0]}\n'
-    msg += f'amount: {unpack(">d", tx[9:17])[0]}\n'
-    msg += f'to: {"0x" + tx[17:37].hex()}\n'
-    msg += f't: {unpack(">I", tx[37:41])[0]}\n'
-    msg += f'nonce: {unpack(">I", tx[41:45])[0]}\n'
-    msg += f"public: {tx[45:78].hex()}\n"
-    msg = "\x19Ethereum Signed Message:\n" + str(len(msg)) + msg
-    return msg.encode()
+    """
+    Format withdrawal message for verification.
+
+    Args:
+        tx: Transaction bytes containing withdrawal data
+
+    Returns:
+        Formatted message bytes
+
+    Raises:
+        MessageFormatError: If message formatting fails
+    """
+    try:
+        if len(tx) < 3:
+            raise MessageFormatError("Transaction too short for header")
+
+        # Unpack header
+        try:
+            version, token_len = unpack(">B x B", tx[:3])
+        except struct_error as e:
+            raise MessageFormatError(f"Failed to unpack header: {e}")
+
+        # Validate token length
+        if token_len == 0:
+            raise MessageFormatError("Invalid token length")
+
+        # Create and validate format string
+        withdraw_format = f">3s {token_len}s d 20s I I 33s"
+        format_size = calcsize(withdraw_format)
+
+        if len(tx) < 3 + format_size:
+            raise MessageFormatError("Transaction too short for withdrawal data")
+
+        # Unpack withdrawal data
+        try:
+            token_chain, token_name, amount, destination, t, nonce, public = unpack(
+                withdraw_format, tx[3 : 3 + format_size]
+            )
+        except struct_error as e:
+            raise MessageFormatError(f"Failed to unpack withdrawal data: {e}")
+
+        # Decode tokens
+        try:
+            token_chain = token_chain.decode("ascii")
+            token_name = token_name.decode("ascii")
+        except UnicodeDecodeError as e:
+            raise MessageFormatError(f"Invalid token encoding: {e}")
+
+        # Format message
+        try:
+            msg = f"""v: {version}
+name: withdraw
+token chain: {token_chain}
+token name: {token_name}
+amount: {amount}
+to: 0x{destination.hex()}
+t: {t}
+nonce: {nonce}
+public: {public.hex()}
+"""
+            msg = "\x19Ethereum Signed Message:\n" + str(len(msg)) + msg
+            logger.debug("Withdrawal message created successfully", message=msg)
+            return msg.encode()
+        except Exception as e:
+            raise MessageFormatError(f"Failed to format message: {e}")
+
+    except MessageFormatError:
+        raise
+    except Exception as e:
+        raise MessageFormatError(f"Unexpected error formatting withdrawal message: {e}")
 
 
 def register_msg() -> bytes:
-    """Format registration message for verification."""
-    msg = "Welcome to ZEX."
-    msg = "".join(("\x19Ethereum Signed Message:\n", str(len(msg)), msg))
-    return msg.encode()
+    """
+    Format registration message for verification.
+
+    Returns:
+        Formatted message bytes
+
+    Raises:
+        MessageFormatError: If message formatting fails
+    """
+    try:
+        msg = "Welcome to ZEX."
+        msg = "".join(("\x19Ethereum Signed Message:\n", str(len(msg)), msg))
+        logger.debug("Registration message created successfully", message=msg)
+        return msg.encode()
+    except Exception as e:
+        raise MessageFormatError(f"Failed to format registration message: {e}")
 
 
 def cancel_msg(tx: bytes) -> bytes:
-    """Format cancellation message for verification."""
-    msg = f"""v: {tx[0]}\nname: cancel\nslice: {tx[2:41].hex()}\npublic: {tx[41:74].hex()}\n"""
-    msg = "".join(("\x19Ethereum Signed Message:\n", str(len(msg)), msg))
-    return msg.encode()
+    """
+    Format cancellation message for verification.
+
+    Args:
+        tx: Transaction bytes containing cancellation data
+
+    Returns:
+        Formatted message bytes
+
+    Raises:
+        MessageFormatError: If message formatting fails
+    """
+    try:
+        if (
+            len(tx) < 99
+        ):  # Minimum length check (1 byte version + 1 byte type + minimum order tx + 33 bytes public key)
+            raise MessageFormatError("Transaction too short for cancellation data")
+
+        try:
+            order_tx = tx[2:-97].hex()
+            public_key = tx[-97:-64].hex()
+        except Exception as e:
+            raise MessageFormatError(f"Failed to hex encode transaction data: {e}")
+
+        try:
+            msg = f"""v: {tx[0]}
+name: cancel
+slice: {order_tx}
+public: {public_key}
+"""
+            msg = "".join(("\x19Ethereum Signed Message:\n", str(len(msg)), msg))
+            logger.debug("Cancellation message created successfully", message=msg)
+            return msg.encode()
+        except Exception as e:
+            raise MessageFormatError(f"Failed to format message: {e}")
+
+    except MessageFormatError:
+        raise
+    except Exception as e:
+        raise MessageFormatError(
+            f"Unexpected error formatting cancellation message: {e}"
+        )
 
 
-def _verify_single_tx(
+@dataclass
+class VerificationResult:
+    """Result of transaction verification with detailed error information."""
+
+    is_valid: bool
+    error_type: str | None = None
+    error_message: str | None = None
+
+
+def verify_single_tx(
     tx: bytes,
     deposit_monitor_pub_key: int,
     deposit_shield_address: str,
-    btc_xmr_monitor_pub: bytes,
-) -> bool:
-    """Verify a single transaction."""
-    name = tx[1]
+    btc_monitor_pub: bytes,
+) -> VerificationResult:
+    """
+    Verify a single transaction with comprehensive error handling.
 
-    if name == DEPOSIT:
+    Returns:
+        VerificationResult containing verification status and error details if any.
+    """
+    try:
+        name = tx[1]
+    except IndexError:
+        logger.error("Transaction data too short to contain name")
+        return VerificationResult(
+            is_valid=False,
+            error_type="InvalidFormat",
+            error_message="Transaction data too short to contain name",
+        )
+
+    try:
+        if name == DEPOSIT:
+            return _verify_deposit_tx(
+                tx, deposit_monitor_pub_key, deposit_shield_address
+            )
+        elif name == BTC_DEPOSIT:
+            return _verify_btc_deposit_tx(tx, btc_monitor_pub)
+        elif name == WITHDRAW:
+            return _verify_withdraw_tx(tx)
+        elif name in (CANCEL, BUY, SELL, REGISTER):
+            return _verify_standard_tx(tx, name)
+        else:
+            logger.error(f"Unknown transaction type: {name}")
+            return VerificationResult(
+                is_valid=False,
+                error_type="InvalidTransactionType",
+                error_message=f"Unknown transaction type: {name}",
+            )
+    except Exception as e:
+        logger.exception(
+            "Unexpected error verifying transaction",
+            transaction_type=chr(name),
+            error=str(e),
+        )
+        return VerificationResult(
+            is_valid=False,
+            error_type="UnexpectedError",
+            error_message=f"Unexpected error: {str(e)}",
+        )
+
+
+def _verify_deposit_tx(
+    tx: bytes, deposit_monitor_pub_key: int, deposit_shield_address: str
+) -> VerificationResult:
+    """Verify deposit transaction."""
+    try:
         msg = tx[:-206]
         msg_hash = sha256(msg).hexdigest()
         nonce, frost_sig, ecdsa_sig = unpack(">42s 32s 132s", tx[-206:])
 
-        frost_verified = verify_group_signature(
-            {
-                "key_type": "ETH",
-                "public_key": pub_compress(code_to_pub(int(deposit_monitor_pub_key))),
-                "message": msg_hash,
-                "signature": int.from_bytes(frost_sig, "big"),
-                "nonce": nonce.decode(),
-            }
+        # Verify FROST signature
+        try:
+            frost_verified = verify_group_signature(
+                {
+                    "key_type": "ETH",
+                    "public_key": pub_compress(
+                        code_to_pub(int(deposit_monitor_pub_key))
+                    ),
+                    "message": msg_hash,
+                    "signature": int.from_bytes(frost_sig, "big"),
+                    "nonce": nonce.decode(),
+                }
+            )
+        except ValueError as e:
+            logger.error(f"FROST signature verification failed: {e}")
+            return VerificationResult(
+                is_valid=False,
+                error_type="FROSTVerificationError",
+                error_message=f"FROST signature verification failed: {str(e)}",
+            )
+
+        # Verify ECDSA signature
+        try:
+            eth_signed_message = encode_defunct(tx[:-206])
+            recovered_address = w3.eth.account.recover_message(
+                eth_signed_message, signature=bytes.fromhex(ecdsa_sig.decode()[2:])
+            )
+            ecdsa_verified = recovered_address == deposit_shield_address
+        except ValueError as e:
+            logger.error(f"ECDSA signature verification failed: {e}")
+            return VerificationResult(
+                is_valid=False,
+                error_type="ECDSAVerificationError",
+                error_message=f"ECDSA signature verification failed: {str(e)}",
+            )
+
+        return VerificationResult(is_valid=frost_verified and ecdsa_verified)
+    except Exception as e:
+        logger.exception(f"Error verifying deposit: {e}")
+        return VerificationResult(
+            is_valid=False,
+            error_type="DepositVerificationError",
+            error_message=f"Error verifying deposit: {str(e)}",
         )
 
-        # Encode the message using Ethereum's signed message structure
-        eth_signed_message = encode_defunct(tx[:-206])
 
-        recovered_address = w3.eth.account.recover_message(
-            eth_signed_message, signature=bytes.fromhex(ecdsa_sig.decode()[2:])
-        )
-        ecdsa_verified = recovered_address == deposit_shield_address
-
-        return frost_verified and ecdsa_verified
-    elif name == BTC_XMR_DEPOSIT:
+def _verify_btc_deposit_tx(tx: bytes, btc_monitor_pub: bytes) -> VerificationResult:
+    """Verify Bitcoin deposit transaction."""
+    try:
         msg = tx[:-64]
         sig = tx[-64:]
-        pubkey = PublicKey(btc_xmr_monitor_pub, raw=True)
-        return pubkey.schnorr_verify(msg, sig, bip340tag="zex")
-    elif name == WITHDRAW:
-        msg, pubkey, sig = withdraw_msg(tx), tx[45:78], tx[78 : 78 + 64]
-        logger.info(f"withdraw request pubkey: {pubkey}")
+        pubkey = PublicKey(btc_monitor_pub, raw=True)
+        is_valid = pubkey.schnorr_verify(msg, sig, bip340tag="zex")
+        return VerificationResult(is_valid=is_valid)
+    except Exception as e:
+        logger.exception(f"Error verifying BTC deposit: {e}")
+        return VerificationResult(
+            is_valid=False,
+            error_type="BTCVerificationError",
+            error_message=f"Error verifying BTC deposit: {str(e)}",
+        )
+
+
+def _verify_withdraw_tx(tx: bytes) -> VerificationResult:
+    """Verify withdrawal transaction."""
+    try:
+        msg, pubkey, sig = withdraw_msg(tx), tx[-97:-64], tx[-64:]
+        logger.debug(f"Withdraw request pubkey: {pubkey.hex()}")
         pubkey = PublicKey(pubkey, raw=True)
         sig = pubkey.ecdsa_deserialize_compact(sig)
         msg_hash = keccak(msg)
-        return pubkey.ecdsa_verify(msg_hash, sig, raw=True)
-    else:
-        if name == CANCEL:
-            msg, pubkey, sig = cancel_msg(tx), tx[41:74], tx[74 : 74 + 64]
-        elif name in (BUY, SELL):
-            msg, pubkey, sig = order_msg(tx), tx[40:73], tx[73 : 73 + 64]
-        elif name == REGISTER:
+        return VerificationResult(is_valid=pubkey.ecdsa_verify(msg_hash, sig, raw=True))
+    except Exception as e:
+        logger.exception(f"Error verifying withdrawal: {e}")
+        return VerificationResult(
+            is_valid=False,
+            error_type="WithdrawVerificationError",
+            error_message=f"Error verifying withdrawal: {str(e)}",
+        )
+
+
+def _verify_standard_tx(tx: bytes, tx_type: int) -> VerificationResult:
+    """Verify standard transactions (CANCEL, BUY, SELL, REGISTER)."""
+    try:
+        if tx_type == CANCEL:
+            msg, pubkey, sig = cancel_msg(tx), tx[-97:-64], tx[-64:]
+        elif tx_type in (BUY, SELL):
+            msg = order_msg(tx)
+            pubkey, sig = tx[-97:-64], tx[-64:]
+        elif tx_type == REGISTER:
             msg, pubkey, sig = register_msg(), tx[2:35], tx[35 : 35 + 64]
         else:
-            return False
+            logger.error(f"Unsupported transaction type: {chr(tx_type)}")
+            return VerificationResult(
+                is_valid=False,
+                error_type="InvalidTransactionType",
+                error_message=f"Unsupported transaction type: {chr(tx_type)}",
+            )
 
         pubkey = PublicKey(pubkey, raw=True)
         sig = pubkey.ecdsa_deserialize_compact(sig)
         msg_hash = keccak(msg)
-        return pubkey.ecdsa_verify(msg_hash, sig, raw=True)
+        is_verified = pubkey.ecdsa_verify(msg_hash, sig, raw=True)
+
+        if not is_verified:
+            logger.error(
+                "Failed to verify transaction",
+                transaction_type=chr(tx_type),
+                pubkey=pubkey.serialize().hex(),
+            )
+
+        return VerificationResult(is_valid=is_verified)
+    except Exception as e:
+        logger.exception(
+            f"Error verifying {chr(tx_type)} transaction: {e}",
+            transaction_type=chr(tx_type),
+        )
+        return VerificationResult(
+            is_valid=False,
+            error_type="StandardTxVerificationError",
+            error_message=f"Error verifying {chr(tx_type)} transaction: {str(e)}",
+        )
 
 
 def _verify_chunk(
     txs: list[bytes],
     deposit_monitor_pub_key: int,
     deposit_shield_address: str,
-    btc_xmr_monitor_pub: bytes,
+    btc_monitor_pub: bytes,
 ) -> list[bool]:
     """Verify a chunk of transactions."""
     return [
-        _verify_single_tx(
+        verify_single_tx(
             tx,
             deposit_monitor_pub_key,
             deposit_shield_address,
-            btc_xmr_monitor_pub,
+            btc_monitor_pub,
         )
         for tx in txs
     ]

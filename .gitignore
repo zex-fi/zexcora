@@ -175,3 +175,9 @@ important-keys.yaml
 config-test.yaml
 wallet/monero
 redis-data/
+
+logs/
+*.log
+*.zip
+
+zsequencer/

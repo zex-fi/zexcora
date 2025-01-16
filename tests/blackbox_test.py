@@ -161,9 +161,9 @@ def test_new_market_order(zex_instance: Zex, redis_client):
     offset = 0
     private_key = (private_seed_int + offset).to_bytes(32, "big")
     privkey = PrivateKey(private_key, raw=True)
-    xmr_usdt = "BTC:1-POL:1"
+    btc_usdt = "BTC:1-POL:1"
     tx = create_order(
-        privkey, xmr_usdt, "buy", 170.2, 0.1, nonce=0, counter=0, verbose=False
+        privkey, btc_usdt, "buy", 170.2, 0.1, nonce=0, counter=0, verbose=False
     )
     response = client.post("/v1/order", json=[tx.decode("latin-1")])
     assert response.status_code == 200

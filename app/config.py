@@ -1,3 +1,4 @@
+from decimal import Decimal
 from pathlib import Path
 import sys
 
@@ -8,6 +9,9 @@ from pydantic_settings import (
     SettingsConfigDict,
     YamlConfigSettingsSource,
 )
+
+type Chain = str
+type TokenName = str
 
 
 class Keys(BaseModel):
@@ -22,6 +26,12 @@ class Redis(BaseModel):
     password: str
 
 
+class Token(BaseModel):
+    contract_address: str
+    balance_withdraw_limit: Decimal
+    decimal: int
+
+
 class ZexSettings(BaseModel):
     host: str
     port: int
@@ -30,6 +40,7 @@ class ZexSettings(BaseModel):
     state_source: str
     state_dest: Path
     state_save_frequency: int
+    tx_transmit_delay: float
     mainnet: bool
     use_redis: bool
     verbose: bool
@@ -42,8 +53,8 @@ class ZexSettings(BaseModel):
     chains: list[str]
 
     usdt_mainnet: str
-    default_tokens_decimal: dict[str, dict[str, int]]
-    verified_tokens_id: dict[str, dict[str, int]]
+
+    verified_tokens: dict[TokenName, dict[Chain, Token]]
 
 
 class Settings(BaseSettings):

@@ -1,5 +1,5 @@
 from collections import deque
-from struct import pack, unpack
+from struct import pack
 from threading import Lock, Thread
 import json
 import os
@@ -19,7 +19,7 @@ PORT = int(os.getenv("ZEX_PORT"))
 
 assert HOST is not None and PORT is not None, "HOST or PORT is not defined"
 
-BTC_XMR_DEPOSIT, DEPOSIT, WITHDRAW, BUY, SELL, CANCEL, REGISTER = b"xdwbscr"
+BTC_DEPOSIT, DEPOSIT, WITHDRAW, BUY, SELL, CANCEL, REGISTER = b"xdwbscr"
 
 version = pack(">B", 1)
 
@@ -52,7 +52,6 @@ class ZexBot:
         self.pubkey = self.privkey.pubkey.serialize()
         self.user_id: int | None = None
         self.nonce = -1
-        self.counter = 0
         self.orders = deque()
         self.websocket: WebSocketApp | None = None
 
@@ -134,7 +133,7 @@ class ZexBot:
         if volume < self.base_volume * 0.001:
             volume = round(self.base_volume, self.volume_digits)
         with self.lock:
-            time.sleep(0.1)
+            time.sleep(0.5)
             resp = httpx.get(f"http://{HOST}:{PORT}/v1/user/nonce?id={self.user_id}")
             self.nonce = resp.json()["nonce"]
             tx = self.create_order(price, volume, maker=maker)
@@ -143,7 +142,7 @@ class ZexBot:
 
             if len(self.orders) >= MAX_ORDERS_COUNT:
                 oldest_tx = self.orders.popleft()
-                cancel_tx = self.create_cancel_order(oldest_tx[1:40])
+                cancel_tx = self.create_cancel_order(oldest_tx)
                 txs.append(cancel_tx.decode("latin-1"))
 
             httpx.post(f"http://{HOST}:{PORT}/v1/order", json=txs)
@@ -161,12 +160,14 @@ class ZexBot:
         maker: bool = False,
         verbose=True,
     ):
+        pair = self.pair.replace("-", "")
+        base_token, quote_token = self.pair.split("-")
         tx = (
-            pack(">B", BUY if self.side == "buy" else SELL)
-            + self.pair[:3].encode()
-            + pack(">I", int(self.pair[4]))
-            + self.pair[6:9].encode()
-            + pack(">I", int(self.pair[10]))
+            version
+            + pack(">B", BUY if self.side == "buy" else SELL)
+            + pack(">B", len(base_token))
+            + pack(">B", len(quote_token))
+            + pair.encode()
             + pack(">d", volume)
             + pack(">d", price)
         )
@@ -174,16 +175,15 @@ class ZexBot:
             print(
                 f"pair: {self.pair}, none: {self.nonce}, maker: {maker}, side: {self.side}, price: {price}, vol: {volume}"
             )
-        tx = version + tx
         name = tx[1]
         t = int(time.time())
         tx += pack(">II", t, self.nonce) + self.pubkey
         msg = "v: 1\n"
         msg += f'name: {"buy" if name == BUY else "sell"}\n'
-        msg += f'base token: {tx[2:5].decode("ascii")}:{unpack(">I", tx[5:9])[0]}\n'
-        msg += f'quote token: {tx[9:12].decode("ascii")}:{unpack(">I", tx[12:16])[0]}\n'
-        msg += f'amount: {np.format_float_positional(unpack(">d", tx[16:24])[0], trim="0")}\n'
-        msg += f'price: {np.format_float_positional(unpack(">d", tx[24:32])[0], trim="0")}\n'
+        msg += f"base token: {base_token}\n"
+        msg += f"quote token: {quote_token}\n"
+        msg += f'amount: {np.format_float_positional(volume, trim="0")}\n'
+        msg += f'price: {np.format_float_positional(price, trim="0")}\n'
         msg += f"t: {t}\n"
         msg += f"nonce: {self.nonce}\n"
         msg += f"public: {self.pubkey.hex()}\n"
@@ -192,13 +192,14 @@ class ZexBot:
         sig = self.privkey.ecdsa_sign(keccak(msg.encode("ascii")), raw=True)
         sig = self.privkey.ecdsa_serialize_compact(sig)
         tx += sig
-        tx += pack(">Q", self.counter)
-        self.counter += 1
+
+        print(msg)
+        print(tx)
         return tx
 
     def create_cancel_order(self, order: bytes):
-        tx = version + pack(">B", CANCEL) + order + self.pubkey
-        msg = f"""v: {tx[0]}\nname: cancel\nslice: {tx[2:41].hex()}\npublic: {tx[41:74].hex()}\n"""
+        tx = version + pack(">B", CANCEL) + order[1:-97] + self.pubkey
+        msg = f"""v: {tx[0]}\nname: cancel\nslice: {order[1:-97].hex()}\npublic: {order[-97:-64].hex()}\n"""
         msg = "".join(("\x19Ethereum Signed Message:\n", str(len(msg)), msg))
 
         sig = self.privkey.ecdsa_sign(keccak(msg.encode("ascii")), raw=True)
@@ -227,7 +228,11 @@ class ZexBot:
             if resp.status_code != 200:
                 time.sleep(0.1)
                 continue
-            self.user_id = resp.json()["id"]
+            data = resp.json()
+            if "id" not in data:
+                time.sleep(0.1)
+                continue
+            self.user_id = data["id"]
             break
         if self.user_id is None:
             resp.raise_for_status()
