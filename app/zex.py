@@ -1,7 +1,6 @@
 from collections import deque
 from collections.abc import Callable
 from copy import deepcopy
-from dataclasses import dataclass
 from decimal import Decimal, FloatOperation, getcontext
 from io import BytesIO
 from threading import Lock
@@ -16,7 +15,10 @@ from eth_utils.address import to_checksum_address
 from loguru import logger
 import pandas as pd
 
-from .config import Settings, settings
+from app.chain import ChainState
+from app.kline_manager import KlineManager
+
+from .config import settings
 from .models.transaction import (
     Deposit,
     DepositTransaction,
@@ -24,7 +26,7 @@ from .models.transaction import (
 )
 from .proto import zex_pb2
 from .singleton import SingletonMeta
-from .zex_types import Chain, ContractAddress, ExecutionType, Token, UserPublic
+from .zex_types import Chain, ExecutionType, UserPublic
 
 BTC_DEPOSIT, DEPOSIT, WITHDRAW, BUY, SELL, CANCEL, REGISTER = b"xdwbscr"
 TRADES_TTL = 1000
@@ -38,109 +40,6 @@ def get_token_name(chain, address):
         if tokens[chain].contract_address == address:
             return verified_name
     return f"{chain}:{address}"
-
-
-@dataclass
-class ChainState:
-    """Manages state for a specific blockchain."""
-
-    deposits: set[tuple[str, int]]
-    balances: dict[str, Decimal]  # contract_address -> balance
-    withdraw_nonce: int
-    user_withdraw_nonces: dict[bytes, int]  # public_key -> nonce
-    user_withdraws: dict[bytes, list[WithdrawTransaction]]  # public_key -> withdraws
-    withdraws: list[WithdrawTransaction]
-    contract_decimals: dict[str, int]  # contract_address -> decimal
-
-    @classmethod
-    def create_empty(cls):
-        return cls(
-            deposits=set(),
-            balances={},
-            withdraw_nonce=0,
-            user_withdraw_nonces={},
-            user_withdraws={},
-            withdraws=[],
-            contract_decimals={},
-        )
-
-    def to_protobuf(self, chain: str, pb_state: zex_pb2.ZexState):
-        """Serialize chain state to protobuf."""
-        # Serialize deposits
-        pb_deposits = pb_state.deposits[chain]
-        for tx_hash, vout in self.deposits:
-            entry = pb_deposits.deposits.add()
-            entry.tx_hash = tx_hash
-            entry.vout = vout
-
-        # Serialize withdraws
-        pb_withdraws = pb_state.withdraws_on_chain[chain]
-        pb_withdraws.raw_txs.extend([w.raw_tx for w in self.withdraws])
-
-        # Serialize user withdraws
-        pb_user_withdraws = pb_state.user_withdraws_on_chain[chain]
-        for public, withdraw_list in self.user_withdraws.items():
-            entry = pb_user_withdraws.withdraws.add()
-            entry.public_key = public
-            entry.raw_txs.extend([w.raw_tx for w in withdraw_list])
-
-        # Serialize user withdraw nonces
-        pb_withdraw_nonces = pb_state.user_withdraw_nonce_on_chain[chain]
-        for public, nonce in self.user_withdraw_nonces.items():
-            entry = pb_withdraw_nonces.nonces.add()
-            entry.public_key = public
-            entry.nonce = nonce
-
-        # Serialize withdraw nonce
-        pb_state.withdraw_nonce_on_chain[chain] = self.withdraw_nonce
-
-        # Serialize contract decimals
-        pb_state.contract_decimal_on_chain[chain].contract_decimal.update(
-            self.contract_decimals
-        )
-
-    @classmethod
-    def from_protobuf(cls, chain: str, pb_state: zex_pb2.ZexState) -> "ChainState":
-        """Deserialize chain state from protobuf."""
-        # Deserialize deposits
-        deposits = {
-            (item.tx_hash, item.vout) for item in pb_state.deposits[chain].deposits
-        }
-
-        # Deserialize withdraws
-        withdraws = [
-            WithdrawTransaction.from_tx(raw_tx)
-            for raw_tx in pb_state.withdraws_on_chain[chain].raw_txs
-        ]
-
-        # Deserialize user withdraws
-        user_withdraws = {
-            entry.public_key: [
-                WithdrawTransaction.from_tx(raw_tx) for raw_tx in entry.raw_txs
-            ]
-            for entry in pb_state.user_withdraws_on_chain[chain].withdraws
-        }
-
-        # Deserialize user withdraw nonces
-        user_withdraw_nonces = {
-            entry.public_key: entry.nonce
-            for entry in pb_state.user_withdraw_nonce_on_chain[chain].nonces
-        }
-
-        # Deserialize contract decimals
-        contract_decimals = dict(
-            pb_state.contract_decimal_on_chain[chain].contract_decimal
-        )
-
-        return cls(
-            deposits=deposits,
-            balances={},  # This will be populated from assets
-            withdraw_nonce=pb_state.withdraw_nonce_on_chain[chain],
-            user_withdraw_nonces=user_withdraw_nonces,
-            user_withdraws=user_withdraws,
-            withdraws=withdraws,
-            contract_decimals=contract_decimals,
-        )
 
 
 class StateManager:
@@ -240,7 +139,7 @@ class StateManager:
 
             # Serialize kline data
             buffer = BytesIO()
-            market.kline.to_pickle(buffer)
+            market.kline_manager.kline.to_pickle(buffer)
             pb_market.kline = buffer.getvalue()
 
     @classmethod
@@ -299,7 +198,7 @@ class StateManager:
             market.first_id = pb_market.first_id
             market.final_id = pb_market.final_id
             market.last_update_id = pb_market.last_update_id
-            market.kline = pd.read_pickle(BytesIO(pb_market.kline))
+            market.kline_manager.kline = pd.read_pickle(BytesIO(pb_market.kline))
             state_manager.markets[pair] = market
 
         # Update chain balances from assets
@@ -320,172 +219,6 @@ class StateManager:
                         ] = sum(balances.values())
 
         return state_manager
-
-
-class DepositManager:
-    """Handles deposit-related operations."""
-
-    def __init__(self, state_manager: StateManager, settings):
-        self.state = state_manager
-        self.settings = settings
-
-    def validate_deposit(self, deposit: Deposit) -> bool:
-        """Validates a deposit transaction."""
-        if deposit.user_id < 1:
-            logger.critical(
-                f"invalid user id: {deposit.user_id}, tx_hash: {deposit.tx_hash}, "
-                f"vout: {deposit.vout}, token_contract: {deposit.token_contract}, "
-                f"amount: {deposit.amount}, decimal: {deposit.decimal}"
-            )
-            return False
-
-        chain_state = self.state.ensure_chain_initialized(deposit.chain)
-        if (deposit.tx_hash, deposit.vout) in chain_state.deposits:
-            logger.error(
-                f"chain: {deposit.chain}, tx_hash: {deposit.tx_hash}, "
-                f"vout: {deposit.vout} has already been deposited"
-            )
-            return False
-
-        return True
-
-    def process_deposit(self, deposit: Deposit, public: bytes):
-        """Processes a validated deposit."""
-        chain_state = self.state.ensure_chain_initialized(deposit.chain)
-
-        # Update contract decimals
-        if deposit.token_contract not in chain_state.contract_decimals:
-            chain_state.contract_decimals[deposit.token_contract] = deposit.decimal
-        elif chain_state.contract_decimals[deposit.token_contract] != deposit.decimal:
-            logger.warning(
-                f"decimal for contract {deposit.token_contract} changed from "
-                f"{chain_state.contract_decimals[deposit.token_contract]} to {deposit.decimal}"
-            )
-            chain_state.contract_decimals[deposit.token_contract] = deposit.decimal
-
-        self.state.ensure_token_initialized(deposit.token_name, public)
-        if deposit.token_contract not in chain_state.balances:
-            chain_state.balances[deposit.token_contract] = Decimal("0")
-
-        # Record deposit
-        chain_state.deposits.add((deposit.tx_hash, deposit.vout))
-        if public not in self.state.user_deposits:
-            self.state.user_deposits[public] = []
-        self.state.user_deposits[public].append(deposit)
-
-        # Update balances
-        self.state.assets[deposit.token_name][public] += deposit.amount
-        chain_state.balances[deposit.token_contract] += deposit.amount
-
-        logger.info(
-            f"deposit on chain: {deposit.chain}, token: {deposit.token_name}, "
-            f"amount: {deposit.amount} for user: {public}, tx_hash: {deposit.tx_hash}, "
-            f"new balance: {self.state.assets[deposit.token_name][public]}"
-        )
-
-
-class WithdrawManager:
-    """Handles withdrawal-related operations."""
-
-    def __init__(self, state_manager: StateManager, settings: Settings):
-        self.state = state_manager
-        self.settings = settings
-
-    def validate_withdraw(
-        self, tx: WithdrawTransaction
-    ) -> tuple[bool, str | None, str | None]:
-        """Validates a withdrawal transaction."""
-        if tx.amount <= 0:
-            logger.debug(f"invalid amount: {tx.amount}")
-            return False, None, None
-
-        chain_state = self.state.chain_states.get(tx.chain)
-        if not chain_state:
-            logger.debug("chain not found")
-            return False, None, None
-
-        if chain_state.user_withdraw_nonces.get(tx.public, 0) != tx.nonce:
-            logger.debug(
-                f"invalid nonce: {chain_state.user_withdraw_nonces.get(tx.public, 0)} != {tx.nonce}"
-            )
-            return False, None, None
-
-        # Validate token and get contract address
-        token_info = self.settings.zex.verified_tokens.get(tx.token_name)
-        if token_info:
-            if tx.chain in token_info:
-                token = tx.token_name
-                token_contract = token_info[tx.chain].contract_address
-            else:
-                logger.debug(
-                    f"invalid chain: {tx.chain} for withdraw of verified token: {tx.token_name}"
-                )
-                return False, None, None
-        else:
-            token = tx.token_name
-            try:
-                _, token_contract = tx.token_name.split(":")
-                token_contract = to_checksum_address(token_contract)
-            except Exception as e:
-                logger.debug(f"invalid token contract address: {e}")
-                return False, None, None
-
-        return True, token, token_contract
-
-    def check_balances(
-        self, tx: WithdrawTransaction, token: str, token_contract: str
-    ) -> bool:
-        """Checks if balances are sufficient for withdrawal."""
-        chain_state = self.state.chain_states[tx.chain]
-
-        # Check user balance
-        balance = self.state.assets[token].get(tx.public, Decimal("0"))
-        if balance < tx.amount:
-            logger.debug("balance not enough")
-            return False
-
-        # Check vault balance
-        if token_contract not in chain_state.balances:
-            logger.debug("token contract address not found")
-            return False
-        vault_balance = chain_state.balances[token_contract]
-        if vault_balance < tx.amount:
-            logger.error(
-                f"vault balance: {vault_balance}, withdraw amount: {tx.amount}, "
-                f"user balance before deduction: {balance}, vault does not have enough balance"
-            )
-            return False
-
-        return True
-
-    def process_withdraw(
-        self, tx: WithdrawTransaction, token: str, token_contract: str
-    ):
-        """Processes a validated withdrawal."""
-        chain_state = self.state.chain_states[tx.chain]
-
-        # Update balances
-        self.state.assets[token][tx.public] -= tx.amount
-        chain_state.balances[token_contract] -= tx.amount
-
-        # Update withdrawal records
-        if tx.public not in chain_state.user_withdraws:
-            chain_state.user_withdraws[tx.public] = []
-        chain_state.user_withdraws[tx.public].append(tx)
-
-        # Update nonces
-        chain_state.withdraw_nonce += 1
-        if tx.public not in chain_state.user_withdraw_nonces:
-            chain_state.user_withdraw_nonces[tx.public] = 0
-        chain_state.user_withdraw_nonces[tx.public] += 1
-
-        chain_state.withdraws.append(tx)
-
-        logger.info(
-            f"withdraw on chain: {tx.chain}, token: {tx.token_name}, "
-            f"amount: {tx.amount} for user: {tx.public}, "
-            f"new balance: {self.state.assets[tx.token_name][tx.public]}"
-        )
 
 
 class Zex(metaclass=SingletonMeta):
@@ -643,14 +376,13 @@ class Zex(metaclass=SingletonMeta):
                             ),
                         ],
                     )
-                    deposit_manager = DepositManager(self.state_manager, settings)
 
                     for deposit in tx.deposits:
-                        if not deposit_manager.validate_deposit(deposit):
+                        if not self.validate_deposit(deposit):
                             continue
 
                         public = self.id_to_public_lookup[deposit.user_id]
-                        deposit_manager.process_deposit(deposit, public)
+                        self.process_deposit(deposit, public)
 
                         # Initialize related state if needed
                         if public not in self.trades:
@@ -909,17 +641,70 @@ class Zex(metaclass=SingletonMeta):
             self.saved_state_index = self.last_tx_index
             self.save_state()
 
+    def validate_deposit(self, deposit: Deposit) -> bool:
+        """Validates a deposit transaction."""
+        if deposit.user_id < 1:
+            logger.critical(
+                f"invalid user id: {deposit.user_id}, tx_hash: {deposit.tx_hash}, "
+                f"vout: {deposit.vout}, token_contract: {deposit.token_contract}, "
+                f"amount: {deposit.amount}, decimal: {deposit.decimal}"
+            )
+            return False
+
+        chain_state = self.state_manager.ensure_chain_initialized(deposit.chain)
+        if (deposit.tx_hash, deposit.vout) in chain_state.deposits:
+            logger.error(
+                f"chain: {deposit.chain}, tx_hash: {deposit.tx_hash}, "
+                f"vout: {deposit.vout} has already been deposited"
+            )
+            return False
+
+        return True
+
+    def process_deposit(self, deposit: Deposit, public: bytes):
+        """Processes a validated deposit."""
+        chain_state = self.state_manager.ensure_chain_initialized(deposit.chain)
+
+        # Update contract decimals
+        if deposit.token_contract not in chain_state.contract_decimals:
+            chain_state.contract_decimals[deposit.token_contract] = deposit.decimal
+        elif chain_state.contract_decimals[deposit.token_contract] != deposit.decimal:
+            logger.warning(
+                f"decimal for contract {deposit.token_contract} changed from "
+                f"{chain_state.contract_decimals[deposit.token_contract]} to {deposit.decimal}"
+            )
+            chain_state.contract_decimals[deposit.token_contract] = deposit.decimal
+
+        self.state_manager.ensure_token_initialized(deposit.token_name, public)
+        if deposit.token_contract not in chain_state.balances:
+            chain_state.balances[deposit.token_contract] = Decimal("0")
+
+        # Record deposit
+        chain_state.deposits.add((deposit.tx_hash, deposit.vout))
+        if public not in self.state_manager.user_deposits:
+            self.state_manager.user_deposits[public] = []
+        self.state_manager.user_deposits[public].append(deposit)
+
+        # Update balances
+        self.state_manager.assets[deposit.token_name][public] += deposit.amount
+        chain_state.balances[deposit.token_contract] += deposit.amount
+
+        logger.info(
+            f"deposit on chain: {deposit.chain}, token: {deposit.token_name}, "
+            f"amount: {deposit.amount} for user: {public}, tx_hash: {deposit.tx_hash}, "
+            f"new balance: {self.state_manager.assets[deposit.token_name][public]}"
+        )
+
     # Modified Zex class methods to use the new managers
     def deposit(self, tx: DepositTransaction):
         """Process a deposit transaction."""
-        deposit_manager = DepositManager(self.state_manager, settings)
 
         for deposit in tx.deposits:
-            if not deposit_manager.validate_deposit(deposit):
+            if not self.validate_deposit(deposit):
                 continue
 
             public = self.id_to_public_lookup[deposit.user_id]
-            deposit_manager.process_deposit(deposit, public)
+            self.process_deposit(deposit, public)
 
             # Initialize related state if needed
             if public not in self.trades:
@@ -959,17 +744,111 @@ class Zex(metaclass=SingletonMeta):
         limit = details[chain].balance_withdraw_limit
         return withdraw_amount <= balance or balance > limit
 
+    def validate_withdraw(
+        self, tx: WithdrawTransaction
+    ) -> tuple[bool, str | None, str | None]:
+        """Validates a withdrawal transaction."""
+        if tx.amount <= 0:
+            logger.debug(f"invalid amount: {tx.amount}")
+            return False, None, None
+
+        chain_state = self.state_manager.chain_states.get(tx.chain)
+        if not chain_state:
+            logger.debug("chain not found")
+            return False, None, None
+
+        if chain_state.user_withdraw_nonces.get(tx.public, 0) != tx.nonce:
+            logger.debug(
+                f"invalid nonce: {chain_state.user_withdraw_nonces.get(tx.public, 0)} != {tx.nonce}"
+            )
+            return False, None, None
+
+        # Validate token and get contract address
+        token_info = settings.zex.verified_tokens.get(tx.token_name)
+        if token_info:
+            if tx.chain in token_info:
+                token = tx.token_name
+                token_contract = token_info[tx.chain].contract_address
+            else:
+                logger.debug(
+                    f"invalid chain: {tx.chain} for withdraw of verified token: {tx.token_name}"
+                )
+                return False, None, None
+        else:
+            token = tx.token_name
+            try:
+                _, token_contract = tx.token_name.split(":")
+                token_contract = to_checksum_address(token_contract)
+            except Exception as e:
+                logger.debug(f"invalid token contract address: {e}")
+                return False, None, None
+
+        return True, token, token_contract
+
+    def check_balances(
+        self, tx: WithdrawTransaction, token: str, token_contract: str
+    ) -> bool:
+        """Checks if balances are sufficient for withdrawal."""
+        chain_state = self.state_manager.chain_states[tx.chain]
+
+        # Check user balance
+        balance = self.state_manager.assets[token].get(tx.public, Decimal("0"))
+        if balance < tx.amount:
+            logger.debug("balance not enough")
+            return False
+
+        # Check vault balance
+        if token_contract not in chain_state.balances:
+            logger.debug("token contract address not found")
+            return False
+        vault_balance = chain_state.balances[token_contract]
+        if vault_balance < tx.amount:
+            logger.error(
+                f"vault balance: {vault_balance}, withdraw amount: {tx.amount}, "
+                f"user balance before deduction: {balance}, vault does not have enough balance"
+            )
+            return False
+
+        return True
+
+    def process_withdraw(
+        self, tx: WithdrawTransaction, token: str, token_contract: str
+    ):
+        """Processes a validated withdrawal."""
+        chain_state = self.state_manager.chain_states[tx.chain]
+
+        # Update balances
+        self.state_manager.assets[token][tx.public] -= tx.amount
+        chain_state.balances[token_contract] -= tx.amount
+
+        # Update withdrawal records
+        if tx.public not in chain_state.user_withdraws:
+            chain_state.user_withdraws[tx.public] = []
+        chain_state.user_withdraws[tx.public].append(tx)
+
+        # Update nonces
+        chain_state.withdraw_nonce += 1
+        if tx.public not in chain_state.user_withdraw_nonces:
+            chain_state.user_withdraw_nonces[tx.public] = 0
+        chain_state.user_withdraw_nonces[tx.public] += 1
+
+        chain_state.withdraws.append(tx)
+
+        logger.info(
+            f"withdraw on chain: {tx.chain}, token: {tx.token_name}, "
+            f"amount: {tx.amount} for user: {tx.public}, "
+            f"new balance: {self.state_manager.assets[tx.token_name][tx.public]}"
+        )
+
     def withdraw(self, tx: WithdrawTransaction):
         """Process a withdrawal transaction."""
-        withdraw_manager = WithdrawManager(self.state_manager, settings)
-
         # Validate withdrawal
-        valid, token, token_contract = withdraw_manager.validate_withdraw(tx)
+        valid, token, token_contract = self.validate_withdraw(tx)
         if not valid:
             return
 
         # Check balances
-        if not withdraw_manager.check_balances(tx, token, token_contract):
+        if not self.check_balances(tx, token, token_contract):
             return
 
         # Check if withdrawal is allowed
@@ -980,7 +859,7 @@ class Zex(metaclass=SingletonMeta):
             return
 
         # Process withdrawal
-        withdraw_manager.process_withdraw(tx, token, token_contract)
+        self.process_withdraw(tx, token, token_contract)
 
         asyncio.create_task(
             self.withdraw_callback(tx.public.hex(), tx.chain, tx.token_name, tx.amount)
@@ -1066,7 +945,7 @@ class Zex(metaclass=SingletonMeta):
                 ],
             ).set_index("OpenTime")
             return kline
-        return self.state_manager.markets[pair].kline
+        return self.state_manager.markets[pair].kline_manager.kline
 
     def _get_tx_pair(self, tx: bytes):
         base_token, quote_token = self._extract_base_and_quote_token(tx)
@@ -1106,12 +985,6 @@ class Zex(metaclass=SingletonMeta):
         )
 
 
-def get_current_1m_open_time():
-    now = int(unix_time())
-    open_time = now - now % 60
-    return open_time * 1000
-
-
 def _parse_transaction(tx: bytes) -> tuple[int, Decimal, Decimal, int, bytes]:
     operation, base_token_len, quote_token_len = struct.unpack(">x B B B", tx[:4])
 
@@ -1139,23 +1012,11 @@ class Market:
         self.bids_order_book: dict[Decimal, Decimal] = {}
         self.asks_order_book: dict[Decimal, Decimal] = {}
         self._order_book_updates = {"bids": {}, "asks": {}}
-
         self.first_id = 0
         self.final_id = 0
         self.last_update_id = 0
 
-        self.kline = pd.DataFrame(
-            columns=[
-                "OpenTime",
-                "CloseTime",
-                "Open",
-                "High",
-                "Low",
-                "Close",
-                "Volume",
-                "NumberOfTrades",
-            ]
-        ).set_index("OpenTime")
+        self.kline_manager = KlineManager(self.pair)
 
         self.base_token_balances = zex.state_manager.assets[base_token]
         self.quote_token_balances = zex.state_manager.assets[quote_token]
@@ -1223,7 +1084,7 @@ class Market:
         while amount > 0 and self.sell_orders and self.sell_orders[0][0] <= price:
             sell_price, sell_order = self.sell_orders[0]
             trade_amount = min(amount, self.zex.amounts[sell_order])
-            self._execute_trade(tx, sell_order, trade_amount, sell_price, t)
+            self._record_trade(tx, sell_order, trade_amount, sell_price, t)
 
             sell_public = sell_order[-97:-64]
             self._update_sell_order(sell_order, trade_amount, sell_price, sell_public)
@@ -1233,19 +1094,9 @@ class Market:
 
         if amount > 0:
             # Add remaining amount to buy orders
-            heapq.heappush(self.buy_orders, (-price, tx))
-            self.zex.amounts[tx] = amount
-            self.zex.orders[public][tx] = True
-            with self.order_book_lock:
-                if price in self.bids_order_book:
-                    self.bids_order_book[price] += amount
-                else:
-                    self.bids_order_book[price] = amount
-                self._order_book_updates["bids"][price] = self.bids_order_book[price]
-            self.quote_token_balances[public] -= amount * price
+            self._add_remaining_amount_to_orders("bids", public, amount, price, tx)
 
             # TODO: send partial fill message for taker order
-            t = int(time.time() * 1000)
             asyncio.create_task(
                 self.zex.order_callback(
                     public=public.hex(),
@@ -1259,7 +1110,7 @@ class Market:
                     last_filled=initial_amount - amount,
                     cumulative_filled=initial_amount - amount,
                     last_executed_price=sell_price,
-                    transaction_time=t,
+                    transaction_time=int(time.time() * 1000),
                     is_on_orderbook=True,
                     is_maker=False,
                     cumulative_quote_asset_quantity=Decimal(0),  # TODO
@@ -1270,7 +1121,6 @@ class Market:
 
         else:
             # TODO: send completed message for taker order
-            t = int(time.time() * 1000)
             asyncio.create_task(
                 self.zex.order_callback(
                     public=public.hex(),
@@ -1284,7 +1134,7 @@ class Market:
                     last_filled=initial_amount,
                     cumulative_filled=initial_amount,
                     last_executed_price=sell_price,
-                    transaction_time=t,
+                    transaction_time=int(time.time() * 1000),
                     is_on_orderbook=False,
                     is_maker=False,
                     cumulative_quote_asset_quantity=Decimal(0),  # TODO
@@ -1320,7 +1170,7 @@ class Market:
             buy_price, buy_order = self.buy_orders[0]
             buy_price = -buy_price  # Negate because buy prices are stored negatively
             trade_amount = min(amount, self.zex.amounts[buy_order])
-            self._execute_trade(buy_order, tx, trade_amount, buy_price, t)
+            self._record_trade(buy_order, tx, trade_amount, buy_price, t)
 
             buy_public = buy_order[-97:-64]
             self._update_buy_order(buy_order, trade_amount, buy_price, buy_public)
@@ -1331,18 +1181,8 @@ class Market:
 
         if amount > 0:
             # Add remaining amount to sell orders
-            heapq.heappush(self.sell_orders, (price, tx))
-            self.zex.amounts[tx] = amount
-            self.zex.orders[public][tx] = True
-            with self.order_book_lock:
-                if price in self.asks_order_book:
-                    self.asks_order_book[price] += amount
-                else:
-                    self.asks_order_book[price] = amount
-                self._order_book_updates["asks"][price] = self.asks_order_book[price]
-            self.base_token_balances[public] -= amount
+            self._add_remaining_amount_to_orders("asks", public, amount, price, tx)
 
-            t = int(time.time() * 1000)
             asyncio.create_task(
                 self.zex.order_callback(
                     public=public.hex(),
@@ -1356,7 +1196,7 @@ class Market:
                     last_filled=initial_amount - amount,
                     cumulative_filled=initial_amount - amount,
                     last_executed_price=buy_price,
-                    transaction_time=t,
+                    transaction_time=int(time.time() * 1000),
                     is_on_orderbook=True,
                     is_maker=False,
                     cumulative_quote_asset_quantity=Decimal(0),  # TODO
@@ -1366,21 +1206,20 @@ class Market:
             )
 
         else:
-            t = int(time.time() * 1000)
             asyncio.create_task(
                 self.zex.order_callback(
-                    public.hex(),
-                    nonce,
-                    self.pair,
-                    "sell",
-                    initial_amount,
-                    price,
-                    ExecutionType.TRADE,
-                    "FILLED",
+                    public=public.hex(),
+                    nonce=nonce,
+                    symbol=self.pair,
+                    side="sell",
+                    amount=initial_amount,
+                    price=price,
+                    execution_type=ExecutionType.TRADE,
+                    order_status="FILLED",
                     last_filled=initial_amount,
                     cumulative_filled=initial_amount,
                     last_executed_price=buy_price,
-                    transaction_time=t,
+                    transaction_time=int(time.time() * 1000),
                     is_on_orderbook=True,
                     is_maker=False,
                     cumulative_quote_asset_quantity=Decimal(0),  # TODO
@@ -1390,7 +1229,40 @@ class Market:
             )
         return True
 
-    def _execute_trade(
+    def _add_remaining_amount_to_buy_orders(self, public, amount, price, tx):
+        heapq.heappush(self.buy_orders, (-price, tx))
+        self.zex.amounts[tx] = amount
+        self.zex.orders[public][tx] = True
+        with self.order_book_lock:
+            if price in self.bids_order_book:
+                self.bids_order_book[price] += amount
+            else:
+                self.bids_order_book[price] = amount
+            self._order_book_updates["bids"][price] = self.bids_order_book[price]
+        self.quote_token_balances[public] -= amount * price
+
+    def _add_remaining_amount_to_sell_orders(self, public, amount, price, tx):
+        heapq.heappush(self.sell_orders, (price, tx))
+        self.zex.amounts[tx] = amount
+        self.zex.orders[public][tx] = True
+        with self.order_book_lock:
+            if price in self.asks_order_book:
+                self.asks_order_book[price] += amount
+            else:
+                self.asks_order_book[price] = amount
+            self._order_book_updates["asks"][price] = self.asks_order_book[price]
+        self.base_token_balances[public] -= amount
+
+    def _add_remaining_amount_to_orders(
+        self, order_book_side: Literal["bids", "asks"], public, amount, price, tx
+    ):
+        match order_book_side:
+            case "bids":
+                self._add_remaining_amount_to_buy_orders(public, amount, price, tx)
+            case "asks":
+                self._add_remaining_amount_to_sell_orders(public, amount, price, tx)
+
+    def _record_trade(
         self,
         buy_order: bytes,
         sell_order: bytes,
@@ -1401,12 +1273,19 @@ class Market:
         buy_public = buy_order[-97:-64]
         sell_public = sell_order[-97:-64]
 
-        self._record_trade(
-            buy_order, sell_order, buy_public, sell_public, trade_amount, t
-        )
+        for public, order_type in [(buy_public, BUY), (sell_public, SELL)]:
+            trade = (
+                t,
+                trade_amount,
+                self.pair,
+                order_type,
+                buy_order if order_type == BUY else sell_order,
+            )
+            self.zex.trades[public].append(trade)
+            self._prune_old_trades(public, t)
 
         if not self.zex.benchmark_mode and not self.zex.light_node:
-            self._update_kline(float(price), float(trade_amount))
+            self.kline_manager.update_kline(float(price), float(trade_amount))
 
         self.final_id += 1
 
@@ -1415,14 +1294,14 @@ class Market:
         if price < 0 or amount < 0:
             asyncio.create_task(
                 self.zex.order_callback(
-                    public.hex(),
-                    nonce,
-                    self.pair,
-                    "buy" if operation == BUY else "sell",
-                    amount,
-                    price,
-                    ExecutionType.REJECTED,
-                    "REJECTED",
+                    public=public.hex(),
+                    nonce=nonce,
+                    symbol=self.pair,
+                    side="buy" if operation == BUY else "sell",
+                    amount=amount,
+                    price=price,
+                    execution_type=ExecutionType.REJECTED,
+                    order_status="REJECTED",
                     last_filled=Decimal("0"),
                     cumulative_filled=Decimal("0"),
                     last_executed_price=Decimal("0"),
@@ -1474,14 +1353,14 @@ class Market:
 
             asyncio.create_task(
                 self.zex.order_callback(
-                    public.hex(),
-                    nonce,
-                    self.pair,
-                    "buy" if operation == BUY else "sell",
-                    amount,
-                    price,
-                    ExecutionType.REJECTED,
-                    "REJECTED",
+                    public=public.hex(),
+                    nonce=nonce,
+                    symbol=self.pair,
+                    side="buy" if operation == BUY else "sell",
+                    amount=amount,
+                    price=price,
+                    execution_type=ExecutionType.REJECTED,
+                    order_status="REJECTED",
                     last_filled=Decimal("0"),
                     cumulative_filled=Decimal("0"),
                     last_executed_price=Decimal("0"),
@@ -1512,14 +1391,14 @@ class Market:
 
         asyncio.create_task(
             self.zex.order_callback(
-                public.hex(),
-                nonce,
-                self.pair,
-                side,
-                amount,
-                price,
-                ExecutionType.NEW,
-                "NEW",
+                public=public.hex(),
+                nonce=nonce,
+                symbol=self.pair,
+                side=side,
+                amount=amount,
+                price=price,
+                execution_type=ExecutionType.NEW,
+                order_status="NEW",
                 last_filled=Decimal("0"),
                 cumulative_filled=Decimal("0"),
                 last_executed_price=Decimal("0"),
@@ -1595,194 +1474,6 @@ class Market:
         else:
             return False
 
-    def get_last_price(self):
-        if len(self.kline) == 0:
-            return 0
-        return self.kline["Close"].iloc[-1]
-
-    def get_price_change_24h(self):
-        if len(self.kline) == 0:
-            return 0
-        # Calculate the total time span of our data
-        total_span = self.kline.index[-1] - self.kline.index[0]
-
-        ms_in_24h = 24 * 60 * 60 * 1000
-        if total_span >= ms_in_24h:
-            target_time = self.kline.index[-1] - 24 * 60 * 60 * 1000
-            prev_24h_index = self.kline.index.get_indexer(
-                [target_time],
-                method="pad",
-            )[0].item()
-
-            return (
-                self.kline["Close"].iloc[-1] - self.kline["Open"].iloc[prev_24h_index]
-            )
-        return self.kline["Close"].iloc[-1] - self.kline["Open"].iloc[0]
-
-    def get_price_change_24h_percent(self):
-        if len(self.kline) == 0:
-            return 0
-        # Calculate the total time span of our data
-        total_span = self.kline.index[-1] - self.kline.index[0]
-
-        ms_in_24h = 24 * 60 * 60 * 1000
-        if total_span >= ms_in_24h:
-            target_time = self.kline.index[-1] - 24 * 60 * 60 * 1000
-            prev_24h_index = self.kline.index.get_indexer(
-                [target_time],
-                method="pad",
-            )[0].item()
-
-            open_price = self.kline["Open"].iloc[-prev_24h_index]
-            close_price = self.kline["Close"].iloc[-1]
-            if open_price == 0:
-                return 0
-            return ((close_price - open_price) / open_price) * 100
-
-        close_price = self.kline["Close"].iloc[-1]
-        open_price = self.kline["Open"].iloc[0]
-        if open_price == 0:
-            return 0
-        return ((close_price - open_price) / open_price) * 100
-
-    def get_price_change_7d_percent(self):
-        if len(self.kline) == 0:
-            return 0
-        # Calculate the total time span of our data
-        total_span = self.kline.index[-1] - self.kline.index[0]
-
-        ms_in_7d = 7 * 24 * 60 * 60 * 1000
-        if total_span > ms_in_7d:
-            target_time = self.kline.index[-1] - 7 * 24 * 60 * 60 * 1000
-            prev_7d_index = self.kline.index.get_indexer(
-                [target_time],
-                method="pad",
-            )[0].item()
-
-            open_price = self.kline["Open"].iloc[prev_7d_index]
-            close_price = self.kline["Close"].iloc[-1]
-            return (close_price - open_price) / open_price
-        return self.kline["Close"].iloc[-1] - self.kline["Open"].iloc[0]
-
-    def get_volume_24h(self):
-        if len(self.kline) == 0:
-            return 0
-        # Calculate the total time span of our data
-        total_span = self.kline.index[-1] - self.kline.index[0]
-
-        ms_in_24h = 24 * 60 * 60 * 1000
-        if total_span > ms_in_24h:
-            target_time = self.kline.index[-1] - 24 * 60 * 60 * 1000
-            prev_24h_index = self.kline.index.get_indexer(
-                [target_time],
-                method="pad",
-            )[0].item()
-
-            return self.kline["Volume"].iloc[prev_24h_index:].sum()
-        return self.kline["Volume"].sum()
-
-    def get_open_time_24h(self):
-        if len(self.kline) == 0:
-            return 0
-        # Calculate the total time span of our data
-        total_span = self.kline.index[-1] - self.kline.index[0]
-
-        ms_in_24h = 24 * 60 * 60 * 1000
-        if total_span > ms_in_24h:
-            target_time = self.kline.index[-1] - 24 * 60 * 60 * 1000
-            prev_24h_index = self.kline.index.get_indexer(
-                [target_time],
-                method="pad",
-            )[0].item()
-
-            return self.kline.index[prev_24h_index]
-        return self.kline.index[0]
-
-    def get_close_time_24h(self):
-        if len(self.kline) == 0:
-            return 0
-        # Calculate the total time span of our data
-        total_span = self.kline.index[-1] - self.kline.index[0]
-
-        ms_in_24h = 24 * 60 * 60 * 1000
-        if total_span > ms_in_24h:
-            target_time = self.kline.index[-1] - 24 * 60 * 60 * 1000
-            prev_24h_index = self.kline.index.get_indexer(
-                [target_time],
-                method="pad",
-            )[0].item()
-
-            return self.kline["CloseTime"].iloc[prev_24h_index]
-        return self.kline["CloseTime"].iloc[0]
-
-    def get_open_24h(self):
-        if len(self.kline) == 0:
-            return 0
-        # Calculate the total time span of our data
-        total_span = self.kline.index[-1] - self.kline.index[0]
-
-        ms_in_24h = 24 * 60 * 60 * 1000
-        if total_span > ms_in_24h:
-            target_time = self.kline.index[-1] - 24 * 60 * 60 * 1000
-            prev_24h_index = self.kline.index.get_indexer(
-                [target_time],
-                method="pad",
-            )[0].item()
-
-            return self.kline["Open"].iloc[prev_24h_index]
-        return self.kline["Open"].iloc[0]
-
-    def get_high_24h(self):
-        if len(self.kline) == 0:
-            return 0
-        # Calculate the total time span of our data
-        total_span = self.kline.index[-1] - self.kline.index[0]
-
-        ms_in_24h = 24 * 60 * 60 * 1000
-        if total_span > ms_in_24h:
-            target_time = self.kline.index[-1] - 24 * 60 * 60 * 1000
-            prev_24h_index = self.kline.index.get_indexer(
-                [target_time],
-                method="pad",
-            )[0].item()
-
-            return self.kline["High"].iloc[prev_24h_index:].max()
-        return self.kline["High"].max()
-
-    def get_low_24h(self):
-        if len(self.kline) == 0:
-            return 0
-        # Calculate the total time span of our data
-        total_span = self.kline.index[-1] - self.kline.index[0]
-
-        ms_in_24h = 24 * 60 * 60 * 1000
-        if total_span > ms_in_24h:
-            target_time = self.kline.index[-1] - 24 * 60 * 60 * 1000
-            prev_24h_index = self.kline.index.get_indexer(
-                [target_time],
-                method="pad",
-            )[0].item()
-
-            return self.kline["Low"].iloc[prev_24h_index:].min()
-        return self.kline["Low"].min()
-
-    def get_trade_num_24h(self):
-        if len(self.kline) == 0:
-            return 0
-        # Calculate the total time span of our data
-        total_span = self.kline.index[-1] - self.kline.index[0]
-
-        ms_in_24h = 24 * 60 * 60 * 1000
-        if total_span > ms_in_24h:
-            target_time = self.kline.index[-1] - 24 * 60 * 60 * 1000
-            prev_24h_index = self.kline.index.get_indexer(
-                [target_time],
-                method="pad",
-            )[0].item()
-
-            return self.kline["NumberOfTrades"].iloc[prev_24h_index:].sum()
-        return self.kline["NumberOfTrades"].sum()
-
     def _update_buy_order(
         self,
         buy_order: bytes,
@@ -1802,14 +1493,14 @@ class Market:
 
                 asyncio.create_task(
                     self.zex.order_callback(
-                        buy_public.hex(),
-                        nonce,
-                        self.pair,
-                        "buy",
-                        trade_amount,
-                        buy_price,
-                        ExecutionType.TRADE,
-                        "PARTIALLY_FILLED",
+                        public=buy_public.hex(),
+                        nonce=nonce,
+                        symbol=self.pair,
+                        side="buy",
+                        amount=trade_amount,
+                        price=buy_price,
+                        execution_type=ExecutionType.TRADE,
+                        order_status="PARTIALLY_FILLED",
                         last_filled=trade_amount,
                         cumulative_filled=amount - self.zex.amounts[buy_order],
                         last_executed_price=buy_price,
@@ -1829,14 +1520,14 @@ class Market:
                 self.final_id += 1
                 asyncio.create_task(
                     self.zex.order_callback(
-                        buy_public.hex(),
-                        nonce,
-                        self.pair,
-                        "buy",
-                        trade_amount,
-                        buy_price,
-                        ExecutionType.TRADE,
-                        "FILLED",
+                        public=buy_public.hex(),
+                        nonce=nonce,
+                        symbol=self.pair,
+                        side="buy",
+                        amount=trade_amount,
+                        price=buy_price,
+                        execution_type=ExecutionType.TRADE,
+                        order_status="FILLED",
                         last_filled=trade_amount,
                         cumulative_filled=amount,
                         last_executed_price=buy_price,
@@ -1868,14 +1559,14 @@ class Market:
 
                 asyncio.create_task(
                     self.zex.order_callback(
-                        sell_public.hex(),
-                        nonce,
-                        self.pair,
-                        "sell",
-                        trade_amount,
-                        sell_price,
-                        ExecutionType.TRADE,
-                        "PARTIALLY_FILLED",
+                        public=sell_public.hex(),
+                        nonce=nonce,
+                        symbol=self.pair,
+                        side="sell",
+                        amount=trade_amount,
+                        price=sell_price,
+                        execution_type=ExecutionType.TRADE,
+                        order_status="PARTIALLY_FILLED",
                         last_filled=trade_amount,
                         cumulative_filled=amount - self.zex.amounts[sell_order],
                         last_executed_price=sell_price,
@@ -1897,14 +1588,14 @@ class Market:
                 # TODO: fill market maker order completely
                 asyncio.create_task(
                     self.zex.order_callback(
-                        sell_public.hex(),
-                        nonce,
-                        self.pair,
-                        "sell",
-                        trade_amount,
-                        sell_price,
-                        ExecutionType.TRADE,
-                        "FILLED",
+                        public=sell_public.hex(),
+                        nonce=nonce,
+                        symbol=self.pair,
+                        side="sell",
+                        amount=trade_amount,
+                        price=sell_price,
+                        execution_type=ExecutionType.TRADE,
+                        order_status="FILLED",
                         last_filled=trade_amount,
                         cumulative_filled=amount,
                         last_executed_price=sell_price,
@@ -1943,46 +1634,7 @@ class Market:
             self.quote_token_balances.get(sell_public, 0) + price * trade_amount
         )
 
-    def _record_trade(
-        self,
-        buy_order: bytes,
-        sell_order: bytes,
-        buy_public: bytes,
-        sell_public: bytes,
-        trade_amount: Decimal,
-        t: int,
-    ):
-        for public, order_type in [(buy_public, BUY), (sell_public, SELL)]:
-            trade = (
-                t,
-                trade_amount,
-                self.pair,
-                order_type,
-                buy_order if order_type == BUY else sell_order,
-            )
-            self.zex.trades[public].append(trade)
-            self._prune_old_trades(public, t)
-
     def _prune_old_trades(self, public: bytes, current_time: int):
         trades = self.zex.trades[public]
         while trades and current_time - trades[0][0] > TRADES_TTL:
             trades.popleft()
-
-    def _update_kline(self, price: float, trade_amount: float):
-        current_candle_index = get_current_1m_open_time()
-        if len(self.kline.index) != 0 and current_candle_index == self.kline.index[-1]:
-            self.kline.iat[-1, 2] = max(price, self.kline.iat[-1, 2])  # High
-            self.kline.iat[-1, 3] = min(price, self.kline.iat[-1, 3])  # Low
-            self.kline.iat[-1, 4] = price  # Close
-            self.kline.iat[-1, 5] += trade_amount  # Volume
-            self.kline.iat[-1, 6] += 1  # NumberOfTrades
-        else:
-            self.kline.loc[current_candle_index] = [
-                current_candle_index + 59999,  # CloseTime
-                price,  # Open
-                price,  # High
-                price,  # Low
-                price,  # Close
-                trade_amount,  # Volume
-                1,  # Volume, NumberOfTrades
-            ]

@@ -82,7 +82,9 @@ def get_token_info(token) -> Token:
     t = Token(
         token=token,
         chainType="evm" if token[:3] not in ["BTC"] else "native_only",
-        price=zex.state_manager.markets[f"{token}-{USDT_MAINNET}"].get_last_price()
+        price=zex.state_manager.markets[
+            f"{token}-{USDT_MAINNET}"
+        ].kline_manager.get_last_price()
         if f"{token}-{USDT_MAINNET}" in zex.state_manager.markets
         else 0
         if token != USDT_MAINNET
@@ -391,22 +393,36 @@ def get_ticker(
         market = zex.state_manager.markets[s]
         r = StatisticsFullResponse(
             symbol=s,
-            openPrice=np.format_float_positional(market.get_open_24h(), trim="0"),
-            highPrice=np.format_float_positional(market.get_high_24h(), trim="0"),
-            lowPrice=np.format_float_positional(market.get_low_24h(), trim="0"),
-            lastPrice=np.format_float_positional(market.get_last_price(), trim="0"),
-            volume=np.format_float_positional(market.get_volume_24h(), trim="0"),
+            openPrice=np.format_float_positional(
+                market.kline_manager.get_open_24h(), trim="0"
+            ),
+            highPrice=np.format_float_positional(
+                market.kline_manager.get_high_24h(), trim="0"
+            ),
+            lowPrice=np.format_float_positional(
+                market.kline_manager.get_low_24h(), trim="0"
+            ),
+            lastPrice=np.format_float_positional(
+                market.kline_manager.get_last_price(), trim="0"
+            ),
+            volume=np.format_float_positional(
+                market.kline_manager.get_volume_24h(), trim="0"
+            ),
             quoteVolume="",
-            openTime=np.format_float_positional(market.get_open_time_24h(), trim="0"),
+            openTime=np.format_float_positional(
+                market.kline_manager.get_open_time_24h(), trim="0"
+            ),
             closeTime=int(time.time() * 1000),
             firstId=0,
             lastId=0,
-            count=np.format_float_positional(market.get_trade_num_24h(), trim="0"),
+            count=np.format_float_positional(
+                market.kline_manager.get_trade_num_24h(), trim="0"
+            ),
             priceChange=np.format_float_positional(
-                market.get_price_change_24h(), trim="0"
+                market.kline_manager.get_price_change_24h(), trim="0"
             ),
             priceChangePercent=np.format_float_positional(
-                market.get_price_change_24h_percent(), trim="0"
+                market.kline_manager.get_price_change_24h_percent(), trim="0"
             ),
             weightedAvgPrice="0",
         )
