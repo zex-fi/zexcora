@@ -6,7 +6,7 @@ from typing import ClassVar as _ClassVar, Iterable as _Iterable, Mapping as _Map
 DESCRIPTOR: _descriptor.FileDescriptor
 
 class ZexState(_message.Message):
-    __slots__ = ("markets", "balances", "amounts", "trades", "orders", "withdraws_on_chain", "user_withdraws_on_chain", "user_withdraw_nonce_on_chain", "withdraw_nonce_on_chain", "deposits", "nonces", "last_tx_index", "user_deposits", "public_to_id_lookup", "id_to_public_lookup", "contract_decimal_on_chain", "zex_balance_on_chain")
+    __slots__ = ("markets", "balances", "amounts", "trades", "orders", "withdraws_on_chain", "user_withdraws_on_chain", "user_withdraw_nonce_on_chain", "withdraw_nonce_on_chain", "deposits", "nonces", "last_tx_index", "user_deposits", "public_to_id_lookup", "id_to_public_lookup", "contract_decimal_on_chain")
     class MarketsEntry(_message.Message):
         __slots__ = ("key", "value")
         KEY_FIELD_NUMBER: _ClassVar[int]
@@ -70,13 +70,6 @@ class ZexState(_message.Message):
         key: str
         value: ContractDecimalOnChain
         def __init__(self, key: _Optional[str] = ..., value: _Optional[_Union[ContractDecimalOnChain, _Mapping]] = ...) -> None: ...
-    class ZexBalanceOnChainEntry(_message.Message):
-        __slots__ = ("key", "value")
-        KEY_FIELD_NUMBER: _ClassVar[int]
-        VALUE_FIELD_NUMBER: _ClassVar[int]
-        key: str
-        value: BalanceOnChain
-        def __init__(self, key: _Optional[str] = ..., value: _Optional[_Union[BalanceOnChain, _Mapping]] = ...) -> None: ...
     MARKETS_FIELD_NUMBER: _ClassVar[int]
     BALANCES_FIELD_NUMBER: _ClassVar[int]
     AMOUNTS_FIELD_NUMBER: _ClassVar[int]
@@ -93,7 +86,6 @@ class ZexState(_message.Message):
     PUBLIC_TO_ID_LOOKUP_FIELD_NUMBER: _ClassVar[int]
     ID_TO_PUBLIC_LOOKUP_FIELD_NUMBER: _ClassVar[int]
     CONTRACT_DECIMAL_ON_CHAIN_FIELD_NUMBER: _ClassVar[int]
-    ZEX_BALANCE_ON_CHAIN_FIELD_NUMBER: _ClassVar[int]
     markets: _containers.MessageMap[str, Market]
     balances: _containers.MessageMap[str, Balance]
     amounts: _containers.RepeatedCompositeFieldContainer[AmountEntry]
@@ -110,8 +102,7 @@ class ZexState(_message.Message):
     public_to_id_lookup: _containers.RepeatedCompositeFieldContainer[IDLookupEntry]
     id_to_public_lookup: _containers.ScalarMap[int, bytes]
     contract_decimal_on_chain: _containers.MessageMap[str, ContractDecimalOnChain]
-    zex_balance_on_chain: _containers.MessageMap[str, BalanceOnChain]
-    def __init__(self, markets: _Optional[_Mapping[str, Market]] = ..., balances: _Optional[_Mapping[str, Balance]] = ..., amounts: _Optional[_Iterable[_Union[AmountEntry, _Mapping]]] = ..., trades: _Optional[_Iterable[_Union[TradeEntry, _Mapping]]] = ..., orders: _Optional[_Iterable[_Union[OrderEntry, _Mapping]]] = ..., withdraws_on_chain: _Optional[_Mapping[str, WithdrawsOnChain]] = ..., user_withdraws_on_chain: _Optional[_Mapping[str, UserWithdraws]] = ..., user_withdraw_nonce_on_chain: _Optional[_Mapping[str, WithdrawNonceOnChain]] = ..., withdraw_nonce_on_chain: _Optional[_Mapping[str, int]] = ..., deposits: _Optional[_Mapping[str, DepositsOnChain]] = ..., nonces: _Optional[_Iterable[_Union[NonceEntry, _Mapping]]] = ..., last_tx_index: _Optional[int] = ..., user_deposits: _Optional[_Iterable[_Union[UserDepositEntry, _Mapping]]] = ..., public_to_id_lookup: _Optional[_Iterable[_Union[IDLookupEntry, _Mapping]]] = ..., id_to_public_lookup: _Optional[_Mapping[int, bytes]] = ..., contract_decimal_on_chain: _Optional[_Mapping[str, ContractDecimalOnChain]] = ..., zex_balance_on_chain: _Optional[_Mapping[str, BalanceOnChain]] = ...) -> None: ...
+    def __init__(self, markets: _Optional[_Mapping[str, Market]] = ..., balances: _Optional[_Mapping[str, Balance]] = ..., amounts: _Optional[_Iterable[_Union[AmountEntry, _Mapping]]] = ..., trades: _Optional[_Iterable[_Union[TradeEntry, _Mapping]]] = ..., orders: _Optional[_Iterable[_Union[OrderEntry, _Mapping]]] = ..., withdraws_on_chain: _Optional[_Mapping[str, WithdrawsOnChain]] = ..., user_withdraws_on_chain: _Optional[_Mapping[str, UserWithdraws]] = ..., user_withdraw_nonce_on_chain: _Optional[_Mapping[str, WithdrawNonceOnChain]] = ..., withdraw_nonce_on_chain: _Optional[_Mapping[str, int]] = ..., deposits: _Optional[_Mapping[str, DepositsOnChain]] = ..., nonces: _Optional[_Iterable[_Union[NonceEntry, _Mapping]]] = ..., last_tx_index: _Optional[int] = ..., user_deposits: _Optional[_Iterable[_Union[UserDepositEntry, _Mapping]]] = ..., public_to_id_lookup: _Optional[_Iterable[_Union[IDLookupEntry, _Mapping]]] = ..., id_to_public_lookup: _Optional[_Mapping[int, bytes]] = ..., contract_decimal_on_chain: _Optional[_Mapping[str, ContractDecimalOnChain]] = ...) -> None: ...
 
 class Market(_message.Message):
     __slots__ = ("base_token", "quote_token", "buy_orders", "sell_orders", "bids_order_book", "asks_order_book", "first_id", "final_id", "last_update_id", "kline")
@@ -219,17 +210,11 @@ class UserWithdraws(_message.Message):
     withdraws: _containers.RepeatedCompositeFieldContainer[UserWithdrawEntry]
     def __init__(self, withdraws: _Optional[_Iterable[_Union[UserWithdrawEntry, _Mapping]]] = ...) -> None: ...
 
-class WithdrawsOnChainEntry(_message.Message):
+class WithdrawsOnChain(_message.Message):
     __slots__ = ("raw_txs",)
     RAW_TXS_FIELD_NUMBER: _ClassVar[int]
     raw_txs: _containers.RepeatedScalarFieldContainer[bytes]
     def __init__(self, raw_txs: _Optional[_Iterable[bytes]] = ...) -> None: ...
-
-class WithdrawsOnChain(_message.Message):
-    __slots__ = ("withdraws",)
-    WITHDRAWS_FIELD_NUMBER: _ClassVar[int]
-    withdraws: _containers.RepeatedCompositeFieldContainer[WithdrawsOnChainEntry]
-    def __init__(self, withdraws: _Optional[_Iterable[_Union[WithdrawsOnChainEntry, _Mapping]]] = ...) -> None: ...
 
 class WithdrawNonceEntry(_message.Message):
     __slots__ = ("public_key", "nonce")
@@ -345,16 +330,3 @@ class ContractDecimalOnChain(_message.Message):
     CONTRACT_DECIMAL_FIELD_NUMBER: _ClassVar[int]
     contract_decimal: _containers.ScalarMap[str, int]
     def __init__(self, contract_decimal: _Optional[_Mapping[str, int]] = ...) -> None: ...
-
-class BalanceOnChain(_message.Message):
-    __slots__ = ("balance",)
-    class BalanceEntry(_message.Message):
-        __slots__ = ("key", "value")
-        KEY_FIELD_NUMBER: _ClassVar[int]
-        VALUE_FIELD_NUMBER: _ClassVar[int]
-        key: str
-        value: str
-        def __init__(self, key: _Optional[str] = ..., value: _Optional[str] = ...) -> None: ...
-    BALANCE_FIELD_NUMBER: _ClassVar[int]
-    balance: _containers.ScalarMap[str, str]
-    def __init__(self, balance: _Optional[_Mapping[str, str]] = ...) -> None: ...
