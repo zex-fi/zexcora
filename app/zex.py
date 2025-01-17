@@ -303,7 +303,7 @@ class Zex(metaclass=SingletonMeta):
             state.contract_decimal_on_chain[chain].contract_decimal.update(details)
 
         for chain, balances in self.zex_balance_on_chain.items():
-            state.zex_balance_on_chain[chain].update(balances)
+            state.zex_balance_on_chain[chain].balance.update(balances)
 
         return state
 
