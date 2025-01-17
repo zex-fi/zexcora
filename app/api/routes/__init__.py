@@ -16,6 +16,9 @@ NETWORK_NAME = {
     "BSC": "Binance Smart Chain",
     "ARB": "Arbitrum",
     "OPT": "Optimism",
+    "HOL": "Holesky",
+    "SEP": "Sepolia",
+    "BST": "Binance Testnet",
 }
 
 NAMES = {
@@ -24,4 +27,7 @@ NAMES = {
     "USDC": "USD coin",
     "WBTC": "Wrapped Bitcoin",
     "LINK": "ChainLink",
+    "zUSDT": "Zex USDT",
+    "zEIGEN": "Zex Eigen",
+    "zWBTC": "Zex Wrapped Bitcoin",
 }

@@ -319,25 +319,20 @@ class Zex(metaclass=SingletonMeta):
         )
 
         tokens = {
-            "BTC": [("0x" + "0" * 40, 8)],
-            "POL": [
-                ("0xc2132D05D31c914a87C6611C10748AEb04B58e8F", 6),
-                ("0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359", 6),
-                ("0x1BFD67037B42Cf73acF2047067bd4F2C47D9BfD6", 8),
-                ("0x53E0bca35eC356BD5ddDFebbD1Fc0fD03FaBad39", 18),
-                ("0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619", 18),  # WETH
+            "HOL": [
+                ("0x325CCd77e71Ac296892ed5C63bA428700ec0f868", 6),
+                ("0x219f1708400bE5b8cC47A56ed2f18536F5Da7EF4", 18),
+                ("0x9d84f6e4D734c33C2B6e7a5211780499A71aEf6A", 8),
             ],
-            "BSC": [
-                ("0x55d398326f99059fF775485246999027B3197955", 18),
-                ("0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", 18),
-                ("0x0555E30da8f98308EdB960aa94C0Db47230d2B9c", 8),
-                ("0xF8A0BF9cF54Bb92F17374d9e9A321E6a111a51bD", 18),
+            "SEP": [
+                ("0x325CCd77e71Ac296892ed5C63bA428700ec0f868", 6),
+                ("0x219f1708400bE5b8cC47A56ed2f18536F5Da7EF4", 18),
+                ("0x9d84f6e4D734c33C2B6e7a5211780499A71aEf6A", 8),
             ],
-            "OPT": [
-                ("0x94b008aA00579c1307B0EF2c499aD98a8ce58e58", 6),
-                ("0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85", 6),
-                ("0x68f180fcCe6836688e9084f035309E29Bf0A2095", 8),
-                ("0x350a791Bfc2C21F9Ed5d10980Dad2e2638ffa7f6", 18),
+            "BST": [
+                ("0x325CCd77e71Ac296892ed5C63bA428700ec0f868", 6),
+                ("0x219f1708400bE5b8cC47A56ed2f18536F5Da7EF4", 18),
+                ("0x9d84f6e4D734c33C2B6e7a5211780499A71aEf6A", 8),
             ],
         }
 
@@ -852,7 +847,7 @@ class Zex(metaclass=SingletonMeta):
             return
 
         # Check if withdrawal is allowed
-        if not self.is_withdrawable(tx.chain, token, token_contract):
+        if not self.is_withdrawable(tx.chain, token, token_contract, tx.amount):
             logger.debug(
                 f"withdraw of token: {token}, contract: {token_contract} is disabled"
             )
@@ -1291,7 +1286,7 @@ class Market:
 
     def place(self, tx: bytes) -> bool:
         operation, amount, price, nonce, public = _parse_transaction(tx)
-        if price < 0 or amount < 0:
+        if price <= 0 or amount <= 0:
             asyncio.create_task(
                 self.zex.order_callback(
                     public=public.hex(),
