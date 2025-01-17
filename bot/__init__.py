@@ -1,4 +1,4 @@
-from .markets import PAIRS, QUOTES, TOKENS
+from .markets import PAIRS
 from .zex_bot import ZexBot
 
-__all__ = [ZexBot, PAIRS, QUOTES, TOKENS]
+__all__ = [ZexBot, PAIRS]

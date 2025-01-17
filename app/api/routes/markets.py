@@ -24,14 +24,14 @@ from . import NAMES, USDT_MAINNET
 router = APIRouter()
 
 market_filter_list = (
-    "BTC-USDT",
-    "LINK-USDT",
+    "zWBTC-zUSDT",
+    "zEIGEN-zUSDT",
 )
 
 token_filter_list = (
-    "BTC",
-    "USDT",
-    "LINK",
+    "zUSDT",
+    "zWBTC",
+    "zEIGEN",
 )
 
 
@@ -40,7 +40,7 @@ def normalize_symbol(symbol):
         raise HTTPException(400, {"error": "invalid symbol"})
     if symbol.count(":") == 0:
         # all verified path
-        pair = symbol.upper()
+        pair = symbol
     else:
         base_token, quote_token = symbol.split("-")
         if base_token.count(":") == 0:
