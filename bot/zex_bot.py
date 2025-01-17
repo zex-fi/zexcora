@@ -14,6 +14,11 @@ import httpx
 import numpy as np
 import websocket
 
+try:
+    from .proxy import proxy
+except ImportError:
+    proxy = {}
+
 HOST = os.getenv("ZEX_HOST")
 PORT = int(os.getenv("ZEX_PORT"))
 
@@ -55,7 +60,7 @@ class ZexBot:
         self.orders = deque()
         self.websocket: WebSocketApp | None = None
 
-        self.client = Spot(proxies={"https": "socks5://127.0.0.1:12123"})
+        self.client = Spot(proxies=proxy)
         kline = self.client.klines(symbol=self.binance_name, interval="1m", limit=1)
         self.mark_price = float(kline[0][4])
         print(
