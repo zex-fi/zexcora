@@ -158,6 +158,11 @@ class ZexBot:
         data = resp.json()
         return data["bids"], data["asks"]
 
+    def update_nonce(self):
+        with self.lock:
+            resp = httpx.get(f"http://{HOST}:{PORT}/v1/user/nonce?id={self.user_id}")
+            self.nonce = resp.json()["nonce"]
+
     def create_order(
         self,
         price: float | int,
@@ -198,8 +203,9 @@ class ZexBot:
         sig = self.privkey.ecdsa_serialize_compact(sig)
         tx += sig
 
-        print(msg)
-        print(tx)
+        if verbose:
+            print(msg)
+            print(tx)
         return tx
 
     def create_cancel_order(self, order: bytes):

@@ -13,9 +13,18 @@ import time
 
 from eth_utils.address import to_checksum_address
 from loguru import logger
+import httpx
 import pandas as pd
 
+from app.callbacks import (
+    depth_event,
+    kline_event,
+    user_deposit_event,
+    user_order_event,
+    user_withdraw_event,
+)
 from app.chain import ChainState
+from app.connection_manager import ConnectionManager
 from app.kline_manager import KlineManager
 
 from .config import settings
@@ -30,6 +39,8 @@ from .zex_types import Chain, ExecutionType, UserPublic
 
 BTC_DEPOSIT, DEPOSIT, WITHDRAW, BUY, SELL, CANCEL, REGISTER = b"xdwbscr"
 TRADES_TTL = 1000
+
+manager = ConnectionManager()
 
 
 def get_token_name(chain, address):
@@ -224,6 +235,123 @@ class StateManager:
 class Zex(metaclass=SingletonMeta):
     """Core exchange class handling deposits, withdrawals, and order matching."""
 
+    @classmethod
+    def initialize_zex(cls):
+        if settings.zex.state_source == "":
+            return cls(
+                kline_callback=kline_event(manager),
+                depth_callback=depth_event(manager),
+                order_callback=user_order_event(manager),
+                deposit_callback=user_deposit_event(manager),
+                withdraw_callback=user_withdraw_event(manager),
+                state_dest=settings.zex.state_dest,
+                light_node=settings.zex.light_node,
+            )
+        try:
+            response = httpx.get(settings.zex.state_source)
+            if response.status_code != 200 or len(response.content) == 0:
+                return cls(
+                    kline_callback=kline_event(manager),
+                    depth_callback=depth_event(manager),
+                    order_callback=user_order_event(manager),
+                    deposit_callback=user_deposit_event(manager),
+                    withdraw_callback=user_withdraw_event(manager),
+                    state_dest=settings.zex.state_dest,
+                    light_node=settings.zex.light_node,
+                )
+        except httpx.ConnectError:
+            return cls(
+                kline_callback=kline_event(manager),
+                depth_callback=depth_event(manager),
+                order_callback=user_order_event(manager),
+                deposit_callback=user_deposit_event(manager),
+                withdraw_callback=user_withdraw_event(manager),
+                state_dest=settings.zex.state_dest,
+                light_node=settings.zex.light_node,
+            )
+
+        data = BytesIO(response.content)
+        return cls.load_state(
+            data=data,
+            kline_callback=kline_event(manager),
+            depth_callback=depth_event(manager),
+            order_callback=user_order_event(manager),
+            deposit_callback=user_deposit_event(manager),
+            withdraw_callback=user_withdraw_event(manager),
+            state_dest=settings.zex.state_dest,
+            light_node=settings.zex.light_node,
+        )
+
+    @classmethod
+    def load_state(
+        cls,
+        data: IO[bytes],
+        kline_callback: Callable[[str, pd.DataFrame], None],
+        depth_callback: Callable[[str, dict], None],
+        order_callback: Callable,
+        deposit_callback: Callable,
+        withdraw_callback: Callable,
+        state_dest: str,
+        light_node: bool,
+    ):
+        pb_state = zex_pb2.ZexState()
+        pb_state.ParseFromString(data.read())
+        return cls.from_protobuf(
+            pb_state,
+            kline_callback,
+            depth_callback,
+            order_callback,
+            deposit_callback,
+            withdraw_callback,
+            state_dest,
+            light_node,
+        )
+
+    @classmethod
+    def from_protobuf(
+        cls,
+        pb_state: zex_pb2.ZexState,
+        kline_callback: Callable[[str, pd.DataFrame], None],
+        depth_callback: Callable[[str, dict], None],
+        order_callback: Callable,
+        deposit_callback: Callable,
+        withdraw_callback: Callable,
+        state_dest: str,
+        light_node: bool,
+    ):
+        zex = cls(
+            kline_callback,
+            depth_callback,
+            order_callback,
+            deposit_callback,
+            withdraw_callback,
+            state_dest,
+            light_node,
+        )
+        zex.last_tx_index = pb_state.last_tx_index
+
+        zex.state_manager = StateManager.from_protobuf(pb_state, zex)
+
+        # Deserialize state components
+        zex._deserialize_amounts(pb_state)
+        zex._deserialize_trades(pb_state)
+        zex._deserialize_orders(pb_state)
+        zex._deserialize_nonces(pb_state)
+        zex._deserialize_user_lookups(pb_state)
+
+        # Deserialize user lookups
+        zex.public_to_id_lookup = {
+            entry.public_key: entry.user_id for entry in pb_state.public_to_id_lookup
+        }
+        zex.id_to_public_lookup = dict(pb_state.id_to_public_lookup)
+
+        # Set last user ID
+        zex.last_user_id = (
+            max(zex.public_to_id_lookup.values()) if zex.public_to_id_lookup else 0
+        )
+
+        return zex
+
     def __init__(
         self,
         kline_callback: Callable[[str, pd.DataFrame], None],
@@ -247,9 +375,10 @@ class Zex(metaclass=SingletonMeta):
             withdraw_callback,
         )
         self._initialize_state(state_dest, light_node, benchmark_mode)
-        self._initialize_test_mode_if_enabled()
+        self._add_dummy_data_if_enabled()
 
-    def _initialize_context(self):
+    @staticmethod
+    def _initialize_context():
         """Set up the Decimal context to trap floating-point operations."""
         c = getcontext()
         c.traps[FloatOperation] = True
@@ -293,14 +422,13 @@ class Zex(metaclass=SingletonMeta):
 
         self.last_user_id_lock = Lock()
         self.last_user_id = 0
-        self.test_mode = not settings.zex.mainnet
 
-    def _initialize_test_mode_if_enabled(self):
+    def _add_dummy_data_if_enabled(self):
         """Initialize test mode if enabled."""
-        if self.test_mode:
-            self._initialize_test_mode()
+        if settings.zex.fill_dummy:
+            self._add_dummy_data()
 
-    def _initialize_test_mode(self):
+    def _add_dummy_data(self):
         """Initialize test mode with predefined data."""
         from secp256k1 import PrivateKey
 
@@ -459,51 +587,6 @@ class Zex(metaclass=SingletonMeta):
             entry.user_id = user_id
         state.id_to_public_lookup.update(self.id_to_public_lookup)
 
-    @classmethod
-    def from_protobuf(
-        cls,
-        pb_state: zex_pb2.ZexState,
-        kline_callback: Callable[[str, pd.DataFrame], None],
-        depth_callback: Callable[[str, dict], None],
-        order_callback: Callable,
-        deposit_callback: Callable,
-        withdraw_callback: Callable,
-        state_dest: str,
-        light_node: bool,
-    ):
-        zex = cls(
-            kline_callback,
-            depth_callback,
-            order_callback,
-            deposit_callback,
-            withdraw_callback,
-            state_dest,
-            light_node,
-        )
-        zex.last_tx_index = pb_state.last_tx_index
-
-        zex.state_manager = StateManager.from_protobuf(pb_state, zex)
-
-        # Deserialize state components
-        zex._deserialize_amounts(pb_state)
-        zex._deserialize_trades(pb_state)
-        zex._deserialize_orders(pb_state)
-        zex._deserialize_nonces(pb_state)
-        zex._deserialize_user_lookups(pb_state)
-
-        # Deserialize user lookups
-        zex.public_to_id_lookup = {
-            entry.public_key: entry.user_id for entry in pb_state.public_to_id_lookup
-        }
-        zex.id_to_public_lookup = dict(pb_state.id_to_public_lookup)
-
-        # Set last user ID
-        zex.last_user_id = (
-            max(zex.public_to_id_lookup.values()) if zex.public_to_id_lookup else 0
-        )
-
-        return zex
-
     def _deserialize_amounts(self, pb_state: zex_pb2.ZexState):
         """Deserialize transaction amounts from protobuf."""
         self.amounts = {e.tx: Decimal(e.amount) for e in pb_state.amounts}
@@ -545,31 +628,6 @@ class Zex(metaclass=SingletonMeta):
         state = self.to_protobuf()
         with open(self.state_dest, "wb") as f:
             f.write(state.SerializeToString())
-
-    @classmethod
-    def load_state(
-        cls,
-        data: IO[bytes],
-        kline_callback: Callable[[str, pd.DataFrame], None],
-        depth_callback: Callable[[str, dict], None],
-        order_callback: Callable,
-        deposit_callback: Callable,
-        withdraw_callback: Callable,
-        state_dest: str,
-        light_node: bool,
-    ):
-        pb_state = zex_pb2.ZexState()
-        pb_state.ParseFromString(data.read())
-        return cls.from_protobuf(
-            pb_state,
-            kline_callback,
-            depth_callback,
-            order_callback,
-            deposit_callback,
-            withdraw_callback,
-            state_dest,
-            light_node,
-        )
 
     def process(self, txs: list[bytes], last_tx_index):
         modified_pairs: set[str] = set()
@@ -697,6 +755,9 @@ class Zex(metaclass=SingletonMeta):
         for deposit in tx.deposits:
             if not self.validate_deposit(deposit):
                 continue
+            if deposit.user_id not in self.id_to_public_lookup:
+                logger.critical(f"user id: {deposit.user_id} is not registered")
+                continue
 
             public = self.id_to_public_lookup[deposit.user_id]
             self.process_deposit(deposit, public)
@@ -709,10 +770,11 @@ class Zex(metaclass=SingletonMeta):
             if public not in self.nonces:
                 self.nonces[public] = 0
 
-            # Ensure market exists
-            self.state_manager.ensure_market_initialized(
-                deposit.token_name, settings.zex.usdt_mainnet, self
-            )
+            if deposit.token_name != settings.zex.usdt_mainnet:
+                # Ensure market exists
+                self.state_manager.ensure_market_initialized(
+                    deposit.token_name, settings.zex.usdt_mainnet, self
+                )
 
             asyncio.create_task(
                 self.deposit_callback(
@@ -965,6 +1027,8 @@ class Zex(metaclass=SingletonMeta):
                 self.last_user_id += 1
                 self.public_to_id_lookup[public] = self.last_user_id
                 self.id_to_public_lookup[self.last_user_id] = public
+        if public not in self.state_manager.user_deposits:
+            self.state_manager.user_deposits[public] = []
 
         if public not in self.trades:
             self.trades[public] = deque()

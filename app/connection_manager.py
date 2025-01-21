@@ -1,6 +1,6 @@
 from fastapi import WebSocket
 
-from app.zex import SingletonMeta
+from app.singleton import SingletonMeta
 
 
 class ConnectionManager(metaclass=SingletonMeta):

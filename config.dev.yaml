@@ -10,11 +10,11 @@ zex:
   mainnet: false
   use_redis: false
   verbose: true
+  fill_dummy: true
 
   keys:
     deposit_public_key: 382892429471464219867747969662311867114742460359035433268305162405387427562199
     deposit_shield_address: "0xFB6E059Cc3F3E8029A2b25fE1fb1d952572f4181"
-    btc_deposit_public_key: 033452c6fa7b1ac52c14bb4ed4b592ffafdae5f2dba7f360435fd9c71428029c71
     btc_public_key: 0290ab36a28c3107d0091e8ea731e3c528046e317f854ed7b35f746d4e3484b1b3
 
   deployer_address: "0xa16aF858AEfE32994dAcdb640683a66FDcCB9569"
