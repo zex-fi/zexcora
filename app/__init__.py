@@ -35,7 +35,6 @@ def initialize_zex():
             state_dest=settings.zex.state_dest,
             light_node=settings.zex.light_node,
         )
-
     try:
         response = httpx.get(settings.zex.state_source)
         if response.status_code != 200 or len(response.content) == 0:

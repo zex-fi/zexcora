@@ -9,9 +9,9 @@ router = APIRouter()
 
 @router.get("/orders")
 def pair_orders(pair: str, side: Literal["buy"] | Literal["sell"]):
-    if pair not in zex.markets:
+    if pair not in zex.state_manager.markets:
         return []
-    market = zex.markets[pair]
+    market = zex.state_manager.markets[pair]
     orders = market.buy_orders if side.lower() == "buy" else market.sell_orders
 
     return [

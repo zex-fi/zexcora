@@ -82,13 +82,18 @@ def get_token_info(token) -> Token:
     t = Token(
         token=token,
         chainType="evm" if token[:3] not in ["BTC"] else "native_only",
-        price=zex.markets[f"{token}-{USDT_MAINNET}"].get_last_price()
-        if f"{token}-{USDT_MAINNET}" in zex.markets
+        price=zex.state_manager.markets[
+            f"{token}-{USDT_MAINNET}"
+        ].kline_manager.get_last_price()
+        if f"{token}-{USDT_MAINNET}" in zex.state_manager.markets
         else 0
         if token != USDT_MAINNET
         else 1,
-        change_24h=zex.markets[f"{token}-{USDT_MAINNET}"].get_price_change_24h_percent()
-        if token != USDT_MAINNET and f"{token}-{USDT_MAINNET}" in zex.markets
+        change_24h=zex.state_manager.markets[
+            f"{token}-{USDT_MAINNET}"
+        ].get_price_change_24h_percent()
+        if token != USDT_MAINNET
+        and f"{token}-{USDT_MAINNET}" in zex.state_manager.markets
         else 0,
         name=NAMES.get(token, token),
         symbol=token,
@@ -99,7 +104,7 @@ def get_token_info(token) -> Token:
 @timed_lru_cache(seconds=60 if settings.zex.mainnet else 1)
 def _exchange_info_response(symbols: tuple[str]):
     symbols_result = []
-    for name in zex.markets.keys():
+    for name in zex.state_manager.markets.keys():
         if name not in symbols:
             continue
         base_asset, quote_asset = name.split("-")
@@ -168,7 +173,7 @@ async def exhange_info(
             raise HTTPException(422, "failed to parse list of symbols")
 
     for s in symbols:
-        if s in zex.markets.keys():
+        if s in zex.state_manager.markets.keys():
             continue
         raise HTTPException(400, {"error": f"invalid symbol {s}"})
 
@@ -294,7 +299,7 @@ def get_price_statistics(
             raise HTTPException(422, "failed to parse list of symbols")
 
     for s in symbols:
-        if s in zex.markets.keys():
+        if s in zex.state_manager.markets.keys():
             continue
         raise HTTPException(400, {"error": f"invalid symbol {s}"})
 
@@ -318,16 +323,19 @@ def get_price(symbol: str | None = None, symbols: str | None = None):
             raise HTTPException(422, "failed to parse list of symbols")
 
     for s in symbols:
-        if s in zex.markets.keys():
+        if s in zex.state_manager.markets.keys():
             continue
         raise HTTPException(400, {"error": f"invalid symbol {s}"})
 
     if symbol:
-        return {"symbol": symbol, "price": str(zex.markets[symbol].get_last_price())}
+        return {
+            "symbol": symbol,
+            "price": str(zex.state_manager.markets[symbol].get_last_price()),
+        }
     return [
         {
             "symbol": s,
-            "price": str(zex.markets[s].get_last_price()),
+            "price": str(zex.state_manager.markets[s].get_last_price()),
         }
         for s in symbols
     ]
@@ -350,7 +358,7 @@ def get_book_ticker(symbol: str | None = None, symbols: str | None = None):
             raise HTTPException(422, "failed to parse list of symbols")
 
     for s in symbols:
-        if s in zex.markets.keys():
+        if s in zex.state_manager.markets.keys():
             continue
         raise HTTPException(400, {"error": f"invalid symbol {s}"})
 
@@ -376,31 +384,45 @@ def get_ticker(
             raise HTTPException(422, "failed to parse list of symbols")
 
     for s in symbols:
-        if s in zex.markets.keys():
+        if s in zex.state_manager.markets.keys():
             continue
         raise HTTPException(400, {"error": f"invalid symbol {s}"})
 
     response = []
     for s in symbols:
-        market = zex.markets[s]
+        market = zex.state_manager.markets[s]
         r = StatisticsFullResponse(
             symbol=s,
-            openPrice=np.format_float_positional(market.get_open_24h(), trim="0"),
-            highPrice=np.format_float_positional(market.get_high_24h(), trim="0"),
-            lowPrice=np.format_float_positional(market.get_low_24h(), trim="0"),
-            lastPrice=np.format_float_positional(market.get_last_price(), trim="0"),
-            volume=np.format_float_positional(market.get_volume_24h(), trim="0"),
+            openPrice=np.format_float_positional(
+                market.kline_manager.get_open_24h(), trim="0"
+            ),
+            highPrice=np.format_float_positional(
+                market.kline_manager.get_high_24h(), trim="0"
+            ),
+            lowPrice=np.format_float_positional(
+                market.kline_manager.get_low_24h(), trim="0"
+            ),
+            lastPrice=np.format_float_positional(
+                market.kline_manager.get_last_price(), trim="0"
+            ),
+            volume=np.format_float_positional(
+                market.kline_manager.get_volume_24h(), trim="0"
+            ),
             quoteVolume="",
-            openTime=np.format_float_positional(market.get_open_time_24h(), trim="0"),
+            openTime=np.format_float_positional(
+                market.kline_manager.get_open_time_24h(), trim="0"
+            ),
             closeTime=int(time.time() * 1000),
             firstId=0,
             lastId=0,
-            count=np.format_float_positional(market.get_trade_num_24h(), trim="0"),
+            count=np.format_float_positional(
+                market.kline_manager.get_trade_num_24h(), trim="0"
+            ),
             priceChange=np.format_float_positional(
-                market.get_price_change_24h(), trim="0"
+                market.kline_manager.get_price_change_24h(), trim="0"
             ),
             priceChangePercent=np.format_float_positional(
-                market.get_price_change_24h_percent(), trim="0"
+                market.kline_manager.get_price_change_24h_percent(), trim="0"
             ),
             weightedAvgPrice="0",
         )

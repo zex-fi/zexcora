@@ -29,7 +29,7 @@ COPY . .
 RUN /usr/local/bin/poetry install
 
 RUN mkdir -p /app/logs
-ENV LOG_DIR=/app/logs
+ENV LOG_DIR=/app/logs CONFIG_PATH=/config.yaml
 
 EXPOSE 15782
-CMD ["python", "app/main.py", "/config.yaml"]
+CMD ["python", "app/main.py"]

@@ -38,6 +38,7 @@ ruff = "^0.4.9"
 colorama = "^0.4.6"
 fakeredis = "^2.25.1"
 binance-connector = "^3.10.0"
+pytest-asyncio = "^0.25.2"
 
 [build-system]
 requires = ["poetry-core"]
