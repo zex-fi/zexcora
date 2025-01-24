@@ -5,6 +5,7 @@ import random
 import time
 
 from colorama import init as colorama_init
+from loguru import logger
 from secp256k1 import PrivateKey
 from termcolor import colored
 
@@ -21,6 +22,7 @@ mid_price = 2000
 u1_private = "31a84594060e103f5a63eb742bd46cf5f5900d8406e2726dedfc61c7cf43ebad"
 u2_private = "31a84594060e103f5a63eb742bd46cf5f5900d8406e2726dedfc61c7cf43ebac"
 
+logger.remove()
 zex = Zex.initialize_zex()
 
 
@@ -78,13 +80,11 @@ async def test_maker_only():
             buyer_bot.create_order(
                 round(rng.uniform(1000, mid_price - 1), 2),
                 round(rng.uniform(0.1, 1), 4),
-                maker=True,
                 verbose=False,
             ),
             seller_bot.create_order(
                 round(rng.uniform(mid_price + 1, 3000), 2),
                 round(rng.uniform(0.1, 1), 4),
-                maker=True,
                 verbose=False,
             ),
         ]
@@ -115,13 +115,11 @@ async def test_taker_only_half_empty_order_book():
             buyer_bot.create_order(
                 1234.56,
                 0.1,
-                maker=True,
                 verbose=False,
             ),
             seller_bot.create_order(
                 1234.56,
                 0.1,
-                maker=True,
                 verbose=False,
             ),
         ]
@@ -190,7 +188,7 @@ async def test_taker_only_half_empty_order_book():
     )
 
 
-def test_taker_only_random_volume():
+async def test_taker_only_random_volume():
     zex, buyer_bot, seller_bot = initialize()
     buyer_bot.update_nonce()
     seller_bot.update_nonce()
@@ -200,13 +198,11 @@ def test_taker_only_random_volume():
         buyer_bot.create_order(
             mid_price - 1,
             volume=10000,
-            maker=False,
             verbose=False,
         ),
         seller_bot.create_order(
             mid_price + 1,
             volume=10000,
-            maker=False,
             verbose=False,
         ),
     ]
@@ -217,13 +213,11 @@ def test_taker_only_random_volume():
             buyer_bot.create_order(
                 mid_price + 1,
                 volume=round(rng.uniform(0.1, 0.5), 4),
-                maker=False,
                 verbose=False,
             ),
             seller_bot.create_order(
                 mid_price - 1,
                 round(rng.uniform(0.1, 0.5), 4),
-                maker=False,
                 verbose=False,
             ),
         ]
@@ -242,7 +236,7 @@ def test_taker_only_random_volume():
 
 if __name__ == "__main__":
     asyncio.run(test_maker_only())
-    # print("------------------------------")
-    # asyncio.run(test_taker_only_half_empty_order_book())
-    # print("------------------------------")
-    # test_taker_only_random_volume()
+    print("------------------------------")
+    asyncio.run(test_taker_only_half_empty_order_book())
+    print("------------------------------")
+    asyncio.run(test_taker_only_random_volume())
