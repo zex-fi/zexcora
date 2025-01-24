@@ -14,6 +14,11 @@ import httpx
 import numpy as np
 import websocket
 
+try:
+    from .proxy import proxy
+except ImportError:
+    proxy = {}
+
 HOST = os.getenv("ZEX_HOST")
 PORT = int(os.getenv("ZEX_PORT"))
 
@@ -55,7 +60,7 @@ class ZexBot:
         self.orders = deque()
         self.websocket: WebSocketApp | None = None
 
-        self.client = Spot(proxies={"https": "socks5://127.0.0.1:12123"})
+        self.client = Spot(proxies=proxy)
         kline = self.client.klines(symbol=self.binance_name, interval="1m", limit=1)
         self.mark_price = float(kline[0][4])
         print(
@@ -124,7 +129,7 @@ class ZexBot:
 
         return on_message
 
-    def send_order_transaction(self, price, maker):
+    def send_order_transaction(self, price):
         price = round(price, self.price_digits)
         volume = round(
             self.base_volume + self.rng.random() * self.base_volume / 2,
@@ -136,7 +141,7 @@ class ZexBot:
             time.sleep(0.5)
             resp = httpx.get(f"http://{HOST}:{PORT}/v1/user/nonce?id={self.user_id}")
             self.nonce = resp.json()["nonce"]
-            tx = self.create_order(price, volume, maker=maker)
+            tx = self.create_order(price, volume)
             self.orders.append(tx)
             txs = [tx.decode("latin-1")]
 
@@ -153,11 +158,15 @@ class ZexBot:
         data = resp.json()
         return data["bids"], data["asks"]
 
+    def update_nonce(self):
+        with self.lock:
+            resp = httpx.get(f"http://{HOST}:{PORT}/v1/user/nonce?id={self.user_id}")
+            self.nonce = resp.json()["nonce"]
+
     def create_order(
         self,
         price: float | int,
         volume: float,
-        maker: bool = False,
         verbose=True,
     ):
         pair = self.pair.replace("-", "")
@@ -173,7 +182,7 @@ class ZexBot:
         )
         if verbose:
             print(
-                f"pair: {self.pair}, none: {self.nonce}, maker: {maker}, side: {self.side}, price: {price}, vol: {volume}"
+                f"pair: {self.pair}, none: {self.nonce}, side: {self.side}, price: {price}, vol: {volume}"
             )
         name = tx[1]
         t = int(time.time())
@@ -193,8 +202,9 @@ class ZexBot:
         sig = self.privkey.ecdsa_serialize_compact(sig)
         tx += sig
 
-        print(msg)
-        print(tx)
+        if verbose:
+            print(msg)
+            print(tx)
         return tx
 
     def create_cancel_order(self, order: bytes):
@@ -275,4 +285,4 @@ class ZexBot:
                     price = self.mark_price
                 elif self.side == "sell":
                     price = self.mark_price
-            self.send_order_transaction(price, maker)
+            self.send_order_transaction(price)

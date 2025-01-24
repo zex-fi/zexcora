@@ -2,9 +2,10 @@ from typing import Literal
 
 from fastapi import APIRouter
 
-from app import zex
+from app.zex import Zex
 
 router = APIRouter()
+zex = Zex.initialize_zex()
 
 
 @router.get("/orders")

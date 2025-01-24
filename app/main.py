@@ -10,11 +10,14 @@ from loguru import logger
 from pydantic import BaseModel
 import uvicorn
 
-from app import manager, stop_event
+from app import stop_event
 from app.api.main import api_router
 from app.api.routes.system import process_loop, transmit_tx
 from app.config import settings
+from app.connection_manager import ConnectionManager
 from app.verify import TransactionVerifier
+
+manager = ConnectionManager()
 
 
 class StreamRequest(BaseModel):
@@ -179,4 +182,5 @@ if __name__ == "__main__":
         app,
         host=settings.zex.host,
         port=settings.zex.port,
+        access_log=False,
     )

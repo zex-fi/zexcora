@@ -1,6 +1,5 @@
 from fastapi import APIRouter
 
-from app import zex
 from app.api.routes import (
     charts,
     drawing_templates,
@@ -10,8 +9,11 @@ from app.api.routes import (
     system,
     users,
 )
+from app.zex import Zex
 
 api_router = APIRouter()
+zex = Zex.initialize_zex()
+
 if zex.light_node:
     api_router.include_router(users.light_router)
 else:

@@ -9,7 +9,6 @@ from fastapi import APIRouter, HTTPException
 from loguru import logger
 from web3 import Web3
 
-from app import zex
 from app.config import settings
 from app.models.response import (
     Addresses,
@@ -25,12 +24,13 @@ from app.models.response import (
     WithdrawNonce,
 )
 from app.models.transaction import Deposit, WithdrawTransaction
-from app.zex import BUY
+from app.zex import BUY, Zex
 
 from . import NAMES, NETWORK_NAME
 
 router = APIRouter()
 light_router = APIRouter()
+zex = Zex.initialize_zex()
 
 
 # @timed_lru_cache(seconds=10)

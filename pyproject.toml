@@ -31,6 +31,7 @@ protobuf = "^5.28.3"
 pydantic-settings = "^2.6.1"
 python-dotenv = "^1.0.1"
 sqlmodel = "^0.0.22"
+cent = "^5.0.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.2"

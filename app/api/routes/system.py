@@ -13,9 +13,12 @@ from zellular import Zellular
 import httpx
 import redis
 
-from app import stop_event, zex
+from app import stop_event
 from app.config import settings
 from app.verify import TransactionVerifier
+from app.zex import Zex
+
+zex = Zex.initialize_zex()
 
 
 class MockZellular:
@@ -100,21 +103,21 @@ def create_real_zellular_instance(app_name: str):
                 "id": "0x4c2906574e76b002e757ff957551c4af64ef33b8",
                 "public_key_g2": "1 9611278528866057312985157745500177806439047990441641970719150715526228383788 14510296422332084166275589907551577008082509824157021533974616032309609480403 10081477652997729356586307373461973834068770885982023569165073493039390199093 1205130207870954424919762321217866852983647106641519327167552924115584464295",
                 "address": "0x4c2906574e76b002e757ff957551c4af64ef33b8",
-                "socket": "http://zsequencer-node1:6001",
+                "socket": "http://127.0.0.1:6001",
                 "stake": 10
             },
             {
                 "id": "0xc46ddcd9998b4f692d2d1d66cf3ba1ff06e7ecd6",
                 "public_key_g2": "1 2564456049898491471897001563782187382505864485640732016823408287867963614179 11319803778281346294691548584774975191176177781049043197825920188158404075467 6883987038389898594439008536930343408067598750972752182534728449983371992012 11863261598815579367545344722667576271049210660431455670485947818125672062126",
                 "address": "0xc46ddcd9998b4f692d2d1d66cf3ba1ff06e7ecd6",
-                "socket": "http://zsequencer-node2:6001",
+                "socket": "http://127.0.0.1:6002",
                 "stake": 10
             },
             {
                 "id": "0x86dcaa39330c6a1a27273928bb5877bdf6240502",
                 "public_key_g2": "1 10722094092415951831092083281713777097975657843805414789700230979893472506937 13892874056591023907216140630948185723246894999227161991434043115559319234682 1765457543974974681849480344310374252170324566540342055726528305206357241460 16510337125750125045428789459859581254702063586917971466893230941761056998147",
                 "address": "0x86dcaa39330c6a1a27273928bb5877bdf6240502",
-                "socket": "http://zsequencer-node3:6001",
+                "socket": "http://127.0.0.1:6003",
                 "stake": 10
             }
         ]
@@ -252,10 +255,12 @@ async def process_loop(tx_verifier: TransactionVerifier):
             txs: list[str] = json.loads(batch)
             finalized_txs = [x.encode("latin-1") for x in txs]
             verified_txs = tx_verifier.verify(finalized_txs)
+            now = time.time()
             zex.process(verified_txs, index)
 
             # TODO: the for loop takes all the CPU time. the sleep gives time to other tasks to run. find a better solution
             await asyncio.sleep(0)
+            logger.warning(time.time() - now)
         except json.JSONDecodeError as e:
             logger.exception(e)
         except ValueError as e:

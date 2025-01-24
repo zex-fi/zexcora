@@ -1,13 +1,15 @@
 from collections import deque
 from threading import Lock
+import asyncio
 import random
 import time
 
 from colorama import init as colorama_init
+from loguru import logger
 from secp256k1 import PrivateKey
 from termcolor import colored
 
-from app import zex
+from app.models.transaction import Deposit, DepositTransaction
 from app.zex import Market, Zex
 from bot import ZexBot
 
@@ -20,6 +22,9 @@ mid_price = 2000
 u1_private = "31a84594060e103f5a63eb742bd46cf5f5900d8406e2726dedfc61c7cf43ebad"
 u2_private = "31a84594060e103f5a63eb742bd46cf5f5900d8406e2726dedfc61c7cf43ebac"
 
+logger.remove()
+zex = Zex.initialize_zex()
+
 
 def initialize() -> tuple[Zex, ZexBot, ZexBot]:
     public1 = PrivateKey(
@@ -31,12 +36,12 @@ def initialize() -> tuple[Zex, ZexBot, ZexBot]:
 
     zex.benchmark_mode = True
 
-    zex.assets["LINK"] = {}
-    zex.assets["LINK"][public2] = 150000000000000
-    zex.assets["USDT"] = {}
-    zex.assets["USDT"][public1] = 200000000000000
-    order_book = Market("LINK", "USDT", zex)
-    zex.markets["LINK-USDT"] = order_book
+    zex.state_manager.assets["zEIGEN"] = {}
+    zex.state_manager.assets["zEIGEN"][public2] = 150000000000000
+    zex.state_manager.assets["zUSDT"] = {}
+    zex.state_manager.assets["zUSDT"][public1] = 200000000000000
+    order_book = Market("zEIGEN", "zUSDT", zex)
+    zex.state_manager.markets["zEIGEN-zUSDT"] = order_book
 
     zex.trades[public1] = deque()
     zex.orders[public1] = {}
@@ -46,14 +51,26 @@ def initialize() -> tuple[Zex, ZexBot, ZexBot]:
     zex.orders[public2] = {}
     zex.nonces[public2] = 0
 
-    buyer_bot = ZexBot(bytes.fromhex(u1_private), "LINK-USDT", "buy", 169, 171, 5, 4)
-    seller_bot = ZexBot(bytes.fromhex(u2_private), "LINK-USDT", "sell", 169, 171, 5, 4)
+    buyer_bot = ZexBot(
+        bytes.fromhex(u1_private), "zEIGEN-zUSDT", "EIGENUSDT", "buy", 2, 2, Lock()
+    )
+    seller_bot = ZexBot(
+        bytes.fromhex(u2_private),
+        "zEIGEN-zUSDT",
+        "EIGENUSDT",
+        "sell",
+        2,
+        2,
+        Lock(),
+    )
 
     return zex, buyer_bot, seller_bot
 
 
-def test_maker_only():
+async def test_maker_only():
     zex, buyer_bot, seller_bot = initialize()
+    buyer_bot.update_nonce()
+    seller_bot.update_nonce()
 
     num_transactions = 100_000
     all_txs = [
@@ -63,13 +80,11 @@ def test_maker_only():
             buyer_bot.create_order(
                 round(rng.uniform(1000, mid_price - 1), 2),
                 round(rng.uniform(0.1, 1), 4),
-                maker=True,
                 verbose=False,
             ),
             seller_bot.create_order(
                 round(rng.uniform(mid_price + 1, 3000), 2),
                 round(rng.uniform(0.1, 1), 4),
-                maker=True,
                 verbose=False,
             ),
         ]
@@ -87,8 +102,10 @@ def test_maker_only():
     )
 
 
-def test_taker_only_half_empty_order_book():
+async def test_taker_only_half_empty_order_book():
     zex, buyer_bot, seller_bot = initialize()
+    buyer_bot.update_nonce()
+    seller_bot.update_nonce()
 
     num_transactions = 100_000
     all_txs = [
@@ -98,21 +115,70 @@ def test_taker_only_half_empty_order_book():
             buyer_bot.create_order(
                 1234.56,
                 0.1,
-                maker=True,
                 verbose=False,
             ),
             seller_bot.create_order(
                 1234.56,
                 0.1,
-                maker=True,
                 verbose=False,
             ),
         ]
     ]
+    zex.deposit(
+        DepositTransaction(
+            version=1,
+            operation="d",
+            chain="HOL",
+            deposits=[
+                Deposit(
+                    tx_hash="0x01",
+                    chain="HOL",
+                    token_contract="0x325CCd77e71Ac296892ed5C63bA428700ec0f868",
+                    amount=1_000_000,
+                    decimal=6,
+                    time=int(time.time()),
+                    user_id=1,
+                    vout=0,
+                ),
+                Deposit(
+                    tx_hash="0x02",
+                    chain="HOL",
+                    token_contract="0x219f1708400bE5b8cC47A56ed2f18536F5Da7EF4",
+                    amount=1_000_000,
+                    decimal=18,
+                    time=int(time.time()),
+                    user_id=1,
+                    vout=0,
+                ),
+                Deposit(
+                    tx_hash="0x03",
+                    chain="HOL",
+                    token_contract="0x325CCd77e71Ac296892ed5C63bA428700ec0f868",
+                    amount=1_000_000,
+                    decimal=6,
+                    time=int(time.time()),
+                    user_id=2,
+                    vout=0,
+                ),
+                Deposit(
+                    tx_hash="0x04",
+                    chain="HOL",
+                    token_contract="0x219f1708400bE5b8cC47A56ed2f18536F5Da7EF4",
+                    amount=1_000_000,
+                    decimal=18,
+                    time=int(time.time()),
+                    user_id=2,
+                    vout=0,
+                ),
+            ],
+        )
+    )
 
     print("starting half empty order book benchmark...")
     start_time = time.time()
+
     zex.process(all_txs, last_tx_index=len(all_txs) - 1)
+
     end_time = time.time()
 
     total_time = end_time - start_time
@@ -122,21 +188,21 @@ def test_taker_only_half_empty_order_book():
     )
 
 
-def test_taker_only_random_volume():
+async def test_taker_only_random_volume():
     zex, buyer_bot, seller_bot = initialize()
+    buyer_bot.update_nonce()
+    seller_bot.update_nonce()
 
     num_transactions = 100_000
     all_txs = [
         buyer_bot.create_order(
             mid_price - 1,
             volume=10000,
-            maker=False,
             verbose=False,
         ),
         seller_bot.create_order(
             mid_price + 1,
             volume=10000,
-            maker=False,
             verbose=False,
         ),
     ]
@@ -147,13 +213,11 @@ def test_taker_only_random_volume():
             buyer_bot.create_order(
                 mid_price + 1,
                 volume=round(rng.uniform(0.1, 0.5), 4),
-                maker=False,
                 verbose=False,
             ),
             seller_bot.create_order(
                 mid_price - 1,
                 round(rng.uniform(0.1, 0.5), 4),
-                maker=False,
                 verbose=False,
             ),
         ]
@@ -171,8 +235,8 @@ def test_taker_only_random_volume():
 
 
 if __name__ == "__main__":
-    # test_maker_only()
-    # print("------------------------------")
-    test_taker_only_half_empty_order_book()
-    # print("------------------------------")
-    # test_taker_only_random_volume()
+    asyncio.run(test_maker_only())
+    print("------------------------------")
+    asyncio.run(test_taker_only_half_empty_order_book())
+    print("------------------------------")
+    asyncio.run(test_taker_only_random_volume())

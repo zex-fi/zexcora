@@ -17,7 +17,6 @@ type TokenName = str
 class Keys(BaseModel):
     deposit_public_key: int
     deposit_shield_address: str
-    btc_deposit_public_key: str
     btc_public_key: str
 
 
@@ -44,6 +43,7 @@ class ZexSettings(BaseModel):
     mainnet: bool
     use_redis: bool
     verbose: bool
+    fill_dummy: bool
 
     keys: Keys
     deployer_address: str

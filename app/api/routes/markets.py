@@ -8,7 +8,6 @@ from fastapi import APIRouter, HTTPException
 import numpy as np
 import pandas as pd
 
-from app import zex
 from app.api.cache import timed_lru_cache
 from app.config import settings
 from app.models.response import (
@@ -18,6 +17,7 @@ from app.models.response import (
     Symbol,
     Token,
 )
+from app.zex import Zex
 
 from . import NAMES, USDT_MAINNET
 
@@ -33,6 +33,8 @@ token_filter_list = (
     "zWBTC",
     "zEIGEN",
 )
+
+zex = Zex.initialize_zex()
 
 
 def normalize_symbol(symbol):
