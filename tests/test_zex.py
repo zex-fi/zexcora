@@ -75,7 +75,7 @@ def zex_instance() -> Zex:
     async def depth_callback(symbol, data):
         pass
 
-    async def order_callback(*args):
+    async def order_callback(*args, **kwargs):
         pass
 
     async def deposit_callback(public, chain, token, amount):
@@ -153,10 +153,20 @@ def zex_instance() -> Zex:
 
 
 @pytest.fixture(scope="module")
-def client_private():
+def client_private1():
     return PrivateKey(
         bytes.fromhex(
             "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+        ),
+        raw=True,
+    )
+
+
+@pytest.fixture(scope="module")
+def client_private2():
+    return PrivateKey(
+        bytes.fromhex(
+            "2234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
         ),
         raw=True,
     )
@@ -169,9 +179,9 @@ def test_empty_instance_state(zex_instance: Zex):
     assert len(zex_instance.state_manager.markets) == 0
 
 
-def test_register(zex_instance: Zex, client_private: PrivateKey):
+def test_register(zex_instance: Zex, client_private1: PrivateKey):
     assert zex_instance.last_user_id == 0
-    public = client_private.pubkey.serialize()
+    public = client_private1.pubkey.serialize()
     zex_instance.register_pub(public)
     assert zex_instance.last_user_id == 1
 
@@ -204,9 +214,9 @@ async def test_deposit_for_not_registered_user(zex_instance: Zex):
 
 @pytest.mark.asyncio(loop_scope="function")
 async def test_deposit_for_registered_user(
-    zex_instance: Zex, client_private: PrivateKey
+    zex_instance: Zex, client_private1: PrivateKey
 ):
-    public = client_private.pubkey.serialize()
+    public = client_private1.pubkey.serialize()
     zex_instance.register_pub(public)
 
     deposit = Deposit(
@@ -228,3 +238,262 @@ async def test_deposit_for_registered_user(
     assert public in zex_instance.state_manager.user_deposits
     assert zex_instance.state_manager.user_deposits[public][0] == deposit
     assert len(zex_instance.state_manager.markets) == 0
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_buy_limit_order_for_not_registered_user(
+    zex_instance: Zex, client_private1: PrivateKey
+):
+    order = create_order(
+        "zEIGEN-zUSDT",
+        "buy",
+        3.21,
+        1.2,
+        0,
+        client_private1,
+    )
+    zex_instance.process([order], 0)
+    test_empty_instance_state(zex_instance)
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_sell_limit_order_for_not_registered_user(
+    zex_instance: Zex, client_private1: PrivateKey
+):
+    order = create_order(
+        "zEIGEN-zUSDT",
+        "sell",
+        3.21,
+        1.2,
+        0,
+        client_private1,
+    )
+    zex_instance.process([order], 0)
+    test_empty_instance_state(zex_instance)
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_not_enough_balance_buy_limit_order_for_registered_user(
+    zex_instance: Zex, client_private1: PrivateKey
+):
+    public = client_private1.pubkey.serialize()
+    zex_instance.register_pub(public)
+
+    deposit_zEIGEN = Deposit(
+        tx_hash="0x001",
+        chain="HOL",
+        token_contract="0x219f1708400bE5b8cC47A56ed2f18536F5Da7EF4",
+        amount=10.0,
+        decimal=18,
+        time=int(time.time()),
+        user_id=1,
+        vout=0,
+    )
+
+    deposit_zUSDT = Deposit(
+        tx_hash="0x002",
+        chain="HOL",
+        token_contract="0x325CCd77e71Ac296892ed5C63bA428700ec0f868",
+        amount=100.0,
+        decimal=6,
+        time=int(time.time()),
+        user_id=1,
+        vout=0,
+    )
+
+    zex_instance.deposit(create_deposit_tx("HOL", [deposit_zEIGEN, deposit_zUSDT]))
+    order = create_order(
+        "zEIGEN-zUSDT",
+        "buy",
+        3.21,
+        1.5,  # deposit 1 zUSDT and buy 1.5*3.21
+        0,
+        client_private1,
+    )
+    zex_instance.process([order], 0)
+
+    assert len(zex_instance.state_manager.chain_states) == 1
+    assert len(zex_instance.state_manager.assets) == 2
+    assert len(zex_instance.state_manager.user_deposits) == 1
+    assert public in zex_instance.state_manager.user_deposits
+
+    assert zex_instance.state_manager.user_deposits[public][0] == deposit_zEIGEN
+    assert zex_instance.state_manager.user_deposits[public][1] == deposit_zUSDT
+
+    assert len(zex_instance.state_manager.markets) == 1
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_not_enough_balance_market_buy_order_for_registered_user(
+    zex_instance: Zex,
+    client_private1: PrivateKey,
+    client_private2: PrivateKey,
+):
+    public1 = client_private1.pubkey.serialize()
+    public2 = client_private2.pubkey.serialize()
+
+    zex_instance.register_pub(public1)
+    zex_instance.register_pub(public2)
+
+    deposit_zEIGEN = Deposit(
+        tx_hash="0x001",
+        chain="HOL",
+        token_contract="0x219f1708400bE5b8cC47A56ed2f18536F5Da7EF4",
+        amount=10.0,
+        decimal=18,
+        time=int(time.time()),
+        user_id=1,
+        vout=0,
+    )
+
+    deposit_zUSDT = Deposit(
+        tx_hash="0x002",
+        chain="HOL",
+        token_contract="0x325CCd77e71Ac296892ed5C63bA428700ec0f868",
+        amount=100.0,
+        decimal=6,
+        time=int(time.time()),
+        user_id=2,
+        vout=0,
+    )
+
+    zex_instance.deposit(create_deposit_tx("HOL", [deposit_zUSDT, deposit_zEIGEN]))
+    limit_order = create_order(
+        "zEIGEN-zUSDT",
+        "sell",
+        3.21,
+        5,
+        0,
+        client_private1,
+    )
+    market_order = create_order(
+        "zEIGEN-zUSDT",
+        "buy",
+        3.21,
+        5,
+        0,
+        client_private2,
+    )
+    zex_instance.process([limit_order, market_order], 0)
+
+    assert len(zex_instance.state_manager.chain_states) == 1
+    assert len(zex_instance.state_manager.assets) == 2
+    assert len(zex_instance.state_manager.user_deposits) == 2
+    assert public1 in zex_instance.state_manager.user_deposits
+    assert public2 in zex_instance.state_manager.user_deposits
+
+    assert zex_instance.state_manager.user_deposits[public1][0] == deposit_zEIGEN
+    assert zex_instance.state_manager.user_deposits[public2][0] == deposit_zUSDT
+
+    assets = zex_instance.state_manager.assets
+    assert assets["zUSDT"][public1] == Decimal("5") * Decimal("3.21")
+    assert assets["zEIGEN"][public1] == Decimal("10") - Decimal("5")
+
+    assert assets["zUSDT"][public2] == Decimal("100") - Decimal("5") * Decimal("3.21")
+    assert assets["zEIGEN"][public2] == Decimal("5")
+
+    assert len(zex_instance.state_manager.markets) == 1
+    assert "zEIGEN-zUSDT" in zex_instance.state_manager.markets
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_not_enough_balance_sell_limit_order_for_registered_user(
+    zex_instance: Zex, client_private1: PrivateKey
+):
+    public = client_private1.pubkey.serialize()
+    zex_instance.register_pub(public)
+
+    # Deposit zEIGEN
+    deposit = Deposit(
+        tx_hash="0x001",
+        chain="HOL",
+        token_contract="0x219f1708400bE5b8cC47A56ed2f18536F5Da7EF4",
+        amount=1.0,
+        decimal=18,
+        time=int(time.time()),
+        user_id=1,
+        vout=0,
+    )
+
+    zex_instance.deposit(create_deposit_tx("HOL", [deposit]))
+    order = create_order(
+        "zEIGEN-zUSDT",
+        "sell",
+        3.21,
+        1.5,  # deposit 1 zEIGEN and sell 1.5
+        0,
+        client_private1,
+    )
+    zex_instance.process([order], 0)
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_not_enough_balance_market_sell_order_for_registered_user(
+    zex_instance: Zex,
+    client_private1: PrivateKey,
+    client_private2: PrivateKey,
+):
+    public1 = client_private1.pubkey.serialize()
+    public2 = client_private2.pubkey.serialize()
+
+    zex_instance.register_pub(public1)
+    zex_instance.register_pub(public2)
+
+    deposit_zUSDT = Deposit(
+        tx_hash="0x001",
+        chain="HOL",
+        token_contract="0x325CCd77e71Ac296892ed5C63bA428700ec0f868",
+        amount=100.0,
+        decimal=6,
+        time=int(time.time()),
+        user_id=1,
+        vout=0,
+    )
+    deposit_zEIGEN = Deposit(
+        tx_hash="0x002",
+        chain="HOL",
+        token_contract="0x219f1708400bE5b8cC47A56ed2f18536F5Da7EF4",
+        amount=10.0,
+        decimal=18,
+        time=int(time.time()),
+        user_id=2,
+        vout=0,
+    )
+
+    zex_instance.deposit(create_deposit_tx("HOL", [deposit_zUSDT, deposit_zEIGEN]))
+    limit_order = create_order(
+        "zEIGEN-zUSDT",
+        "buy",
+        3.21,
+        5,
+        0,
+        client_private1,
+    )
+    market_order = create_order(
+        "zEIGEN-zUSDT",
+        "sell",
+        3.21,
+        5,
+        0,
+        client_private2,
+    )
+    zex_instance.process([limit_order, market_order], 0)
+
+    assert len(zex_instance.state_manager.chain_states) == 1
+    assert len(zex_instance.state_manager.assets) == 2
+    assert len(zex_instance.state_manager.user_deposits) == 2
+    assert public1 in zex_instance.state_manager.user_deposits
+    assert public2 in zex_instance.state_manager.user_deposits
+
+    assert zex_instance.state_manager.user_deposits[public1][0] == deposit_zUSDT
+    assert zex_instance.state_manager.user_deposits[public2][0] == deposit_zEIGEN
+
+    assets = zex_instance.state_manager.assets
+    assert assets["zUSDT"][public1] == Decimal("100") - Decimal("5") * Decimal("3.21")
+    assert assets["zEIGEN"][public1] == Decimal("5")
+
+    assert assets["zUSDT"][public2] == Decimal("5") * Decimal("3.21")
+    assert assets["zEIGEN"][public2] == Decimal("10") - Decimal("5")
+
+    assert len(zex_instance.state_manager.markets) == 1
+    assert "zEIGEN-zUSDT" in zex_instance.state_manager.markets
