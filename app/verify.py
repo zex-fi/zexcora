@@ -280,13 +280,22 @@ def verify_single_tx(
 
     try:
         if name == DEPOSIT:
-            return _verify_deposit_tx(
+            result = _verify_deposit_tx(
                 tx, deposit_monitor_pub_key, deposit_shield_address
             )
+            if not result.is_valid:
+                logger.debug(f"verify deposit failed: {result.error_message}")
+            return result
         elif name == WITHDRAW:
-            return _verify_withdraw_tx(tx)
+            result = _verify_withdraw_tx(tx)
+            if not result.is_valid:
+                logger.debug(f"verify withdraw failed: {result.error_message}")
+            return result
         elif name in (CANCEL, BUY, SELL, REGISTER):
-            return _verify_standard_tx(tx, name)
+            result = _verify_standard_tx(tx, name)
+            if not result.is_valid:
+                logger.debug(f"verify order failed: {result.error_message}")
+            return result
         else:
             logger.error(f"Unknown transaction type: {name}")
             return VerificationResult(
@@ -434,7 +443,7 @@ def _verify_chunk(
             tx,
             deposit_monitor_pub_key,
             deposit_shield_address,
-        )
+        ).is_valid
         for tx in txs
     ]
 
