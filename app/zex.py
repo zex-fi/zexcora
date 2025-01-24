@@ -84,6 +84,7 @@ class StateManager:
         if token_name == quote_token:
             logger.error("base token and quote token can not be the same")
             return None
+
         pair = f"{token_name}-{quote_token}"
         if pair not in self.markets:
             self.markets[pair] = Market(token_name, quote_token, zex_instance)
@@ -631,6 +632,7 @@ class Zex(metaclass=SingletonMeta):
 
     def process(self, txs: list[bytes], last_tx_index):
         modified_pairs: set[str] = set()
+
         for tx in txs:
             if not tx:
                 continue
@@ -648,11 +650,25 @@ class Zex(metaclass=SingletonMeta):
             elif name in (BUY, SELL):
                 base_token, quote_token, pair = self._get_tx_pair(tx)
 
+                # This to make sure the log for both missing token is generated
+                missing_token = False
+                if base_token not in self.state_manager.assets:
+                    missing_token = True
+                    logger.error(
+                        f"can not place order for pair: {pair} since base_token: {base_token} not does not exist"
+                    )
+                if quote_token not in self.state_manager.assets:
+                    missing_token = True
+                    logger.error(
+                        f"can not place order for pair: {pair} since quote_token: {quote_token} not does not exist"
+                    )
+                if missing_token:
+                    continue
+
                 market = self.state_manager.ensure_market_initialized(
                     base_token, quote_token, self
                 )
                 t = int(unix_time())
-                # fast route check for instant match
                 logger.debug(
                     "executing tx base: {base_token}, quote: {quote_token}",
                     base_token=base_token,
@@ -663,6 +679,7 @@ class Zex(metaclass=SingletonMeta):
                 if not self.validate_nonce(public, nonce):
                     continue
 
+                # fast route check for instant match
                 if market.match_instantly(tx, t):
                     modified_pairs.add(pair)
                     continue

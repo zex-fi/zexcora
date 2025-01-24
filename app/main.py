@@ -182,4 +182,5 @@ if __name__ == "__main__":
         app,
         host=settings.zex.host,
         port=settings.zex.port,
+        access_log=False,
     )
