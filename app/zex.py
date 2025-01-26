@@ -155,11 +155,10 @@ class StateManager:
             pb_market.kline = buffer.getvalue()
 
     @classmethod
-    def from_protobuf(
-        cls, pb_state: zex_pb2.ZexState, zex_instance: "Zex"
-    ) -> "StateManager":
-        """Deserialize state manager from protobuf."""
+    def from_protobuf(cls, pb_state: zex_pb2.ZexState, zex_instance: "Zex"):
+        """Deserialize state manager from protobuf and sets self as Zex's state manager"""
         state_manager = cls()
+        zex_instance.state_manager = state_manager
 
         # Deserialize chain states
         for chain in pb_state.deposits.keys():
@@ -229,8 +228,6 @@ class StateManager:
                         state_manager.chain_states[chain].balances[
                             token_info.contract_address
                         ] = sum(balances.values())
-
-        return state_manager
 
 
 class Zex(metaclass=SingletonMeta):
@@ -331,7 +328,7 @@ class Zex(metaclass=SingletonMeta):
         )
         zex.last_tx_index = pb_state.last_tx_index
 
-        zex.state_manager = StateManager.from_protobuf(pb_state, zex)
+        StateManager.from_protobuf(pb_state, zex)
 
         # Deserialize state components
         zex._deserialize_amounts(pb_state)
