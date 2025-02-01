@@ -1068,7 +1068,7 @@ def _parse_transaction_nonce_and_amount(
     order_format_size = struct.calcsize(order_format)
     amount, nonce = struct.unpack(order_format, tx[4 : 4 + order_format_size])
 
-    return Decimal(str(amount)), nonce
+    return nonce, Decimal(str(amount))
 
 
 class Market:
