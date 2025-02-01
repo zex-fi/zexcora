@@ -1,64 +1,94 @@
 zex:
-  host: "127.0.0.1"
+  host: "0.0.0.0"
   port: 15782
   api_prefix: "/v1"
   light_node: false
-  state_source: https://zex.zellular.xyz/api/state/zex_state.pb
+  state_source: "http://zex-state/zex_state.pb"
   state_dest: zex_state.pb
-  state_save_frequency: 500
-  mainnet: true
-  use_redis: true
+  state_save_frequency: 100
+  tx_transmit_delay: 0.01
+  mainnet: false
+  use_redis: false
   verbose: true
+  fill_dummy: true
+  sequencer_mode: "local" # "local", "eigenlayer", "docker"
 
   keys:
-    deposit_public_key: 250142863524534572665877007128114459439059698865189013966065255430287615531517
-    deposit_shield_address: "0xb5E38423629F35B05122DD9608A3CcC585eCc205"
-    btc_deposit_public_key: 033452c6fa7b1ac52c14bb4ed4b592ffafdae5f2dba7f360435fd9c71428029c71
+    deposit_public_key: 382892429471464219867747969662311867114742460359035433268305162405387427562199
+    deposit_shield_address: "0xFB6E059Cc3F3E8029A2b25fE1fb1d952572f4181"
     btc_public_key: 0290ab36a28c3107d0091e8ea731e3c528046e317f854ed7b35f746d4e3484b1b3
 
-  deployer_address: "0x61488b9B87473afe06103Cc2C21188EBef6BB113"
-  byte_code_hash: "0xb83ae55fc646f683ccc0fede2c30691483231b5d9e92061db3f060d426a78c40"
+  deployer_address: "0xa16aF858AEfE32994dAcdb640683a66FDcCB9569"
+  byte_code_hash: "0x972b0e0eafa2adb02ebf7b1a35917a9114211a8e393a2ac373b8af263225f0f8"
 
   redis:
-    url: <ip>:<port>
-    password: <password>
+    url: 127.0.0.1:6379
+    password: zex_super_secure_password
 
   chains:
     - BTC
-    - POL
-    - BSC
-    - OPT
+    - HOL
+    - SEP
+    - BST
 
-  usdt_mainnet: "USDT"
+  usdt_mainnet: "zUSDT"
 
   verified_tokens:
-    decimals:
-      BTC: 8
-      USDT: 6
-      USDC: 6
-      WBTC: 8
-      LINK: 18
-
-    tokens:
+    zUSDT:
+      HOL:
+        contract_address: "0x325CCd77e71Ac296892ed5C63bA428700ec0f868"
+        balance_withdraw_limit: 0.01
+        decimal: 6
+      SEP:
+        contract_address: "0x325CCd77e71Ac296892ed5C63bA428700ec0f868"
+        balance_withdraw_limit: 0.01
+        decimal: 6
+      BST:
+        contract_address: "0x325CCd77e71Ac296892ed5C63bA428700ec0f868"
+        balance_withdraw_limit: 0.01
+        decimal: 6
+    zEIGEN:
+      HOL:
+        contract_address: "0x219f1708400bE5b8cC47A56ed2f18536F5Da7EF4"
+        balance_withdraw_limit: 0.001
+        decimal: 18
+      SEP:
+        contract_address: "0x219f1708400bE5b8cC47A56ed2f18536F5Da7EF4"
+        balance_withdraw_limit: 0.001
+        decimal: 18
+      BST:
+        contract_address: "0x219f1708400bE5b8cC47A56ed2f18536F5Da7EF4"
+        balance_withdraw_limit: 0.001
+        decimal: 18
+    zWBTC:
+      HOL:
+        contract_address: "0x9d84f6e4D734c33C2B6e7a5211780499A71aEf6A"
+        balance_withdraw_limit: 0.000001
+        decimal: 8
+      SEP:
+        contract_address: "0x9d84f6e4D734c33C2B6e7a5211780499A71aEf6A"
+        balance_withdraw_limit: 0.000001
+        decimal: 8
+      BST:
+        contract_address: "0x9d84f6e4D734c33C2B6e7a5211780499A71aEf6A"
+        balance_withdraw_limit: 0.000001
+        decimal: 8
+    BTC:
       BTC:
-        BTC: "0x0000000000000000000000000000000000000000"
-      USDT:
-        POL: "0xc2132D05D31c914a87C6611C10748AEb04B58e8F"
-        BSC: "0x55d398326f99059fF775485246999027B3197955"
-        ARB: "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9"
-        OPT: "0x94b008aA00579c1307B0EF2c499aD98a8ce58e58"
-      USDC:
-        POL: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
-        BSC: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d"
-        ARB: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831"
-        OPT: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85"
-      WBTC:
-        POL: "0x1BFD67037B42Cf73acF2047067bd4F2C47D9BfD6"
-        BSC: "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c"
-        ARB: "0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f"
-        OPT: "0x68f180fcCe6836688e9084f035309E29Bf0A2095"
-      LINK:
-        POL: "0x53E0bca35eC356BD5ddDFebbD1Fc0fD03FaBad39"
-        BSC: "0xF8A0BF9cF54Bb92F17374d9e9A321E6a111a51bD"
-        ARB: "0xf97f4df75117a78c1A5a0DBb814Af92458539FB4"
-        OPT: "0x350a791Bfc2C21F9Ed5d10980Dad2e2638ffa7f6"
+        contract_address: "0x0000000000000000000000000000000000000000"
+        balance_withdraw_limit: 0.000001
+        decimal: 8
+    ETH:
+      HOL:
+        contract_address: "0x0000000000000000000000000000000000000000"
+        balance_withdraw_limit: 0.000001
+        decimal: 18
+      SEP:
+        contract_address: "0x0000000000000000000000000000000000000000"
+        balance_withdraw_limit: 0.000001
+        decimal: 18
+    BNB:
+      BST:
+        contract_address: "0x0000000000000000000000000000000000000000"
+        balance_withdraw_limit: 0.0001
+        decimal: 18

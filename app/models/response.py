@@ -43,6 +43,7 @@ class UserPublicResponse(BaseModel):
 
 
 class Addresses(BaseModel):
+    BTC: str
     EVM: str
 
 

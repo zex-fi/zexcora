@@ -2,15 +2,16 @@ zex:
   host: "0.0.0.0"
   port: 15782
   api_prefix: "/v1"
-  light_node: false
+  light_node: true
   state_source: "http://zex-state/zex_state.pb"
   state_dest: zex_state.pb
-  state_save_frequency: 100
+  state_save_frequency: 1000000
   tx_transmit_delay: 0.01
   mainnet: false
   use_redis: false
   verbose: true
   fill_dummy: true
+  sequencer_mode: "local" # "eigenlayer", "docker"
 
   keys:
     deposit_public_key: 382892429471464219867747969662311867114742460359035433268305162405387427562199
@@ -22,7 +23,6 @@ zex:
 
   redis:
     url: 127.0.0.1:6379
-    # url: 142.93.99.161:6379
     password: zex_super_secure_password
 
   chains:

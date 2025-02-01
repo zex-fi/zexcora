@@ -30,4 +30,6 @@ NAMES = {
     "zUSDT": "Zex USDT",
     "zEIGEN": "Zex Eigen",
     "zWBTC": "Zex Wrapped Bitcoin",
+    "ETH": "Ethereum",
+    "BNB": "BNB",
 }

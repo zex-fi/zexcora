@@ -1,6 +1,6 @@
 from decimal import Decimal
 from pathlib import Path
-import os
+from typing import Literal
 
 from pydantic import BaseModel
 from pydantic_settings import (
@@ -44,6 +44,7 @@ class ZexSettings(BaseModel):
     use_redis: bool
     verbose: bool
     fill_dummy: bool
+    sequencer_mode: Literal["local", "docker", "eigenlayer"]
 
     keys: Keys
     deployer_address: str
@@ -58,9 +59,7 @@ class ZexSettings(BaseModel):
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(
-        yaml_file=os.environ["CONFIG_PATH"], extra="forbid"
-    )
+    model_config = SettingsConfigDict(yaml_file=["config.yaml"], extra="forbid")
     zex: ZexSettings
 
     @classmethod

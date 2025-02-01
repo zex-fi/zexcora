@@ -12,11 +12,13 @@ def kline_event(manager: ConnectionManager):
     async def f(kline_symbol: str, kline: pd.DataFrame):
         if len(kline) == 0:
             return
-        channel = f"{kline_symbol}@kline"
+        channel = f"{kline_symbol}@kline_1m"
         if channel not in manager.subscriptions:
             return
 
         subs = manager.subscriptions[channel].copy()
+        if len(subs) == 0:
+            return
 
         now = int(time.time() * 1000)
         last_candle = kline.iloc[len(kline) - 1]
@@ -69,6 +71,10 @@ def depth_event(manager: ConnectionManager):
             return
 
         subs = manager.subscriptions[channel].copy()
+        if len(subs) == 0:
+            return
+
+        message = {"stream": channel, "data": depth}
 
         # Copy to avoid modification during iteration
         for ws in subs:
@@ -76,7 +82,7 @@ def depth_event(manager: ConnectionManager):
                 manager.remove(ws)
                 continue
             try:
-                await ws.send_json({"stream": channel, "data": depth})
+                await ws.send_json(message)
             except Exception as e:
                 manager.remove(ws)
                 logger.exception(e)
@@ -110,53 +116,57 @@ def user_order_event(manager: ConnectionManager):
             return
 
         subs = manager.subscriptions[channel].copy()
+        if len(subs) == 0:
+            return
+
+        data = {
+            "e": "executionReport",  # Event type
+            "E": int(time.time() * 1000),  # Event time
+            "s": symbol,  # Symbol
+            "c": nonce,  # Client order ID
+            "S": side,  # Side
+            "o": "",  # Order type
+            "f": "GTC",  # Time in force
+            "q": str(amount),  # Order quantity
+            "p": str(price),  # Order price
+            "P": "0.",  # Stop price
+            "F": "0.",  # Iceberg quantity
+            "g": -1,  # OrderListId
+            "C": "",  # Original client order ID; This is the ID of the order being canceled
+            "x": execution_type.value,  # Current execution type
+            "X": order_status,  # Current order status
+            "r": reject_reason,  # Order reject reason; will be an error code.
+            "i": nonce,  # Order ID
+            "l": str(last_filled),  # Last executed quantity
+            "z": str(cumulative_filled),  # Cumulative filled quantity
+            "L": str(last_executed_price),  # Last executed price
+            "n": "0",  # Commission amount
+            "N": None,  # Commission asset
+            "T": transaction_time,  # Transaction time
+            "t": -1,  # Trade ID
+            "I": 8641984,  # Ignore
+            "w": is_on_orderbook,  # Is the order on the book?
+            "m": is_maker,  # Is this trade the maker side?
+            "M": False,  # Ignore
+            "O": 0,  # Order creation time
+            "Z": str(
+                cumulative_quote_asset_quantity
+            ),  # Cumulative quote asset transacted quantity
+            "Y": str(
+                last_quote_asset_quantity
+            ),  # Last quote asset transacted quantity (i.e. lastPrice * lastQty)
+            "Q": str(quote_order_quantity),  # Quote Order Quantity
+            "W": 0,  # Working Time; This is only visible if the order has been placed on the book.
+            "V": "NONE",  # SelfTradePreventionMode
+        }
+        message = {"stream": channel, "data": data}
 
         for ws in subs:
             if ws not in manager.active_connections:
                 manager.remove(ws)
                 continue
             try:
-                data = {
-                    "e": "executionReport",  # Event type
-                    "E": int(time.time() * 1000),  # Event time
-                    "s": symbol,  # Symbol
-                    "c": nonce,  # Client order ID
-                    "S": side,  # Side
-                    "o": "",  # Order type
-                    "f": "GTC",  # Time in force
-                    "q": str(amount),  # Order quantity
-                    "p": str(price),  # Order price
-                    "P": "0.",  # Stop price
-                    "F": "0.",  # Iceberg quantity
-                    "g": -1,  # OrderListId
-                    "C": "",  # Original client order ID; This is the ID of the order being canceled
-                    "x": execution_type.value,  # Current execution type
-                    "X": order_status,  # Current order status
-                    "r": reject_reason,  # Order reject reason; will be an error code.
-                    "i": nonce,  # Order ID
-                    "l": str(last_filled),  # Last executed quantity
-                    "z": str(cumulative_filled),  # Cumulative filled quantity
-                    "L": str(last_executed_price),  # Last executed price
-                    "n": "0",  # Commission amount
-                    "N": None,  # Commission asset
-                    "T": transaction_time,  # Transaction time
-                    "t": -1,  # Trade ID
-                    "I": 8641984,  # Ignore
-                    "w": is_on_orderbook,  # Is the order on the book?
-                    "m": is_maker,  # Is this trade the maker side?
-                    "M": False,  # Ignore
-                    "O": 0,  # Order creation time
-                    "Z": str(
-                        cumulative_quote_asset_quantity
-                    ),  # Cumulative quote asset transacted quantity
-                    "Y": str(
-                        last_quote_asset_quantity
-                    ),  # Last quote asset transacted quantity (i.e. lastPrice * lastQty)
-                    "Q": str(quote_order_quantity),  # Quote Order Quantity
-                    "W": 0,  # Working Time; This is only visible if the order has been placed on the book.
-                    "V": "NONE",  # SelfTradePreventionMode
-                }
-                await ws.send_json({"stream": channel, "data": data})
+                await ws.send_json(message)
             except Exception as e:
                 manager.remove(ws)
                 logger.exception(e)
@@ -172,6 +182,8 @@ def user_deposit_event(manager: ConnectionManager):
                 continue
 
             subs = manager.subscriptions[channel].copy()
+            if len(subs) == 0:
+                continue
 
             for ws in subs:
                 if ws not in manager.active_connections:
@@ -201,20 +213,22 @@ def user_withdraw_event(manager: ConnectionManager):
                 continue
 
             subs = manager.subscriptions[channel].copy()
-
+            if len(subs) == 0:
+                continue
+            data = {
+                "e": "withdraw",  # Event type
+                "E": int(time.time() * 1000),  # Event time
+                "chain": chain,
+                "name": name,
+                "amount": str(amount),
+            }
+            message = {"stream": channel, "data": data}
             for ws in subs:
                 if ws not in manager.active_connections:
                     manager.remove(ws)
                     continue
                 try:
-                    data = {
-                        "e": "withdraw",  # Event type
-                        "E": int(time.time() * 1000),  # Event time
-                        "chain": chain,
-                        "name": name,
-                        "amount": str(amount),
-                    }
-                    await ws.send_json({"stream": channel, "data": data})
+                    await ws.send_json(message)
                 except Exception as e:
                     manager.remove(ws)
                     logger.exception(e)

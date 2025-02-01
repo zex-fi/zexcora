@@ -448,7 +448,7 @@ def _verify_chunk(
     ]
 
 
-class TransactionVerifier(metaclass=SingletonMeta):
+class TransactionVerifier:
     def __init__(self, num_processes: int | None = None):
         """
         Initialize the TransactionVerifier with a multiprocessing pool.

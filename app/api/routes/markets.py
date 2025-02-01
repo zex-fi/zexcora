@@ -26,12 +26,18 @@ router = APIRouter()
 market_filter_list = (
     "zWBTC-zUSDT",
     "zEIGEN-zUSDT",
+    "BTC-zUSDT",
+    "ETH-zUSDT",
+    "BNB-zUSDT",
 )
 
 token_filter_list = (
     "zUSDT",
     "zWBTC",
     "zEIGEN",
+    "BTC",
+    "ETH",
+    "BNB",
 )
 
 zex = Zex.initialize_zex()

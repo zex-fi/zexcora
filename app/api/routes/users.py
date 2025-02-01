@@ -3,6 +3,7 @@ from struct import calcsize, unpack
 import hashlib
 
 from bitcoinutils.keys import P2trAddress, PublicKey
+from bitcoinutils.setup import setup
 from bitcoinutils.utils import tweak_taproot_pubkey
 from eth_utils import keccak, to_checksum_address
 from fastapi import APIRouter, HTTPException
@@ -31,6 +32,8 @@ from . import NAMES, NETWORK_NAME
 router = APIRouter()
 light_router = APIRouter()
 zex = Zex.initialize_zex()
+setup("mainnet" if settings.zex.mainnet else "testnet")
+btc_master_pubkey = PublicKey(settings.zex.keys.btc_public_key)
 
 
 # @timed_lru_cache(seconds=10)
@@ -292,9 +295,6 @@ def get_create2_address(deployer_address: str, salt: int, bytecode_hash: str) ->
 
     # Return the address in checksum format
     return to_checksum_address(address_bytes)
-
-
-btc_master_pubkey = PublicKey(settings.zex.keys.btc_public_key)
 
 
 @router.get("/capital/deposit/address/list")
