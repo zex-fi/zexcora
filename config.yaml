@@ -11,7 +11,7 @@ zex:
   use_redis: false
   verbose: true
   fill_dummy: true
-  sequencer_mode: "local" # "local", "eigenlayer", "docker"
+  sequencer_mode: "docker" # "local", "eigenlayer", "docker"
 
   keys:
     deposit_public_key: 382892429471464219867747969662311867114742460359035433268305162405387427562199

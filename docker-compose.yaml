@@ -22,7 +22,6 @@ services:
       - zex
     depends_on:
       - zex-state
-      - centrifugo
 
   zex-state:
     image: codeskyblue/gohttpserver
