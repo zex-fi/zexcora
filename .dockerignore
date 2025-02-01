@@ -98,3 +98,4 @@ init_db.sql
 zex_state.pb
 logs/
 .pytest_cache
+zsequencer

@@ -1,5 +1,6 @@
 from struct import pack
-from threading import Lock, Thread
+from threading import Thread
+import time
 
 from bot import PAIRS, ZexBot
 
@@ -11,38 +12,42 @@ private_seed = "31a84594060e103f5a63eb742bd46cf5f5900d8406e2726dedfc61c7cf43ebac
 private_seed_int = int.from_bytes(bytearray.fromhex(private_seed), byteorder="big")
 
 
+def new_private(offset):
+    return (private_seed_int + offset).to_bytes(32, "big")
+
+
 def start_threads() -> list[tuple[Thread, ZexBot]]:
     threads: list[tuple[Thread, ZexBot]] = []
-    lock = Lock()
     for pair in PAIRS:
-        buyer_bot = ZexBot(
-            private_key=private_seed_int.to_bytes(32, "big"),
-            pair=pair["pair"],
-            side="buy",
-            binance_name=pair["binance_name"],
-            volume_digits=pair["volume_digits"],
-            price_digits=pair["price_digits"],
-            lock=lock,
-            seed=0,
-        )
-        seller_bot = ZexBot(
-            private_key=private_seed_int.to_bytes(32, "big"),
-            pair=pair["pair"],
-            side="sell",
-            binance_name=pair["binance_name"],
-            volume_digits=pair["volume_digits"],
-            price_digits=pair["price_digits"],
-            lock=lock,
-            seed=1,
-        )
-        print(
-            f"buyer id: {buyer_bot.user_id}, seller id: {seller_bot.user_id}, pair: {pair}"
-        )
-        t1 = Thread(target=buyer_bot.run)
-        t2 = Thread(target=seller_bot.run)
-        t1.start()
-        t2.start()
-        threads.extend([(t1, buyer_bot), (t2, seller_bot)])
+        j = len(threads)
+        for i in range(0, 4, 2):
+            buyer_bot = ZexBot(
+                private_key=new_private(j + i),
+                pair=pair["pair"],
+                side="buy",
+                binance_name=pair["binance_name"],
+                volume_digits=pair["volume_digits"],
+                price_digits=pair["price_digits"],
+                seed=i,
+            )
+            seller_bot = ZexBot(
+                private_key=new_private(j + i + 1),
+                pair=pair["pair"],
+                side="sell",
+                binance_name=pair["binance_name"],
+                volume_digits=pair["volume_digits"],
+                price_digits=pair["price_digits"],
+                seed=i + 1,
+            )
+
+            t1 = Thread(target=buyer_bot.run)
+            t2 = Thread(target=seller_bot.run)
+            threads.extend([(t1, buyer_bot), (t2, seller_bot)])
+
+    for t, _ in threads:
+        t.start()
+        time.sleep(0.1)
+
     return threads
 
 

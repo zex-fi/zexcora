@@ -172,9 +172,9 @@ nodes.json
 redis.conf
 zex_state.pb
 important-keys.yaml
-config-test.yaml
 wallet/monero
 redis-data/
+config.json
 
 logs/
 *.log

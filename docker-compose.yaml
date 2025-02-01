@@ -3,7 +3,7 @@ services:
     image: zex:dev
     container_name: zex-dev
     volumes:
-      - ./config.dev.yaml:/config.yaml
+      - ./config.yaml:/config.yaml
       - ./init_db.sql:/zex/init_db.sql
       - ./zex_state.pb:/zex/zex_state.pb
       - logs:/zex/logs
@@ -43,21 +43,6 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     ports:
       - "8080:8080"
-    networks:
-      - zex
-
-  centrifugo:
-    container_name: centrifugo
-    image: centrifugo/centrifugo:v5
-    volumes:
-      - ./config.json:/centrifugo/config.json
-    command: centrifugo -c config.json
-    ports:
-      - 8000:8000
-    ulimits:
-      nofile:
-        soft: 65535
-        hard: 65535
     networks:
       - zex
 
