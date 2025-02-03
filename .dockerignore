@@ -99,3 +99,4 @@ zex_state.pb
 logs/
 .pytest_cache
 zsequencer
+bot

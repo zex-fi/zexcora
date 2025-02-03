@@ -18,8 +18,6 @@ from secp256k1 import PublicKey
 from web3 import Web3
 import numpy as np
 
-from app.singleton import SingletonMeta
-
 from .config import settings
 
 DEPOSIT, WITHDRAW, BUY, SELL, CANCEL, REGISTER = b"dwbscr"

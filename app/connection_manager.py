@@ -1,6 +1,6 @@
 from fastapi import WebSocket
 
-from app.singleton import SingletonMeta
+from .singleton import SingletonMeta
 
 
 class ConnectionManager(metaclass=SingletonMeta):

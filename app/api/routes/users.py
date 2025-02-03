@@ -10,8 +10,8 @@ from fastapi import APIRouter, HTTPException
 from loguru import logger
 from web3 import Web3
 
-from app.config import settings
-from app.models.response import (
+from ...config import settings
+from ...models.response import (
     Addresses,
     NonceResponse,
     OrderResponse,
@@ -24,8 +24,8 @@ from app.models.response import (
     Withdraw,
     WithdrawNonce,
 )
-from app.models.transaction import Deposit, WithdrawTransaction
-from app.zex import BUY, Zex
+from ...models.transaction import Deposit, WithdrawTransaction
+from ...zex import BUY, Zex
 
 from . import NAMES, NETWORK_NAME
 

@@ -15,10 +15,10 @@ from zellular import Zellular
 import httpx
 import redis
 
-from app import stop_event
-from app.config import settings
-from app.verify import TransactionVerifier
-from app.zex import Zex
+from ... import stop_event
+from ...config import settings
+from ...verify import TransactionVerifier
+from ...zex import Zex
 
 zex = Zex.initialize_zex()
 

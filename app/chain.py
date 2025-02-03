@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 from decimal import Decimal
 
-from app.models.transaction import WithdrawTransaction
-from app.proto import zex_pb2
+from .models.transaction import WithdrawTransaction
+from .proto import zex_pb2
 
 
 @dataclass

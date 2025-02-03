@@ -10,11 +10,11 @@ from loguru import logger
 from pydantic import BaseModel
 import uvicorn
 
-from app import stop_event
-from app.api.main import api_router
-from app.api.routes.system import process_loop, transmit_tx
-from app.config import settings
-from app.connection_manager import ConnectionManager
+from . import stop_event
+from .api.main import api_router
+from .api.routes.system import process_loop, transmit_tx
+from .config import settings
+from .connection_manager import ConnectionManager
 
 manager = ConnectionManager()
 
@@ -82,9 +82,48 @@ class JSONMessageManager:
                 return StreamResponse(id=request.id, result=None)
 
 
+def setup_logging(debug_mode: bool = False):
+    """Configure logging for the application."""
+    # Remove default handler
+    logger.remove()
+
+    # Determine minimum console log level based on debug mode
+    console_level = "DEBUG" if debug_mode else "INFO"
+
+    # Console handler
+    logger.add(
+        sys.stdout,
+        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+        level=console_level,
+        colorize=debug_mode,
+        serialize=False,
+    )
+
+    # File handlers
+    logger.add(
+        "logs/debug.log",
+        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
+        level="DEBUG",
+        rotation="10 MB",
+        retention="1 week",
+        serialize=not debug_mode,
+    )
+
+    logger.add(
+        "logs/error.log",
+        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
+        level="ERROR",
+        rotation="10 MB",
+        retention="1 month",
+        serialize=not debug_mode,
+    )
+
+
 # Run the broadcaster in the background
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    setup_logging(debug_mode=settings.zex.verbose)
+
     t1 = Thread(
         target=asyncio.run,
         args=(transmit_tx(),),
@@ -136,45 +175,7 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.exception(e)
 
 
-def setup_logging(debug_mode: bool = False):
-    """Configure logging for the application."""
-    # Remove default handler
-    logger.remove()
-
-    # Determine minimum console log level based on debug mode
-    console_level = "DEBUG" if debug_mode else "INFO"
-
-    # Console handler
-    logger.add(
-        sys.stdout,
-        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
-        level=console_level,
-        colorize=debug_mode,
-        serialize=False,
-    )
-
-    # File handlers
-    logger.add(
-        "logs/debug.log",
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
-        level="DEBUG",
-        rotation="10 MB",
-        retention="1 week",
-        serialize=not debug_mode,
-    )
-
-    logger.add(
-        "logs/error.log",
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
-        level="ERROR",
-        rotation="10 MB",
-        retention="1 month",
-        serialize=not debug_mode,
-    )
-
-
 def main():
-    setup_logging(debug_mode=settings.zex.verbose)
     uvicorn.run(
         app,
         host=settings.zex.host,

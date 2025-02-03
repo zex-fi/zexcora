@@ -1,4 +1,4 @@
-from app.config import settings
+from ...config import settings
 
 USDT_MAINNET = settings.zex.usdt_mainnet
 

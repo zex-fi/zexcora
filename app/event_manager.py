@@ -4,8 +4,8 @@ import asyncio
 
 import pandas as pd
 
-from app.callbacks import depth_event, kline_event
-from app.connection_manager import ConnectionManager
+from .callbacks import depth_event, kline_event
+from .connection_manager import ConnectionManager
 
 manager = ConnectionManager()
 
