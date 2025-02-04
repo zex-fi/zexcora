@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.routes import (
+from ..api.routes import (
     charts,
     drawing_templates,
     markets,
@@ -9,7 +9,7 @@ from app.api.routes import (
     system,
     users,
 )
-from app.zex import Zex
+from ..zex import Zex
 
 api_router = APIRouter()
 zex = Zex.initialize_zex()

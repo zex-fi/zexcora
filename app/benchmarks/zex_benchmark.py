@@ -17,11 +17,11 @@ from termcolor import colored
 from zellular import Zellular
 import numpy as np
 
-from app.api.routes.system import create_zellular_instance
-from app.config import settings
-from app.models.transaction import Deposit, DepositTransaction
-from app.verify import TransactionVerifier
-from app.zex import Market, Zex
+from ..api.routes.system import create_zellular_instance
+from ..config import settings
+from ..models.transaction import Deposit, DepositTransaction
+from ..verify import TransactionVerifier
+from ..zex import Market, Zex
 
 colorama_init()
 
@@ -87,11 +87,11 @@ class Bot:
         t = int(time.time())
         tx += pack(">II", t, self.nonce) + self.pubkey
         msg = "v: 1\n"
-        msg += f'name: {"buy" if name == BUY else "sell"}\n'
+        msg += f"name: {'buy' if name == BUY else 'sell'}\n"
         msg += f"base token: {base_token}\n"
         msg += f"quote token: {quote_token}\n"
-        msg += f'amount: {np.format_float_positional(volume, trim="0")}\n'
-        msg += f'price: {np.format_float_positional(price, trim="0")}\n'
+        msg += f"amount: {np.format_float_positional(volume, trim='0')}\n"
+        msg += f"price: {np.format_float_positional(price, trim='0')}\n"
         msg += f"t: {t}\n"
         msg += f"nonce: {self.nonce}\n"
         msg += f"public: {self.pubkey.hex()}\n"

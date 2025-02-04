@@ -5,7 +5,7 @@ from eth_hash.auto import keccak
 from secp256k1 import PrivateKey
 import httpx
 
-from app.verify import order_msg, withdraw_msg
+from ..app.verify import order_msg, withdraw_msg
 
 DEPOSIT, WITHDRAW, BUY, SELL, CANCEL = b"dwbsc"
 
@@ -136,7 +136,7 @@ if __name__ == "__main__":
             break
         # rand = random.randint(10, 100)
         rand = 2
-        print(f"processing txs {i}:{i+rand} from total {len(txs)} txs")
+        print(f"processing txs {i}:{i + rand} from total {len(txs)} txs")
         resp = httpx.post("http://localhost:8000/api/txs", json=txs[i : i + rand])
         resp.raise_for_status()
         i += rand

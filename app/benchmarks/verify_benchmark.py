@@ -1,6 +1,6 @@
 import time
 
-from app.verify import verify
+from ..verify import verify
 
 
 def benchmark_multiprocessing(*args):

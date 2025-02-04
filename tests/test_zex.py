@@ -8,10 +8,10 @@ from secp256k1 import PrivateKey
 import numpy as np
 import pytest
 
-from app.config import Token, settings
-from app.models.transaction import Deposit, DepositTransaction, WithdrawTransaction
-from app.zex import Market, Zex
-from app.zex_types import Chain, UserPublic
+from ..app.config import Token, settings
+from ..app.models.transaction import Deposit, DepositTransaction, WithdrawTransaction
+from ..app.zex import Market, Zex
+from ..app.zex_types import Chain, UserPublic
 
 version = pack(">B", 1)
 DEPOSIT, WITHDRAW, BUY, SELL, CANCEL, REGISTER = b"dwbscr"
@@ -42,11 +42,11 @@ def create_order(
     t = int(time.time())
     tx += pack(">II", t, nonce) + pubkey
     msg = "v: 1\n"
-    msg += f'name: {"buy" if name == BUY else "sell"}\n'
+    msg += f"name: {'buy' if name == BUY else 'sell'}\n"
     msg += f"base token: {base_token}\n"
     msg += f"quote token: {quote_token}\n"
-    msg += f'amount: {np.format_float_positional(volume, trim="0")}\n'
-    msg += f'price: {np.format_float_positional(price, trim="0")}\n'
+    msg += f"amount: {np.format_float_positional(volume, trim='0')}\n"
+    msg += f"price: {np.format_float_positional(price, trim='0')}\n"
     msg += f"t: {t}\n"
     msg += f"nonce: {nonce}\n"
     msg += f"public: {pubkey.hex()}\n"

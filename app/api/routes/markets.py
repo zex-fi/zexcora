@@ -8,16 +8,16 @@ from fastapi import APIRouter, HTTPException
 import numpy as np
 import pandas as pd
 
-from app.api.cache import timed_lru_cache
-from app.config import settings
-from app.models.response import (
+from ...api.cache import timed_lru_cache
+from ...config import settings
+from ...models.response import (
     ExchangeInfoResponse,
     StatisticsFullResponse,
     StatisticsMiniResponse,
     Symbol,
     Token,
 )
-from app.zex import Zex
+from ...zex import Zex
 
 from . import NAMES, USDT_MAINNET
 

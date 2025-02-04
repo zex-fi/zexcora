@@ -5,7 +5,7 @@ from eth_typing import ChecksumAddress
 from eth_utils.address import to_checksum_address
 from pydantic import BaseModel
 
-from app.config import settings
+from ..config import settings
 
 
 def chunkify(lst, n_chunks):

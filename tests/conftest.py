@@ -4,9 +4,9 @@ from decimal import Decimal
 from secp256k1 import PrivateKey
 import pytest
 
-from app.config import settings
-from app.zex import Zex
-from app.zex_types import Token
+from ..app.config import settings
+from ..app.zex import Zex
+from ..app.zex_types import Token
 
 
 @pytest.fixture(scope="function")

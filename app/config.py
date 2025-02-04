@@ -32,8 +32,8 @@ class Token(BaseModel):
 
 
 class ZexSettings(BaseModel):
-    host: str
-    port: int
+    host: str = "0.0.0.0"
+    port: int = 15782
     api_prefix: str
     light_node: bool
     state_source: str
