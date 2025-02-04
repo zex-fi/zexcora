@@ -4,14 +4,14 @@ services:
     container_name: zex-dev
     volumes:
       - ./config.yaml:/config.yaml
-      - ./init_db.sql:/zex/init_db.sql
-      - ./zex_state.pb:/zex/zex_state.pb
-      - logs:/zex/logs
+      - ./init_db.sql:/app/init_db.sql
+      - ./zex_state.pb:/app/zex_state.pb
+      - logs:/app/logs
 
     ports:
       - 15782:80
     environment:
-      - LOG_DIR=/zex/logs
+      - LOG_DIR=/app/logs
     logging:
       driver: "json-file"
       options:
