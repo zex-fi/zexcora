@@ -22,4 +22,4 @@ RUN uv sync --frozen --no-cache
 RUN mkdir -p /app/logs
 ENV LOG_DIR=/app/logs CONFIG_PATH=/config.yaml
 
-CMD ["/app/.venv/bin/fastapi", "run", "--port", "80", "--host", "0.0.0.0", "app/main.py"]
+CMD ["/app/.venv/bin/uvicorn", "--no-access-log", "--port", "80", "--host", "0.0.0.0", "app.main:app"]

@@ -159,11 +159,11 @@ class ZexBot:
         t = int(time.time())
         tx += pack(">II", t, self.nonce) + self.pubkey
         msg = "v: 1\n"
-        msg += f'name: {"buy" if name == BUY else "sell"}\n'
+        msg += f"name: {'buy' if name == BUY else 'sell'}\n"
         msg += f"base token: {base_token}\n"
         msg += f"quote token: {quote_token}\n"
-        msg += f'amount: {np.format_float_positional(volume, trim="0")}\n'
-        msg += f'price: {np.format_float_positional(price, trim="0")}\n'
+        msg += f"amount: {np.format_float_positional(volume, trim='0')}\n"
+        msg += f"price: {np.format_float_positional(price, trim='0')}\n"
         msg += f"t: {t}\n"
         msg += f"nonce: {self.nonce}\n"
         msg += f"public: {self.pubkey.hex()}\n"

@@ -2,7 +2,8 @@ from struct import pack
 from threading import Thread
 import time
 
-from bot import PAIRS, ZexBot
+from markets import PAIRS
+from zex_bot import ZexBot
 
 DEPOSIT, WITHDRAW, BUY, SELL, CANCEL = b"dwbsc"
 
@@ -20,7 +21,7 @@ def start_threads() -> list[tuple[Thread, ZexBot]]:
     threads: list[tuple[Thread, ZexBot]] = []
     for pair in PAIRS:
         j = len(threads)
-        for i in range(0, 4, 2):
+        for i in range(0, 2, 2):
             buyer_bot = ZexBot(
                 private_key=new_private(j + i),
                 pair=pair["pair"],

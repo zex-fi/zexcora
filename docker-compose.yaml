@@ -3,7 +3,7 @@ services:
     image: zex:dev
     container_name: zex-dev
     volumes:
-      - ./config.yaml:/config.yaml
+      - ./config.yaml:/app/config.yaml
       - ./init_db.sql:/app/init_db.sql
       - ./zex_state.pb:/app/zex_state.pb
       - logs:/app/logs
@@ -12,6 +12,7 @@ services:
       - 15782:80
     environment:
       - LOG_DIR=/app/logs
+      - ZEX__SEQUENCER_MODE=docker
     logging:
       driver: "json-file"
       options:

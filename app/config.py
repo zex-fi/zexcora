@@ -59,7 +59,12 @@ class ZexSettings(BaseModel):
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(yaml_file=["config.yaml"], extra="forbid")
+    model_config = SettingsConfigDict(
+        nested_model_default_partial_update=True,
+        env_nested_delimiter="__",
+        yaml_file=["config.yaml"],
+        extra="forbid",
+    )
     zex: ZexSettings
 
     @classmethod
@@ -71,7 +76,9 @@ class Settings(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
-        return (YamlConfigSettingsSource(settings_cls),)
+        return env_settings, YamlConfigSettingsSource(settings_cls)
 
 
 settings = Settings()
+
+print(settings.model_dump_json())
