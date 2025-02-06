@@ -18,7 +18,6 @@ from ...models.response import (
     Token,
 )
 from ...zex import Zex
-
 from . import NAMES, USDT_MAINNET
 
 router = APIRouter()

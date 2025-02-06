@@ -17,11 +17,10 @@ import pandas as pd
 
 from .callbacks import user_deposit_event, user_order_event, user_withdraw_event
 from .chain import ChainState
+from .config import settings
 from .connection_manager import ConnectionManager
 from .event_manager import SnapshotManager
 from .kline_manager import KlineManager
-
-from .config import settings
 from .models.transaction import (
     Deposit,
     DepositTransaction,

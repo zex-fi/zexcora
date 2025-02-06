@@ -26,7 +26,6 @@ from ...models.response import (
 )
 from ...models.transaction import Deposit, WithdrawTransaction
 from ...zex import BUY, Zex
-
 from . import NAMES, NETWORK_NAME
 
 router = APIRouter()
@@ -245,7 +244,12 @@ def get_taproot_address(master_public: PublicKey, user_id: int) -> P2trAddress:
     pubkey = tweak_and_odd[0][:32]
     is_odd = tweak_and_odd[1]
 
-    return P2trAddress(witness_program=pubkey.hex(), is_odd=is_odd)
+    # return P2trAddress(witness_program=pubkey.hex(), is_odd=is_odd)
+    prefix = "03" if is_odd else "02"
+    compressed_pubkey = prefix + pubkey.hex()
+    public_key = PublicKey(compressed_pubkey)
+    taproot_address = public_key.get_taproot_address()
+    return taproot_address
 
 
 def get_create2_address(deployer_address: str, salt: int, bytecode_hash: str) -> str:
