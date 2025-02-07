@@ -177,7 +177,7 @@ def user_order_event(manager: ConnectionManager):
 def user_deposit_event(manager: ConnectionManager):
     async def f(public: str, chain: str, name: str, amount: Decimal):
         for prefix in [public, "all"]:
-            channel = f"{prefix}@kline"
+            channel = f"{prefix}@deposit"
             if channel not in manager.subscriptions:
                 continue
 
@@ -185,19 +185,21 @@ def user_deposit_event(manager: ConnectionManager):
             if len(subs) == 0:
                 continue
 
+            data = {
+                "e": "deposit",  # Event type
+                "E": int(time.time() * 1000),  # Event time
+                "chain": chain,
+                "name": name,
+                "amount": str(amount),
+            }
+            message = {"stream": channel, "data": data}
+
             for ws in subs:
                 if ws not in manager.active_connections:
                     manager.remove(ws)
                     continue
                 try:
-                    data = {
-                        "e": "deposit",  # Event type
-                        "E": int(time.time() * 1000),  # Event time
-                        "chain": chain,
-                        "name": name,
-                        "amount": str(amount),
-                    }
-                    await ws.send_json({"stream": channel, "data": data})
+                    await ws.send_json(message)
                 except Exception as e:
                     manager.remove(ws)
                     logger.exception(e)
@@ -223,6 +225,7 @@ def user_withdraw_event(manager: ConnectionManager):
                 "amount": str(amount),
             }
             message = {"stream": channel, "data": data}
+
             for ws in subs:
                 if ws not in manager.active_connections:
                     manager.remove(ws)
