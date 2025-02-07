@@ -279,12 +279,17 @@ def pull_batches(
     zellular_queue: mp.Queue,
     after: int,
 ):
-    try:
-        for batch, index in zellular.batches(after=after):
-            after = index
-            zellular_queue.put((batch, index))
-    finally:
-        zellular_queue.put(None)
+    while True:
+        try:
+            for batch, index in zellular.batches(after=after):
+                after = index
+                zellular_queue.put((batch, index))
+        except json.JSONDecodeError as e:
+            logger.exception(e)
+            continue
+        except Exception:
+            zellular_queue.put(None)
+            return
 
 
 def verify_batches(
