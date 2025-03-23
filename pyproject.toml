@@ -1,48 +1,44 @@
-[tool.poetry]
-name = "app"
+[project]
+name = "zex"
 version = "0.1.0"
-description = ""
-authors = []
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "bitcoinrpc>=0.7.0",
+    "eigensdk",
+    "eth>=0.0.1",
+    "fastapi[standard]>=0.115.8",
+    "fastecdsa>=2.3.2",
+    "httpx>=0.28.1",
+    "loguru>=0.7.3",
+    "pandas>=2.2.3",
+    "protobuf>=5.29.3",
+    "pydantic>=2.10.6",
+    "pydantic-settings>=2.7.1",
+    "pyfrost",
+    "redis>=5.2.1",
+    "requests[socks]>=2.32.3",
+    "secp256k1>=0.14.0",
+    "web3>=7.4.0",
+    "zellular",
+]
 
-[tool.poetry.dependencies]
-python = ">=3.12,<4"
-secp256k1 = "^0.14.0"
-fastapi = "^0.111.0"
-pydantic = ">2.0"
-requests = { extras = ["socks"], version = "^2.32.3" }
-httpx = { extras = ["socks"], version = "^0.28.0" }
-websockets = "^12.0"
-websocket-client = "^1.8.0"
-pandas = "^2.2.2"
-eth-hash = { extras = ["pycryptodome"], version = "^0.7.0" }
-loguru = "^0.7.2"
-bitcoinrpc = "^0.7.0"
-bitcoin-utils = "0.6.8"
-pycryptodomex = "^3.20"
-fastecdsa = "^2.3.2"
-eth-abi = "^5.1.0"
-flask = "^3.0.0"
-zellular = { git = "https://github.com/zellular-xyz/zellular.py.git", rev = "main" }
-eigensdk = { git = "https://github.com/zellular-xyz/eigensdk-python", rev = "main" }
-pyfrost = { git = "https://github.com/zellular-xyz/pyfrost", rev = "main" }
-web3 = "^7.4.0"
-redis = "^5.1.1"
-protobuf = "^5.28.3"
-pydantic-settings = "^2.6.1"
-python-dotenv = "^1.0.1"
-sqlmodel = "^0.0.22"
+[tool.uv.sources]
+eigensdk = { git = "https://github.com/zellular-xyz/eigensdk-python" }
+zellular = { git = "https://github.com/zellular-xyz/zellular.py" }
+pyfrost = { git = "https://github.com/zellular-xyz/pyfrost" }
 
-[tool.poetry.group.dev.dependencies]
-pytest = "^8.3.2"
-ruff = "^0.4.9"
-colorama = "^0.4.6"
-fakeredis = "^2.25.1"
-binance-connector = "^3.10.0"
-pytest-asyncio = "^0.25.2"
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+[dependency-groups]
+dev = [
+    "binance-connector>=3.12.0",
+    "colorama>=0.4.6",
+    "line-profiler>=4.2.0",
+    "pytest>=8.3.4",
+    "pytest-asyncio>=0.25.3",
+    "ruff>=0.9.4",
+    "tqdm>=4.67.1",
+]
 
 [tool.ruff]
 target-version = "py310"

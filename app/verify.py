@@ -18,11 +18,9 @@ from secp256k1 import PublicKey
 from web3 import Web3
 import numpy as np
 
-from app.singleton import SingletonMeta
-
 from .config import settings
 
-BTC_DEPOSIT, DEPOSIT, WITHDRAW, BUY, SELL, CANCEL, REGISTER = b"xdwbscr"
+DEPOSIT, WITHDRAW, BUY, SELL, CANCEL, REGISTER = b"dwbscr"
 
 w3 = Web3()
 
@@ -261,7 +259,6 @@ def verify_single_tx(
     tx: bytes,
     deposit_monitor_pub_key: int,
     deposit_shield_address: str,
-    btc_monitor_pub: bytes,
 ) -> VerificationResult:
     """
     Verify a single transaction with comprehensive error handling.
@@ -281,15 +278,22 @@ def verify_single_tx(
 
     try:
         if name == DEPOSIT:
-            return _verify_deposit_tx(
+            result = _verify_deposit_tx(
                 tx, deposit_monitor_pub_key, deposit_shield_address
             )
-        elif name == BTC_DEPOSIT:
-            return _verify_btc_deposit_tx(tx, btc_monitor_pub)
+            if not result.is_valid:
+                logger.debug(f"verify deposit failed: {result.error_message}")
+            return result
         elif name == WITHDRAW:
-            return _verify_withdraw_tx(tx)
+            result = _verify_withdraw_tx(tx)
+            if not result.is_valid:
+                logger.debug(f"verify withdraw failed: {result.error_message}")
+            return result
         elif name in (CANCEL, BUY, SELL, REGISTER):
-            return _verify_standard_tx(tx, name)
+            result = _verify_standard_tx(tx, name)
+            if not result.is_valid:
+                logger.debug(f"verify order failed: {result.error_message}")
+            return result
         else:
             logger.error(f"Unknown transaction type: {name}")
             return VerificationResult(
@@ -365,23 +369,6 @@ def _verify_deposit_tx(
         )
 
 
-def _verify_btc_deposit_tx(tx: bytes, btc_monitor_pub: bytes) -> VerificationResult:
-    """Verify Bitcoin deposit transaction."""
-    try:
-        msg = tx[:-64]
-        sig = tx[-64:]
-        pubkey = PublicKey(btc_monitor_pub, raw=True)
-        is_valid = pubkey.schnorr_verify(msg, sig, bip340tag="zex")
-        return VerificationResult(is_valid=is_valid)
-    except Exception as e:
-        logger.exception(f"Error verifying BTC deposit: {e}")
-        return VerificationResult(
-            is_valid=False,
-            error_type="BTCVerificationError",
-            error_message=f"Error verifying BTC deposit: {str(e)}",
-        )
-
-
 def _verify_withdraw_tx(tx: bytes) -> VerificationResult:
     """Verify withdrawal transaction."""
     try:
@@ -447,21 +434,19 @@ def _verify_chunk(
     txs: list[bytes],
     deposit_monitor_pub_key: int,
     deposit_shield_address: str,
-    btc_monitor_pub: bytes,
-) -> list[bool]:
+) -> list[VerificationResult]:
     """Verify a chunk of transactions."""
     return [
         verify_single_tx(
             tx,
             deposit_monitor_pub_key,
             deposit_shield_address,
-            btc_monitor_pub,
-        )
+        ).is_valid
         for tx in txs
     ]
 
 
-class TransactionVerifier(metaclass=SingletonMeta):
+class TransactionVerifier:
     def __init__(self, num_processes: int | None = None):
         """
         Initialize the TransactionVerifier with a multiprocessing pool.
@@ -476,10 +461,6 @@ class TransactionVerifier(metaclass=SingletonMeta):
         self.deposit_monitor_pub_key = settings.zex.keys.deposit_public_key
         self.deposit_shield_address = to_checksum_address(
             settings.zex.keys.deposit_shield_address
-        )
-        self.btc_deposit_monitor_pub_key = settings.zex.keys.btc_deposit_public_key
-        self.btc_monitor_pub = PublicKey(
-            bytes.fromhex(self.btc_deposit_monitor_pub_key), raw=True
         )
 
     def __enter__(self):
@@ -520,7 +501,6 @@ class TransactionVerifier(metaclass=SingletonMeta):
                 chunks,
                 repeat(int(self.deposit_monitor_pub_key)),
                 repeat(self.deposit_shield_address),
-                repeat(bytes.fromhex(self.btc_deposit_monitor_pub_key)),
             ),
         )
 

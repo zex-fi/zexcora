@@ -9,27 +9,21 @@ RUN pip3 install cmake && \
   make -j8 && \
   make install
 
-ENV PYTHONFAULTHANDLER=1 \
-  PYTHONUNBUFFERED=1 \
-  PYTHONHASHSEED=random \
-  PIP_NO_CACHE_DIR=off \
-  PIP_DISABLE_PIP_VERSION_CHECK=on \
-  PIP_DEFAULT_TIMEOUT=100 \
-  # Poetry's configuration:
-  POETRY_NO_INTERACTION=1 \
-  POETRY_VIRTUALENVS_CREATE=false \
-  POETRY_CACHE_DIR='/var/cache/pypoetry' \
-  POETRY_HOME='/usr/local' \
-  POETRY_VERSION=1.8.5
+# Install uv.
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-WORKDIR /zex
-COPY pyproject.toml poetry.lock ./
-RUN curl -sSL https://install.python-poetry.org | python3 - && /usr/local/bin/poetry install
-COPY . .
-RUN /usr/local/bin/poetry install
+# Install the application dependencies.
+WORKDIR /app
+
+# Copy the application into the container.
+COPY pyproject.toml uv.lock /app/
+
+RUN uv sync --frozen --no-cache
+
+# Copy the application into the container.
+COPY . /app
 
 RUN mkdir -p /app/logs
 ENV LOG_DIR=/app/logs CONFIG_PATH=/config.yaml
 
-EXPOSE 15782
-CMD ["python", "app/main.py"]
+CMD ["/app/.venv/bin/uvicorn", "--no-access-log", "--port", "80", "--host", "0.0.0.0", "app.main:app"]

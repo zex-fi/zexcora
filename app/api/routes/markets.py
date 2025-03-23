@@ -26,12 +26,14 @@ router = APIRouter()
 market_filter_list = (
     "zWBTC-zUSDT",
     "zEIGEN-zUSDT",
+    "ETH-zUSDT",
 )
 
 token_filter_list = (
     "zUSDT",
     "zWBTC",
     "zEIGEN",
+    "ETH",
 )
 
 

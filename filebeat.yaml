@@ -2,8 +2,8 @@ filebeat.inputs:
   - type: log
     enabled: true
     paths:
-      - /zex/logs/debug.log
-      - /zex/logs/error.log
+      - /app/logs/debug.log
+      - /app/logs/error.log
     json.keys_under_root: true
     json.add_error_key: true
 

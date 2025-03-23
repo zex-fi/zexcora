@@ -1,8 +1,10 @@
 from collections import deque
+from queue import Empty
 from threading import Lock
 from urllib.parse import urlparse
 import asyncio
 import json
+import multiprocessing as mp
 import time
 
 from eigensdk.crypto.bls import attestation
@@ -85,36 +87,64 @@ def create_mock_zellular_instance(app_name: str):
 
 
 def create_real_zellular_instance(app_name: str):
-    if settings.zex.mainnet:
+    if settings.zex.sequencer_mode == "eigenlayer":
         resp = httpx.post(
             "https://api.studio.thegraph.com/query/62454/zellular_test/version/latest",
             json='{"query":"{ operators { id socket stake } }"}',
         )
         resp.raise_for_status()
         operators = resp.json()["data"]["operators"]
+    elif settings.zex.sequencer_mode == "docker":
+        operators = json.loads("""{
+    "data": {
+        "operators": [
+            {
+                "id": "0x1e0a6263be1efc4ea0d2c5b9a1e49ac50375c030",
+                "public_key_g2": "1 9611278528866057312985157745500177806439047990441641970719150715526228383788 14510296422332084166275589907551577008082509824157021533974616032309609480403 10081477652997729356586307373461973834068770885982023569165073493039390199093 1205130207870954424919762321217866852983647106641519327167552924115584464295",
+                "address": "0x1e0a6263be1efc4ea0d2c5b9a1e49ac50375c030",
+                "socket": "http://zsequencer1:6001",
+                "stake": 10
+            },
+            {
+                "id": "0xfbd6c9f44c5a0a2d8423e461a87fccee12942781",
+                "public_key_g2": "1 2564456049898491471897001563782187382505864485640732016823408287867963614179 11319803778281346294691548584774975191176177781049043197825920188158404075467 6883987038389898594439008536930343408067598750972752182534728449983371992012 11863261598815579367545344722667576271049210660431455670485947818125672062126",
+                "address": "0xfbd6c9f44c5a0a2d8423e461a87fccee12942781",
+                "socket": "http://zsequencer2:6001",
+                "stake": 10
+            },
+            {
+                "id": "0xb99f2b6b30fa1ed6ec2e1049bb6d6fd86bb64dab",
+                "public_key_g2": "1 10722094092415951831092083281713777097975657843805414789700230979893472506937 13892874056591023907216140630948185723246894999227161991434043115559319234682 1765457543974974681849480344310374252170324566540342055726528305206357241460 16510337125750125045428789459859581254702063586917971466893230941761056998147",
+                "address": "0xb99f2b6b30fa1ed6ec2e1049bb6d6fd86bb64dab",
+                "socket": "http://zsequencer3:6001",
+                "stake": 10
+            }
+        ]
+    }
+}""")["data"]["operators"]
     else:
         operators = json.loads("""{
     "data": {
         "operators": [
             {
-                "id": "0x4c2906574e76b002e757ff957551c4af64ef33b8",
+                "id": "0x1e0a6263be1efc4ea0d2c5b9a1e49ac50375c030",
                 "public_key_g2": "1 9611278528866057312985157745500177806439047990441641970719150715526228383788 14510296422332084166275589907551577008082509824157021533974616032309609480403 10081477652997729356586307373461973834068770885982023569165073493039390199093 1205130207870954424919762321217866852983647106641519327167552924115584464295",
-                "address": "0x4c2906574e76b002e757ff957551c4af64ef33b8",
-                "socket": "http://zsequencer-node1:6001",
+                "address": "0x1e0a6263be1efc4ea0d2c5b9a1e49ac50375c030",
+                "socket": "http://127.0.0.1:6001",
                 "stake": 10
             },
             {
-                "id": "0xc46ddcd9998b4f692d2d1d66cf3ba1ff06e7ecd6",
+                "id": "0xfbd6c9f44c5a0a2d8423e461a87fccee12942781",
                 "public_key_g2": "1 2564456049898491471897001563782187382505864485640732016823408287867963614179 11319803778281346294691548584774975191176177781049043197825920188158404075467 6883987038389898594439008536930343408067598750972752182534728449983371992012 11863261598815579367545344722667576271049210660431455670485947818125672062126",
-                "address": "0xc46ddcd9998b4f692d2d1d66cf3ba1ff06e7ecd6",
-                "socket": "http://zsequencer-node2:6001",
+                "address": "0xfbd6c9f44c5a0a2d8423e461a87fccee12942781",
+                "socket": "http://127.0.0.1:6002",
                 "stake": 10
             },
             {
-                "id": "0x86dcaa39330c6a1a27273928bb5877bdf6240502",
+                "id": "0xb99f2b6b30fa1ed6ec2e1049bb6d6fd86bb64dab",
                 "public_key_g2": "1 10722094092415951831092083281713777097975657843805414789700230979893472506937 13892874056591023907216140630948185723246894999227161991434043115559319234682 1765457543974974681849480344310374252170324566540342055726528305206357241460 16510337125750125045428789459859581254702063586917971466893230941761056998147",
-                "address": "0x86dcaa39330c6a1a27273928bb5877bdf6240502",
-                "socket": "http://zsequencer-node3:6001",
+                "address": "0xb99f2b6b30fa1ed6ec2e1049bb6d6fd86bb64dab",
+                "socket": "http://127.0.0.1:6003",
                 "stake": 10
             }
         ]
@@ -215,51 +245,116 @@ def new_withdraw(txs: list[str]):
     return {"success": True}
 
 
-async def transmit_tx(tx_verifier: TransactionVerifier):
+async def transmit_tx():
     zellular = create_zellular_instance()
+    with TransactionVerifier(num_processes=4) as tx_verifier:
+        try:
+            while not stop_event.is_set():
+                if len(zseq_deque) == 0:
+                    await asyncio.sleep(settings.zex.tx_transmit_delay)
+                    continue
 
-    try:
-        while not stop_event.is_set():
-            if len(zseq_deque) == 0:
-                await asyncio.sleep(settings.zex.tx_transmit_delay * 2)
-                continue
+                with zseq_lock:
+                    txs = [
+                        zseq_deque.popleft().encode("latin-1")
+                        for _ in range(len(zseq_deque))
+                    ]
 
-            with zseq_lock:
-                txs = [
-                    zseq_deque.popleft().encode("latin-1")
-                    for _ in range(len(zseq_deque))
-                ]
+                verified_txs = tx_verifier.verify(txs)
+                txs = [x.decode("latin-1") for x in verified_txs if x is not None]
 
-            verified_txs = tx_verifier.verify(txs)
-            txs = [x.decode("latin-1") for x in verified_txs if x is not None]
-
-            zellular.send(txs)
-            await asyncio.sleep(settings.zex.tx_transmit_delay)
-    except asyncio.CancelledError:
-        logger.warning("Transmit loop was cancelled")
-    finally:
-        logger.warning("Transmit loop is shutting down")
+                zellular.send(txs)
+                await asyncio.sleep(settings.zex.tx_transmit_delay)
+        except asyncio.CancelledError:
+            logger.warning("Transmit loop was cancelled")
+        finally:
+            logger.warning("Transmit loop is shutting down")
 
 
-async def process_loop(tx_verifier: TransactionVerifier):
-    verifier = create_zellular_instance()
+def pull_batches(
+    zellular: Zellular,
+    zellular_queue: mp.Queue,
+    after: int,
+):
+    while True:
+        try:
+            for batch, index in zellular.batches(after=after):
+                after = index
+                zellular_queue.put((batch, index))
+        except json.JSONDecodeError as e:
+            logger.exception(e)
+            continue
+        except Exception:
+            zellular_queue.put(None)
+            return
+
+
+def verify_batches(
+    zellular_queue: mp.Queue,
+    queue: mp.Queue,
+):
+    with TransactionVerifier(num_processes=4) as tx_verifier:
+        try:
+            while True:
+                item = zellular_queue.get()
+                if item is None:
+                    break
+                batch, index = item
+
+                txs: list[str] = json.loads(batch)
+                finalized_txs = [x.encode("latin-1") for x in txs]
+                verified_txs = tx_verifier.verify(finalized_txs)
+                queue.put((verified_txs, index))
+        finally:
+            queue.put(None)
+
+
+async def process_loop():
+    zellular = create_zellular_instance()
     verbose = settings.zex.verbose
 
-    for batch, index in verifier.batches(after=zex.last_tx_index):
+    zellular_queue = mp.Queue(100)
+    queue = mp.Queue(100)
+
+    tx_fetcher_process = mp.Process(
+        target=pull_batches,
+        args=(zellular, zellular_queue, zex.last_tx_index),
+    )
+    tx_verifier_process = mp.Process(
+        target=verify_batches,
+        args=(zellular_queue, queue),
+    )
+
+    tx_fetcher_process.start()
+    tx_verifier_process.start()
+
+    while True:
+        if stop_event.is_set():
+            tx_fetcher_process.kill()
+            tx_verifier_process.kill()
+            break
+
+        try:
+            item = queue.get(timeout=1)
+        except Empty:
+            continue
+
+        if item is None:
+            stop_event.set()
+            logger.warning("got None from queue")
+            break
+
+        verified_txs, index = item
         if verbose:
             logger.critical(f"index {index} received from redis")
         try:
-            txs: list[str] = json.loads(batch)
-            finalized_txs = [x.encode("latin-1") for x in txs]
-            verified_txs = tx_verifier.verify(finalized_txs)
+            now = time.time()
             zex.process(verified_txs, index)
 
             # TODO: the for loop takes all the CPU time. the sleep gives time to other tasks to run. find a better solution
             await asyncio.sleep(0)
+            logger.warning(time.time() - now)
         except json.JSONDecodeError as e:
             logger.exception(e)
         except ValueError as e:
             logger.exception(e)
-
-        if stop_event.is_set():
-            break

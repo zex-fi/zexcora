@@ -13,6 +13,7 @@ import time
 
 from eth_utils.address import to_checksum_address
 from loguru import logger
+import httpx
 import pandas as pd
 
 from app.chain import ChainState
@@ -221,6 +222,33 @@ class StateManager:
 class Zex(metaclass=SingletonMeta):
     """Core exchange class handling deposits, withdrawals, and order matching."""
 
+    @classmethod
+    def initialize_zex(cls):
+        if settings.zex.state_source == "":
+            return cls(
+                state_dest=settings.zex.state_dest,
+                light_node=settings.zex.light_node,
+            )
+        try:
+            response = httpx.get(settings.zex.state_source)
+            if response.status_code != 200 or len(response.content) == 0:
+                return cls(
+                    state_dest=settings.zex.state_dest,
+                    light_node=settings.zex.light_node,
+                )
+        except httpx.ConnectError:
+            return cls(
+                state_dest=settings.zex.state_dest,
+                light_node=settings.zex.light_node,
+            )
+
+        data = BytesIO(response.content)
+        return cls.load_state(
+            data=data,
+            state_dest=settings.zex.state_dest,
+            light_node=settings.zex.light_node,
+        )
+
     def __init__(
         self,
         kline_callback: Callable[[str, pd.DataFrame], None],
@@ -317,23 +345,20 @@ class Zex(metaclass=SingletonMeta):
 
         tokens = {
             "HOL": [
+                ("0x0000000000000000000000000000000000000000", 18),
                 ("0x325CCd77e71Ac296892ed5C63bA428700ec0f868", 6),
                 ("0x219f1708400bE5b8cC47A56ed2f18536F5Da7EF4", 18),
                 ("0x9d84f6e4D734c33C2B6e7a5211780499A71aEf6A", 8),
             ],
             "SEP": [
-                ("0x325CCd77e71Ac296892ed5C63bA428700ec0f868", 6),
-                ("0x219f1708400bE5b8cC47A56ed2f18536F5Da7EF4", 18),
-                ("0x9d84f6e4D734c33C2B6e7a5211780499A71aEf6A", 8),
-            ],
-            "BST": [
+                ("0x0000000000000000000000000000000000000000", 18),
                 ("0x325CCd77e71Ac296892ed5C63bA428700ec0f868", 6),
                 ("0x219f1708400bE5b8cC47A56ed2f18536F5Da7EF4", 18),
                 ("0x9d84f6e4D734c33C2B6e7a5211780499A71aEf6A", 8),
             ],
         }
 
-        for i in range(1):
+        for i in range(20):
             bot_private_key = (private_seed_int + i).to_bytes(32, "big")
             bot_priv = PrivateKey(bot_private_key, raw=True)
             bot_pub = bot_priv.pubkey.serialize()
@@ -347,23 +372,23 @@ class Zex(metaclass=SingletonMeta):
                         chain=chain,
                         deposits=[
                             Deposit(
-                                tx_hash=f"0x0{idx1}{idx2}1",
+                                tx_hash=f"0x0{idx1}{idx2}{self.public_to_id_lookup[client_pub]}",
                                 chain=chain,
                                 token_contract=contract_address,
                                 amount=Decimal("1_000"),
                                 decimal=decimal,
-                                time=1,
-                                user_id=1,
+                                time=self.public_to_id_lookup[client_pub],
+                                user_id=self.public_to_id_lookup[client_pub],
                                 vout=0,
                             ),
                             Deposit(
-                                tx_hash=f"0x0{idx1}{idx2}2",
+                                tx_hash=f"0x0{idx1}{idx2}{self.public_to_id_lookup[bot_pub]}",
                                 chain=chain,
                                 token_contract=contract_address,
-                                amount=Decimal("5_000"),
+                                amount=Decimal("100_000_000"),
                                 decimal=decimal,
-                                time=1,
-                                user_id=2,
+                                time=self.public_to_id_lookup[bot_pub],
+                                user_id=self.public_to_id_lookup[bot_pub],
                                 vout=0,
                             ),
                         ],
@@ -380,7 +405,7 @@ class Zex(metaclass=SingletonMeta):
                         if public not in self.trades:
                             self.trades[public] = deque()
                         if public not in self.orders:
-                            self.orders[public] = {}
+                            self.orders[public] = set()
                         if public not in self.nonces:
                             self.nonces[public] = 0
 

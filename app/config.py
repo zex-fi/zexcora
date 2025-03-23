@@ -1,6 +1,6 @@
 from decimal import Decimal
 from pathlib import Path
-import os
+from typing import Literal
 
 from pydantic import BaseModel
 from pydantic_settings import (
@@ -17,7 +17,6 @@ type TokenName = str
 class Keys(BaseModel):
     deposit_public_key: int
     deposit_shield_address: str
-    btc_deposit_public_key: str
     btc_public_key: str
 
 
@@ -33,8 +32,8 @@ class Token(BaseModel):
 
 
 class ZexSettings(BaseModel):
-    host: str
-    port: int
+    host: str = "0.0.0.0"
+    port: int = 15782
     api_prefix: str
     light_node: bool
     state_source: str
@@ -44,6 +43,8 @@ class ZexSettings(BaseModel):
     mainnet: bool
     use_redis: bool
     verbose: bool
+    fill_dummy: bool
+    sequencer_mode: Literal["local", "docker", "eigenlayer"]
 
     keys: Keys
     deployer_address: str
@@ -59,7 +60,10 @@ class ZexSettings(BaseModel):
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        yaml_file=os.environ["CONFIG_PATH"], extra="forbid"
+        nested_model_default_partial_update=True,
+        env_nested_delimiter="__",
+        yaml_file=["config.yaml"],
+        extra="forbid",
     )
     zex: ZexSettings
 
@@ -72,7 +76,9 @@ class Settings(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
-        return (YamlConfigSettingsSource(settings_cls),)
+        return env_settings, YamlConfigSettingsSource(settings_cls)
 
 
 settings = Settings()
+
+print(settings.model_dump_json())

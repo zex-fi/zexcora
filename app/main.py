@@ -64,7 +64,8 @@ class JSONMessageManager:
                         normal_channel = cls.normalize_channel(channel)
                     except ValueError:
                         return StreamResponse(
-                            result={"error": "contract address is not valid"}
+                            id=request.id,
+                            result="error: contract address is not valid",
                         )
                     manager.subscribe(websocket, normal_channel)
                 return StreamResponse(id=request.id, result=None)
@@ -74,7 +75,8 @@ class JSONMessageManager:
                         normal_channel = cls.normalize_channel(channel)
                     except ValueError:
                         return StreamResponse(
-                            result={"error": "contract address is not valid"}
+                            id=request.id,
+                            result="error: contract address is not valid",
                         )
                     manager.unsubscribe(websocket, normal_channel)
                 return StreamResponse(id=request.id, result=None)
@@ -83,14 +85,13 @@ class JSONMessageManager:
 # Run the broadcaster in the background
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    verifier = TransactionVerifier(num_processes=4)
     t1 = Thread(
         target=asyncio.run,
-        args=(transmit_tx(verifier),),
+        args=(transmit_tx(),),
     )
     t2 = Thread(
         target=asyncio.run,
-        args=(process_loop(verifier),),
+        args=(process_loop(),),
     )
 
     t1.start()
@@ -99,7 +100,6 @@ async def lifespan(_: FastAPI):
 
     # Signal the threads to stop
     stop_event.set()
-    verifier.cleanup()
     t1.join(1)
     t2.join(1)
 
