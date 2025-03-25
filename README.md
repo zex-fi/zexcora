@@ -1,4 +1,4 @@
-# Zex
+# ZexCora
 
 > [!NOTE]
 **Project Ownership Transition**:
