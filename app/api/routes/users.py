@@ -440,7 +440,7 @@ def get_withdraw_nonce_on_chain(chain: str):
         "nonce": zex.state_manager.chain_states[chain].withdraw_nonce - 1,
     }
 
-
+# TODO: ask about the state management of withdraws
 def get_chain_withdraws(
     chain: str, offset: int, limit: int | None = None
 ) -> list[Withdraw]:
