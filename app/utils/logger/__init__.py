@@ -2,6 +2,8 @@ import json
 import sys
 
 from loguru import logger
+from sentry_sdk import capture_exception
+from sentry_sdk import init as sentry_init
 
 from .types import FileConfig
 
@@ -23,8 +25,15 @@ def _json_formatter(record):
     })
 
 
-def setup_logging(debug_mode: bool = False, file_config: FileConfig = None):
+def setup_logging(debug_mode: bool = False, file_config: FileConfig = None, sentry_dsn: str = None, sentry_environment: str = None):
     """Configure logging for the application."""
+    # Initialize Sentry if DSN is provided
+    if sentry_dsn:
+        env = sentry_environment
+        if sentry_environment is None:
+            env = "test"
+        sentry_init(dsn=sentry_dsn, environment=env)
+
     # Remove default handler
     logger.remove()
 
@@ -43,6 +52,23 @@ def setup_logging(debug_mode: bool = False, file_config: FileConfig = None):
     logger.add(
         console_sink,
         level=console_level,
+        backtrace=True,
+        diagnose=True,
+    )
+
+    # Sentry handler for exceptions
+    def sentry_sink(message):
+        """
+        Custom sink for sending exceptions to Sentry.
+        """
+        record = message.record
+        if record["exception"]:
+            # Send the exception to Sentry
+            capture_exception(record["exception"])
+
+    logger.add(
+        sentry_sink,
+        level="ERROR",  # Only send error-level logs to Sentry
         backtrace=True,
         diagnose=True,
     )

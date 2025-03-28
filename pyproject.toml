@@ -19,6 +19,7 @@ dependencies = [
     "pyfrost",
     "redis>=5.2.1",
     "secp256k1>=0.14.0",
+    "sentry-sdk>=2.24.1",
     "web3>=7.4.0",
     "zellular",
 ]

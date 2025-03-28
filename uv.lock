@@ -1,12 +1,6 @@
 version = 1
 requires-python = ">=3.12"
 
-[manifest]
-members = [
-    "bot",
-    "zex",
-]
-
 [[package]]
 name = "aiohttp"
 version = "3.9.3"
@@ -189,11 +183,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/21/28/9b3f50ce0e0485151
 wheels = [
     { url = "https://files.pythonhosted.org/packages/10/cb/f2ad4230dc2eb1a74edf38f1a38b9b52277f75bef262d8908e60d957e13c/blinker-1.9.0-py3-none-any.whl", hash = "sha256:ba0efaa9080b619ff2f3459d1d500c57bddea4a6b424b60a91141db6fd2f08bc", size = 8458 },
 ]
-
-[[package]]
-name = "bot"
-version = "0.1.0"
-source = { editable = "bot" }
 
 [[package]]
 name = "certifi"
@@ -1502,6 +1491,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/9b/41/bb668a6e4192303542d2d90c3b38d564af3c17c61bd7d4039af4f29405fe/secp256k1-0.14.0.tar.gz", hash = "sha256:82c06712d69ef945220c8b53c1a0d424c2ff6a1f64aee609030df79ad8383397", size = 2420607 }
 
 [[package]]
+name = "sentry-sdk"
+version = "2.24.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "certifi" },
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f1/ef/4847dcd63e3f3c451cf701a825d21200f1322d46ac97586d5c90a13dfea1/sentry_sdk-2.24.1.tar.gz", hash = "sha256:8ba3c29990fa48865b908b3b9dc5ae7fa7e72407c7c9e91303e5206b32d7b8b1", size = 318124 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/65/95/91137ffe7a5956496155af5ffbe45ee4ddfa795a569136147e766abd14b1/sentry_sdk-2.24.1-py2.py3-none-any.whl", hash = "sha256:36baa6a1128b9d98d2adc5e9b2f887eff0a6af558fc2b96ed51919042413556d", size = 336945 },
+]
+
+[[package]]
 name = "shellingham"
 version = "1.5.4"
 source = { registry = "https://pypi.org/simple" }
@@ -1906,6 +1908,7 @@ dependencies = [
     { name = "pyfrost" },
     { name = "redis" },
     { name = "secp256k1" },
+    { name = "sentry-sdk" },
     { name = "web3" },
     { name = "zellular" },
 ]
@@ -1937,6 +1940,7 @@ requires-dist = [
     { name = "pyfrost", git = "https://github.com/zellular-xyz/pyfrost" },
     { name = "redis", specifier = ">=5.2.1" },
     { name = "secp256k1", specifier = ">=0.14.0" },
+    { name = "sentry-sdk", specifier = ">=2.24.1" },
     { name = "web3", specifier = ">=7.4.0" },
     { name = "zellular", git = "https://github.com/zellular-xyz/zellular.py" },
 ]

@@ -92,7 +92,9 @@ async def lifespan(_: FastAPI):
                 location=settings.zex.log_directory,
                 rotation_size_in_mb=settings.zex.log_rotation_size_in_mb,
                 retention_time_in_week=settings.zex.log_retention_time_in_week
-            )
+            ),
+            sentry_dsn=settings.zex.sentry_dsn,
+            sentry_environment="production" if settings.zex.mainnet else "test",
         )
     else:
         setup_logging(debug_mode=settings.zex.verbose)
