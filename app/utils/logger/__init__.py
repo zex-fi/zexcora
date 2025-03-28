@@ -1,3 +1,4 @@
+import asyncio  # For asynchronous exception handling
 import json
 import sys
 
@@ -29,9 +30,7 @@ def setup_logging(debug_mode: bool = False, file_config: FileConfig = None, sent
     """Configure logging for the application."""
     # Initialize Sentry if DSN is provided
     if sentry_dsn:
-        env = sentry_environment
-        if sentry_environment is None:
-            env = "test"
+        env = sentry_environment or "test"
         sentry_init(dsn=sentry_dsn, environment=env)
 
     # Remove default handler
@@ -56,15 +55,21 @@ def setup_logging(debug_mode: bool = False, file_config: FileConfig = None, sent
         diagnose=True,
     )
 
-    # Sentry handler for exceptions
+    # Sentry handler for exceptions (asynchronous)
+    async def async_capture_exception(exception):
+        """
+        Asynchronous task to send exceptions to Sentry.
+        """
+        capture_exception(exception)
+
     def sentry_sink(message):
         """
-        Custom sink for sending exceptions to Sentry.
+        Custom sink for sending exceptions to Sentry asynchronously.
         """
         record = message.record
         if record["exception"]:
-            # Send the exception to Sentry
-            capture_exception(record["exception"])
+            # Schedule the async task to send the exception to Sentry
+            asyncio.create_task(async_capture_exception(record["exception"]))
 
     logger.add(
         sentry_sink,
