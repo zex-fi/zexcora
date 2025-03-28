@@ -43,6 +43,10 @@ class ZexSettings(BaseModel):
     mainnet: bool
     use_redis: bool
     verbose: bool
+    log_to_file: bool
+    log_directory: str
+    log_rotation_size_in_mb: str
+    log_retention_time_in_week: str
     fill_dummy: bool
     sequencer_mode: Literal["local", "docker", "eigenlayer"]
 
