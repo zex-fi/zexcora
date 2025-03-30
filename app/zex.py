@@ -1001,7 +1001,7 @@ class Zex(metaclass=SingletonMeta):
         return self.state_manager.markets[pair].kline_manager.kline
 
     def get_kline(self, pair: str) -> pd.DataFrame:
-        return self.snapshot_manager.get_kline(pair)
+        return self._get_kline(pair)
 
     def _get_tx_pair(self, tx: bytes):
         base_token, quote_token = self._extract_base_and_quote_token(tx)
