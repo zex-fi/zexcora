@@ -1,7 +1,6 @@
 from contextlib import asynccontextmanager
 from threading import Thread
 import asyncio
-import sys
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,49 +11,25 @@ from . import stop_event
 from .api.main import api_router
 from .api.routes.system import process_loop, transmit_tx
 from .config import settings
-
-
-def setup_logging(debug_mode: bool = False):
-    """Configure logging for the application."""
-    # Remove default handler
-    logger.remove()
-
-    # Determine minimum console log level based on debug mode
-    console_level = "DEBUG" if debug_mode else "INFO"
-
-    # Console handler
-    logger.add(
-        sys.stdout,
-        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
-        level=console_level,
-        colorize=debug_mode,
-        serialize=False,
-    )
-
-    # File handlers
-    logger.add(
-        "logs/debug.log",
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
-        level="DEBUG",
-        rotation="10 MB",
-        retention="1 week",
-        serialize=not debug_mode,
-    )
-
-    logger.add(
-        "logs/error.log",
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
-        level="ERROR",
-        rotation="10 MB",
-        retention="1 month",
-        serialize=not debug_mode,
-    )
+from .utils.logger import FileConfig, setup_logging
 
 
 # Run the broadcaster in the background
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    setup_logging(debug_mode=settings.zex.verbose)
+    if settings.zex.log_to_file:
+        setup_logging(
+            debug_mode=settings.zex.verbose,
+            file_config=FileConfig(
+                location=settings.zex.log_directory,
+                rotation_size_in_mb=settings.zex.log_rotation_size_in_mb,
+                retention_time_in_week=settings.zex.log_retention_time_in_week,
+            ),
+            sentry_dsn=settings.zex.sentry_dsn,
+            sentry_environment="production" if settings.zex.mainnet else "test",
+        )
+    else:
+        setup_logging(debug_mode=settings.zex.verbose)
 
     t1 = Thread(
         target=asyncio.run,
