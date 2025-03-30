@@ -16,7 +16,11 @@ class Entity:
         self.db_path = db_path
 
         if not os.path.exists(db_path):
-            with open("init_db.sql") as fp:
+            if not os.path.exists("state/init_db.sql"):
+                with open("state/init_db.sql", "w"):
+                    pass
+
+            with open("state/init_db.sql") as fp:
                 statements = fp.read().split(";")
             for statement in statements:
                 query = statement.strip()

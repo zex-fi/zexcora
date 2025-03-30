@@ -2,7 +2,7 @@ state_manager:
   host: "0.0.0.0" # optional
   port: 15783 # optional
   api_prefix: "/v1"
-  state_dest: zex_state.pb
+  state_dest: state/zex_state.pb
   verbose: true
 
   redis:

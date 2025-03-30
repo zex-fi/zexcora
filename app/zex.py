@@ -317,7 +317,9 @@ class Zex(metaclass=SingletonMeta):
         """Initialize the Zex exchange."""
         self.state_manager = StateManager()
         self.snapshot_manager = SnapshotManager()
-        self.client = httpx.AsyncClient()
+        self.client = httpx.AsyncClient(
+            limits=httpx.Limits(max_connections=100, max_keepalive_connections=5)
+        )
         self.event_batch = []
 
         self._initialize_context()

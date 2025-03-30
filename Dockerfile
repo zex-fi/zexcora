@@ -53,7 +53,7 @@ COPY . /app
 
 # Ensure logs directory exists and set permissions
 # FIXME: After changing the log handler just in stdout we should remove this
-RUN mkdir -p /app/logs && chown -R appuser:appuser /app
+RUN mkdir -p /app/logs && mkdir -p /app/state && mkdir -p /app/state_manager/state && chown -R appuser:appuser /app
 
 # Set environment variables
 ENV LOG_DIR=/app/logs CONFIG_PATH=/config.yaml

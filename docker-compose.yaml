@@ -5,8 +5,7 @@ services:
     container_name: cora
     volumes:
       - ./config.yaml:/app/config.yaml
-      - ./init_db.sql:/app/init_db.sql
-      - ./zex_state.pb:/app/zex_state.pb
+      - state:/app/state
       - logs:/app/logs
 
     ports:
@@ -30,7 +29,7 @@ services:
     command: "main:app"
     container_name: state-manager
     volumes:
-      - ./zex_state.pb:/app/public/zex_state.pb:ro
+      - state:/app/state_manager/state:ro
       - ./state_manager/config.yaml:/app/state_manager/config.yaml
 
     expose:
@@ -117,10 +116,7 @@ services:
 
 volumes:
   logs:
-  db1:
-  db2:
-  db3:
-  rabbitmq_data:
+  state:
 
 networks:
   zex:

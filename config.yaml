@@ -3,13 +3,11 @@ zex:
   port: 15782 # optional
   api_prefix: "/v1"
   light_node: false
-  state_source: "http://state-manager/zex_state.pb"
-  state_dest: zex_state.pb
+  state_source: "http://state-manager/state/zex_state.pb"
+  state_dest: state/zex_state.pb
   state_save_frequency: 100
   state_manager: http://state-manager/v1
-  # state_manager: http://127.0.0.1:15783/v1
   event_distributor: http://event-distributor/v1
-  # event_distributor: http://127.0.0.1:15784/v1
   sequencer_subgraph: https://api.studio.thegraph.com/query/96758/zex-avs/v0.0.2
   sequencer_whitelist: https://api.zex.finance/sequencer-whitelist.json
   tx_transmit_delay: 0.2
