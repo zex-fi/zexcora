@@ -44,6 +44,7 @@ In order to test the backend follow these steps:
 ## Ports
 1. Sequencer:                   15781
 2. Zex:                         15782
-3. FROST Node:                  15783
-4. FROST Signature Aggregator:  15784
-5. Zex State Source:            15785
+3. Zex State Manager            15783
+4. Zex Event Distributor        15784
+5. Zex Websocket Service        15785
+6. Zex State Source:            15786

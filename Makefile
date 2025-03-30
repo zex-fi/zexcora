@@ -1,9 +1,11 @@
-run-test-mode:
-	python app/main.py config-test.yaml
+run-cora:
+	uv run uvicorn --no-access-log --host=127.0.0.1 --port=15782 app.main:app
 
-new-redis-test:
-	docker stop zsequencer-redis-test; docker rm zsequencer-redis-test; sudo rm -rf redis-data-test && docker run --name zsequencer-redis-test -v $(shell pwd)/redis-data-test:/data -v $(shell pwd)/redis.conf:/redis.conf -p 7379:6379 -d redis:alpine redis-server /redis.conf
+run-state-manager:
+	cd state_manager && uv run uvicorn --host=127.0.0.1 --port=15783 main:app
 
-run-tests: new-redis-test
-	REDIS_PORT=7379 TEST_MODE=1 BETTER_EXCEPTIONS=1 pytest -vv
+run-event-distributor:
+	cd event_distributor && uv run uvicorn --host=127.0.0.1 --port=15784 main:app
 
+run-websocket-service:
+	cd websocket_service && uv run uvicorn --host=127.0.0.1 --port=15785 main:app

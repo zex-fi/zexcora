@@ -1,7 +1,8 @@
 services:
-  zex:
-    image: zex:dev
-    container_name: zex-dev
+  cora:
+    image: cora:dev
+    command: "app.main:app"
+    container_name: cora
     volumes:
       - ./config.yaml:/app/config.yaml
       - ./init_db.sql:/app/init_db.sql
@@ -9,7 +10,7 @@ services:
       - logs:/app/logs
 
     ports:
-      - 15782:80
+      - 127.0.0.1:15782:80
     environment:
       - LOG_DIR=/app/logs
       - ZEX__SEQUENCER_MODE=docker
@@ -21,18 +22,87 @@ services:
     networks:
       - zex
     depends_on:
-      - zex-state
+      - state-manager
 
-  zex-state:
-    image: codeskyblue/gohttpserver
-    container_name: zex-state
-    command: --xheaders --addr :80
-    expose:
-      - 80
+  state-manager:
+    image: cora:dev
+    working_dir: /app/state_manager
+    command: "main:app"
+    container_name: state-manager
     volumes:
       - ./zex_state.pb:/app/public/zex_state.pb:ro
+      - ./state_manager/config.yaml:/app/state_manager/config.yaml
+
+    expose:
+      - 80
     ports:
-      - 15785:80
+      - 127.0.0.1:15783:80
+
+    networks:
+      - zex
+    depends_on:
+      event-broker:
+        condition: service_healthy
+        restart: true
+
+  event-distributor:
+    image: cora:dev
+    working_dir: /app/event_distributor
+    command: "main:app"
+    container_name: event-distributor
+    volumes:
+      - ./event_distributor/config.yaml:/app/event_distributor/config.yaml
+
+    expose:
+      - 80
+    ports:
+      - 127.0.0.1:15784:80
+    environment:
+      - EVENT_DISTRIBUTOR__BROKER__HOST=event-broker
+    networks:
+      - zex
+    depends_on:
+      event-broker:
+        condition: service_healthy
+        restart: true
+
+  websocket-service:
+    image: cora:dev
+    working_dir: /app/websocket_service
+    command: "main:app"
+    container_name: websocket-service
+    volumes:
+      - ./websocket_service/config.yaml:/app/websocket_service/config.yaml
+
+    expose:
+      - 80
+    ports:
+      - 127.0.0.1:15785:80
+    environment:
+      - WEBSOCKET_SERVICE__BROKER__HOST=event-broker
+    networks:
+      - zex
+    depends_on:
+      event-broker:
+        condition: service_healthy
+        restart: true
+
+  event-broker:
+    image: rabbitmq:4-management
+    container_name: event-broker
+    environment:
+      RABBITMQ_DEFAULT_USER: user
+      RABBITMQ_DEFAULT_PASS: cora_event_broker_super_secure_password
+    ports:
+      - 127.0.0.1:15672:15672
+      - 127.0.0.1:5672:5672
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 5m
+      timeout: 5s
+      retries: 3
+      start_period: 2s
+      start_interval: 5s
     networks:
       - zex
 
@@ -50,6 +120,7 @@ volumes:
   db1:
   db2:
   db3:
+  rabbitmq_data:
 
 networks:
   zex:
