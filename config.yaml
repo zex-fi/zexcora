@@ -14,7 +14,14 @@ zex:
   sequencer_whitelist: https://api.zex.finance/sequencer-whitelist.json
   tx_transmit_delay: 0.2
   mainnet: false
+
   verbose: true
+  log_to_file: true
+  log_directory: logs
+  log_rotation_size_in_mb: "100"
+  log_retention_time_in_week: "1"
+  sentry_dsn: ""
+
   sequencer_mode: "local" # "local", "eigenlayer", "docker"
   verifier_threads: 2
 

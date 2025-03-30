@@ -53,7 +53,6 @@ COPY . /app
 
 # Ensure logs directory exists and set permissions
 # FIXME: After changing the log handler just in stdout we should remove this
-# TODO: Add a volume for logs
 RUN mkdir -p /app/logs && chown -R appuser:appuser /app
 
 # Set environment variables
