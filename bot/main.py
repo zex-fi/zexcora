@@ -47,7 +47,7 @@ def start_threads() -> list[tuple[Thread, ZexBot]]:
 
     for t, _ in threads:
         t.start()
-        time.sleep(0.1)
+        time.sleep(0.5)
 
     return threads
 

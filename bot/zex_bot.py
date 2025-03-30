@@ -12,10 +12,11 @@ from secp256k1 import PrivateKey
 from websocket import WebSocket, WebSocketApp
 import httpx
 import numpy as np
+import requests
 import websocket
 
 try:
-    from .proxy import proxy
+    from proxy import proxy
 except ImportError:
     proxy = {}
 
@@ -260,11 +261,14 @@ class ZexBot:
         # Add a thread to update mark_price every minute
         def update_mark_price():
             while self.is_running:
-                time.sleep(30)  # Wait for 60 seconds
-                kline = self.client.klines(
-                    symbol=self.binance_name, interval="1m", limit=1
-                )
-                self.mark_price = float(kline[0][4])
+                try:
+                    time.sleep(30)  # Wait for 60 seconds
+                    kline = self.client.klines(
+                        symbol=self.binance_name, interval="1m", limit=1
+                    )
+                    self.mark_price = float(kline[0][4])
+                except requests.ConnectionError:
+                    continue
 
         Thread(target=update_mark_price).start()
 
