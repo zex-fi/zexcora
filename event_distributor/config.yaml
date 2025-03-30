@@ -1,0 +1,11 @@
+event_distributor:
+  host: "0.0.0.0" # optional
+  port: 15784 # optional
+  api_prefix: "/v1"
+  verbose: true
+
+  broker:
+    host: "127.0.0.1"
+    port: 5672
+    username: user
+    password: cora_event_broker_super_secure_password
