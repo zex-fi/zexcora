@@ -171,6 +171,7 @@ class Withdraw(BaseModel):
     tokenContract: str
     amount: str
     destination: str
+    user_id: int
     t: int
     nonce: int
 

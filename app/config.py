@@ -2,7 +2,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, HttpUrl
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -12,6 +12,12 @@ from pydantic_settings import (
 
 type Chain = str
 type TokenName = str
+
+
+class Dummy(BaseModel):
+    fill_dummy: bool
+    client_private: str
+    bot_private_seed: str
 
 
 class Keys(BaseModel):
@@ -39,13 +45,18 @@ class ZexSettings(BaseModel):
     state_source: str
     state_dest: Path
     state_save_frequency: int
+    state_manager: HttpUrl
+    event_distributor: HttpUrl
+    sequencer_subgraph: HttpUrl
+    sequencer_whitelist: HttpUrl
     tx_transmit_delay: float
     mainnet: bool
     use_redis: bool
     verbose: bool
-    fill_dummy: bool
     sequencer_mode: Literal["local", "docker", "eigenlayer"]
+    verifier_threads: int
 
+    dummy: Dummy
     keys: Keys
     deployer_address: str
     byte_code_hash: str

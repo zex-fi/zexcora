@@ -3,83 +3,15 @@ from threading import Thread
 import asyncio
 import sys
 
-from eth_utils.address import to_checksum_address
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
-from pydantic import BaseModel
 import uvicorn
 
 from . import stop_event
 from .api.main import api_router
 from .api.routes.system import process_loop, transmit_tx
 from .config import settings
-from .connection_manager import ConnectionManager
-
-manager = ConnectionManager()
-
-
-class StreamRequest(BaseModel):
-    id: int
-    method: str
-    params: list[str]
-
-
-class StreamResponse(BaseModel):
-    id: int
-    result: str | None
-
-
-class JSONMessageManager:
-    @staticmethod
-    def normalize_channel(channel: str):
-        symbol, task = channel.split("@")
-        if ":" in symbol:
-            base_token, quote_token = symbol.split("-")
-            if ":" in base_token:
-                base_chain, base_contract_address = base_token.split(":")
-                try:
-                    base_contract_address = to_checksum_address(base_contract_address)
-                except ValueError as e:
-                    logger.exception(e)
-                    raise e
-
-                base_token = f"{base_chain}:{base_contract_address}"
-            if ":" in quote_token:
-                quote_chain, quote_contract_address = quote_token.split(":")
-                try:
-                    quote_contract_address = to_checksum_address(quote_contract_address)
-                except ValueError as e:
-                    logger.exception(e)
-                    raise e
-                quote_token = f"{quote_chain}:{quote_contract_address}"
-            symbol = f"{base_token}-{quote_token}"
-        return f"{symbol}@{task}"
-
-    @classmethod
-    def handle(cls, message, websocket: WebSocket, context: dict):
-        request = StreamRequest.model_validate_json(message)
-        match request.method.upper():
-            case "SUBSCRIBE":
-                for channel in request.params:
-                    try:
-                        normal_channel = cls.normalize_channel(channel)
-                    except ValueError:
-                        return StreamResponse(
-                            result={"error": "contract address is not valid"}
-                        )
-                    manager.subscribe(websocket, normal_channel)
-                return StreamResponse(id=request.id, result=None)
-            case "UNSUBSCRIBE":
-                for channel in request.params:
-                    try:
-                        normal_channel = cls.normalize_channel(channel)
-                    except ValueError:
-                        return StreamResponse(
-                            result={"error": "contract address is not valid"}
-                        )
-                    manager.unsubscribe(websocket, normal_channel)
-                return StreamResponse(id=request.id, result=None)
 
 
 def setup_logging(debug_mode: bool = False):
@@ -157,22 +89,6 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix=settings.zex.api_prefix)
-
-
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    await manager.connect(websocket)
-
-    async def receive_messages():
-        async for message in websocket.iter_text():
-            response = JSONMessageManager.handle(message, websocket, context={})
-            await websocket.send_text(response.model_dump_json())
-        manager.remove(websocket)
-
-    try:
-        await receive_messages()
-    except Exception as e:
-        logger.exception(e)
 
 
 def main():

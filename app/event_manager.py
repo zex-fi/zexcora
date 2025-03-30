@@ -5,9 +5,6 @@ import asyncio
 import pandas as pd
 
 from .callbacks import depth_event, kline_event
-from .connection_manager import ConnectionManager
-
-manager = ConnectionManager()
 
 
 class SnapshotManager:
@@ -30,9 +27,6 @@ class SnapshotManager:
         )
         self.order_book_diffs: dict[str, dict] = {}
 
-        self.kline_callback = kline_event(manager)
-        self.depth_callback = depth_event(manager)
-
     def get_kline(self, pair):
         return self.klines[pair].copy()
 
@@ -41,8 +35,8 @@ class SnapshotManager:
 
     def update_kline_callback(self, pair, kline: pd.DataFrame):
         self.klines[pair] = kline
-        asyncio.create_task(self.kline_callback(pair, kline))
+        msg = kline_event(pair, kline)
 
     def update_order_book_diff_callback(self, pair, diff: dict):
         self.order_book_diffs[pair] = diff
-        asyncio.create_task(self.depth_callback(pair, diff))
+        msg = depth_event(pair, diff)

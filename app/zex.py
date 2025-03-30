@@ -15,10 +15,15 @@ from loguru import logger
 import httpx
 import pandas as pd
 
-from .callbacks import user_deposit_event, user_order_event, user_withdraw_event
+from .callbacks import (
+    depth_event,
+    kline_event,
+    user_deposit_event,
+    user_order_event,
+    user_withdraw_event,
+)
 from .chain import ChainState
 from .config import settings
-from .connection_manager import ConnectionManager
 from .event_manager import SnapshotManager
 from .kline_manager import KlineManager
 from .models.transaction import (
@@ -32,8 +37,6 @@ from .zex_types import ExecutionType, Order, UserPublic
 
 BTC_DEPOSIT, DEPOSIT, WITHDRAW, BUY, SELL, CANCEL, REGISTER = b"xdwbscr"
 TRADES_TTL = 1000
-
-manager = ConnectionManager()
 
 
 def get_token_name(chain, address):
@@ -314,16 +317,13 @@ class Zex(metaclass=SingletonMeta):
         """Initialize the Zex exchange."""
         self.state_manager = StateManager()
         self.snapshot_manager = SnapshotManager()
+        self.client = httpx.AsyncClient()
+        self.event_batch = []
 
         self._initialize_context()
         self._initialize_callbacks()
         self._initialize_state(state_dest, light_node, benchmark_mode)
         self._add_dummy_data_if_enabled()
-
-        self.add_kline_callback(self.snapshot_manager.update_kline_callback)
-        self.add_order_book_diff_callback(
-            self.snapshot_manager.update_order_book_diff_callback
-        )
 
     @staticmethod
     def _initialize_context():
@@ -335,14 +335,11 @@ class Zex(metaclass=SingletonMeta):
         self,
     ):
         """Initialize callback functions."""
-        self.kline_callbacks = []
-        self.order_book_diff_callbacks = []
-        # self.order_callbacks = []
-        # self.deposit_callbacks = []
-        # self.withdraw_callbacks = []
-        self.order_callback = user_order_event(manager)
-        self.deposit_callback = user_deposit_event(manager)
-        self.withdraw_callback = user_withdraw_event(manager)
+        self.kline_callback = kline_event
+        self.order_book_diff_callback = depth_event
+        self.order_callback = user_order_event
+        self.deposit_callback = user_deposit_event
+        self.withdraw_callback = user_withdraw_event
 
     def _initialize_state(self, state_dest, light_node, benchmark_mode):
         """Initialize the exchange state."""
@@ -371,50 +368,27 @@ class Zex(metaclass=SingletonMeta):
 
     def _add_dummy_data_if_enabled(self):
         """Initialize test mode if enabled."""
-        if settings.zex.fill_dummy:
+        if settings.zex.dummy.fill_dummy:
             self._add_dummy_data()
 
     def _add_dummy_data(self):
         """Initialize test mode with predefined data."""
         from secp256k1 import PrivateKey
 
-        client_private = (
-            "31a84594060e103f5a63eb742bd46cf5f5900d8406e2726dedfc61c7cf43eba0"
+        client_priv = PrivateKey(
+            bytes(bytearray.fromhex(settings.zex.dummy.client_private)), raw=True
         )
-        client_priv = PrivateKey(bytes(bytearray.fromhex(client_private)), raw=True)
         client_pub = client_priv.pubkey.serialize()
         self.register_pub(client_pub)
 
-        private_seed = (
-            "31a84594060e103f5a63eb742bd46cf5f5900d8406e2726dedfc61c7cf43ebac"
-        )
         private_seed_int = int.from_bytes(
-            bytearray.fromhex(private_seed), byteorder="big"
+            bytearray.fromhex(settings.zex.dummy.bot_private_seed), byteorder="big"
         )
 
-        tokens = {
-            "BTC": [
-                ("0x0000000000000000000000000000000000000000", 8),
-            ],
-            "HOL": [
-                ("0x0000000000000000000000000000000000000000", 18),
-                ("0x325CCd77e71Ac296892ed5C63bA428700ec0f868", 6),
-                ("0x219f1708400bE5b8cC47A56ed2f18536F5Da7EF4", 18),
-                ("0x9d84f6e4D734c33C2B6e7a5211780499A71aEf6A", 8),
-            ],
-            "SEP": [
-                ("0x0000000000000000000000000000000000000000", 18),
-                ("0x325CCd77e71Ac296892ed5C63bA428700ec0f868", 6),
-                ("0x219f1708400bE5b8cC47A56ed2f18536F5Da7EF4", 18),
-                ("0x9d84f6e4D734c33C2B6e7a5211780499A71aEf6A", 8),
-            ],
-            "BST": [
-                ("0x0000000000000000000000000000000000000000", 18),
-                ("0x325CCd77e71Ac296892ed5C63bA428700ec0f868", 6),
-                ("0x219f1708400bE5b8cC47A56ed2f18536F5Da7EF4", 18),
-                ("0x9d84f6e4D734c33C2B6e7a5211780499A71aEf6A", 8),
-            ],
-        }
+        tokens = {c: [] for c in settings.zex.chains}
+        for _, token_details in settings.zex.verified_tokens.items():
+            for chain, details in token_details.items():
+                tokens[chain].append((details.contract_address, details.decimal))
 
         for i in range(20):
             bot_private_key = (private_seed_int + i).to_bytes(32, "big")
@@ -659,13 +633,50 @@ class Zex(metaclass=SingletonMeta):
                 self.register_pub(public=tx[2:35])
             else:
                 raise ValueError(f"invalid transaction name {name}")
-        for pair in modified_pairs:
-            if settings.zex.light_node:
-                break
-            for f in self.kline_callbacks:
-                f(pair, self._get_kline(pair))
-            for f in self.order_book_diff_callbacks:
-                f(pair, self.get_order_book_update(pair))
+
+        if not settings.zex.light_node:
+            order_book_and_kline_events = []
+            updates = {}
+            for pair in modified_pairs:
+                order_book_update = self.get_order_book_update(pair)
+                kline = self._get_kline(pair)
+                order_book_and_kline_events.extend(
+                    [
+                        x
+                        for x in [
+                            self.order_book_diff_callback(pair, order_book_update),
+                            self.kline_callback(pair, kline),
+                        ]
+                        if x is not None
+                    ]
+                )
+
+                updates[pair] = {}
+                if len(kline) != 0:
+                    updates[pair]["kline"] = kline.iloc[len(kline) - 1].to_dict()
+                if len(order_book_update["b"]) != 0 or len(order_book_update["a"]) != 0:
+                    updates[pair]["depth"] = {
+                        "Ask": order_book_update["a"],
+                        "Bid": order_book_update["b"],
+                    }
+
+            events = self.event_batch + order_book_and_kline_events
+
+            asyncio.create_task(
+                self.client.post(
+                    f"{settings.zex.event_distributor}/events",
+                    json=events,
+                )
+            )
+
+            asyncio.create_task(
+                self.client.post(
+                    f"{settings.zex.state_manager}/updates",
+                    json=updates,
+                )
+            )
+
+            self.event_batch = []
 
         self.last_tx_index = last_tx_index
 
@@ -929,10 +940,10 @@ class Zex(metaclass=SingletonMeta):
             "u": order_book_update["u"],
             "pu": order_book_update["pu"],
             "b": [
-                [float(p), float(q)] for p, q in order_book_update["bids"].items()
+                [str(p), str(q)] for p, q in order_book_update["bids"].items()
             ],  # Bids to be updated
             "a": [
-                [float(p), float(q)] for p, q in order_book_update["asks"].items()
+                [str(p), str(q)] for p, q in order_book_update["asks"].items()
             ],  # Asks to be updated
         }
 
@@ -1029,12 +1040,6 @@ class Zex(metaclass=SingletonMeta):
             user_id=self.public_to_id_lookup[public],
         )
 
-    def add_kline_callback(self, func):
-        self.kline_callbacks.append(func)
-
-    def add_order_book_diff_callback(self, func):
-        self.order_book_diff_callbacks.append(func)
-
 
 def _parse_transaction(tx: bytes) -> tuple[int, str, str, Decimal, Decimal, int, bytes]:
     operation, base_token_len, quote_token_len = struct.unpack(">x B B B", tx[:4])
@@ -1081,7 +1086,10 @@ class Market:
         self.sell_orders: list[tuple[Decimal, tuple[bytes, int, Decimal]]] = []
         self.bids_order_book: dict[Decimal, Decimal] = {}
         self.asks_order_book: dict[Decimal, Decimal] = {}
-        self._order_book_updates = {"bids": {}, "asks": {}}
+        self._order_book_updates: dict[str, dict[Decimal, Decimal]] = {
+            "bids": {},
+            "asks": {},
+        }
         self.first_id = 0
         self.final_id = 0
         self.last_update_id = 0
@@ -1187,7 +1195,7 @@ class Market:
 
             # TODO: send partial fill message for taker order
             if not settings.zex.light_node:
-                asyncio.create_task(
+                self.zex.event_batch.append(
                     self.zex.order_callback(
                         public=public.hex(),
                         nonce=nonce,
@@ -1212,7 +1220,7 @@ class Market:
         else:
             # TODO: send completed message for taker order
             if not settings.zex.light_node:
-                asyncio.create_task(
+                self.zex.event_batch.append(
                     self.zex.order_callback(
                         public=public.hex(),
                         nonce=nonce,
@@ -1287,7 +1295,7 @@ class Market:
             )
 
             if not settings.zex.light_node:
-                asyncio.create_task(
+                self.zex.event_batch.append(
                     self.zex.order_callback(
                         public=public.hex(),
                         nonce=nonce,
@@ -1311,7 +1319,7 @@ class Market:
 
         else:
             if not settings.zex.light_node:
-                asyncio.create_task(
+                self.zex.event_batch.append(
                     self.zex.order_callback(
                         public=public.hex(),
                         nonce=nonce,
@@ -1335,7 +1343,7 @@ class Market:
         return True
 
     def _add_remaining_amount_to_buy_orders(
-        self, public, nonce, initial_amount, remaining_amount, price, tx
+        self, public, nonce, initial_amount, remaining_amount, price: Decimal, tx
     ):
         heapq.heappush(self.buy_orders, (-price, (tx, nonce, initial_amount)))
         self.zex.amounts[tx] = remaining_amount
@@ -1424,7 +1432,7 @@ class Market:
     ) -> bool:
         if price <= 0 or amount <= 0:
             if not settings.zex.light_node:
-                asyncio.create_task(
+                self.zex.event_batch.append(
                     self.zex.order_callback(
                         public=public.hex(),
                         nonce=nonce,
@@ -1484,7 +1492,7 @@ class Market:
             )
 
             if not settings.zex.light_node:
-                asyncio.create_task(
+                self.zex.event_batch.append(
                     self.zex.order_callback(
                         public=public.hex(),
                         nonce=nonce,
@@ -1523,7 +1531,7 @@ class Market:
                 order_book[price] = amount
             self._order_book_updates[order_book_update_key][price] = order_book[price]
 
-            asyncio.create_task(
+            self.zex.event_batch.append(
                 self.zex.order_callback(
                     public=public.hex(),
                     nonce=nonce,
@@ -1583,7 +1591,7 @@ class Market:
                     ]
             self.final_id += 1
             if not settings.zex.light_node:
-                asyncio.create_task(
+                self.zex.event_batch.append(
                     self.zex.order_callback(
                         public.hex(),
                         nonce,
@@ -1626,7 +1634,7 @@ class Market:
                 self._order_book_updates["bids"][buy_price] = self.bids_order_book[
                     buy_price
                 ]
-                asyncio.create_task(
+                self.zex.event_batch.append(
                     self.zex.order_callback(
                         public=buy_public.hex(),
                         nonce=buy_order_nonce,
@@ -1656,7 +1664,7 @@ class Market:
             if not settings.zex.light_node:
                 self._remove_from_order_book("bids", buy_price, trade_amount)
 
-                asyncio.create_task(
+                self.zex.event_batch.append(
                     self.zex.order_callback(
                         public=buy_public.hex(),
                         nonce=buy_order_nonce,
@@ -1696,7 +1704,7 @@ class Market:
                 self._order_book_updates["asks"][sell_price] = self.asks_order_book[
                     sell_price
                 ]
-                asyncio.create_task(
+                self.zex.event_batch.append(
                     self.zex.order_callback(
                         public=sell_public.hex(),
                         nonce=sell_order_nonce,
@@ -1728,7 +1736,7 @@ class Market:
             if not settings.zex.light_node:
                 self._remove_from_order_book("asks", sell_price, trade_amount)
 
-                asyncio.create_task(
+                self.zex.event_batch.append(
                     self.zex.order_callback(
                         public=sell_public.hex(),
                         nonce=sell_order_nonce,

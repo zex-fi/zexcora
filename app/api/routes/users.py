@@ -465,6 +465,7 @@ def get_chain_withdraws(
             tokenContract=token_contract,
             amount=str(int(withdraw.amount * (10**decimal))),
             destination=withdraw.destination,
+            user_id=zex.public_to_id_lookup[withdraw.public],
             t=withdraw.time,
             nonce=i + offset,
         )
@@ -510,6 +511,7 @@ def get_user_withdraws(
             amount=str(int(withdraw_tx.amount * (10**decimal))),
             user=str(int.from_bytes(user[1:], byteorder="big")),
             destination=Web3.to_checksum_address(withdraw_tx.destination),
+            user_id=id,
             t=withdraw_tx.time,
             nonce=withdraw_tx.nonce,
         )

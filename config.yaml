@@ -3,27 +3,34 @@ zex:
   port: 15782 # optional
   api_prefix: "/v1"
   light_node: false
-  state_source: "http://zex-state/zex_state.pb"
+  state_source: "http://state-manager/zex_state.pb"
   state_dest: zex_state.pb
   state_save_frequency: 100
-  tx_transmit_delay: 0.01
+  state_manager: http://state-manager/v1
+  # state_manager: http://127.0.0.1:15783/v1
+  event_distributor: http://event-distributor/v1
+  # event_distributor: http://127.0.0.1:15784/v1
+  sequencer_subgraph: https://api.studio.thegraph.com/query/96758/zex-avs/v0.0.2
+  sequencer_whitelist: https://api.zex.finance/sequencer-whitelist.json
+  tx_transmit_delay: 0.2
   mainnet: false
   use_redis: false
   verbose: true
-  fill_dummy: true
   sequencer_mode: "local" # "local", "eigenlayer", "docker"
+  verifier_threads: 2
+
+  dummy:
+    fill_dummy: true
+    client_private: 31a84594060e103f5a63eb742bd46cf5f5900d8406e2726dedfc61c7cf43eba0
+    bot_private_seed: 31a84594060e103f5a63eb742bd46cf5f5900d8406e2726dedfc61c7cf43ebac
 
   keys:
     deposit_public_key: 382892429471464219867747969662311867114742460359035433268305162405387427562199
     deposit_shield_address: "0xFB6E059Cc3F3E8029A2b25fE1fb1d952572f4181"
-    btc_public_key: 0254cf2216e0af0b8999cd3cd4d589e64fcf2262b4fb9c5615312cf1fb66b3625f
+    btc_public_key: 02a4213b385f231a7f34bdfc9fd78ca3b4b6fe83f9a6d54998b98c92724d45ac8f
 
   deployer_address: "0xa16aF858AEfE32994dAcdb640683a66FDcCB9569"
   byte_code_hash: "0x972b0e0eafa2adb02ebf7b1a35917a9114211a8e393a2ac373b8af263225f0f8"
-
-  redis:
-    url: 127.0.0.1:6379
-    password: zex_super_secure_password
 
   chains:
     - BTC
