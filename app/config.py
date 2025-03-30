@@ -26,11 +26,6 @@ class Keys(BaseModel):
     btc_public_key: str
 
 
-class Redis(BaseModel):
-    url: str
-    password: str
-
-
 class Token(BaseModel):
     contract_address: str
     balance_withdraw_limit: Decimal
@@ -51,7 +46,6 @@ class ZexSettings(BaseModel):
     sequencer_whitelist: HttpUrl
     tx_transmit_delay: float
     mainnet: bool
-    use_redis: bool
     verbose: bool
     sequencer_mode: Literal["local", "docker", "eigenlayer"]
     verifier_threads: int
@@ -60,7 +54,6 @@ class ZexSettings(BaseModel):
     keys: Keys
     deployer_address: str
     byte_code_hash: str
-    redis: Redis
 
     chains: list[str]
 

@@ -14,7 +14,6 @@ zex:
   sequencer_whitelist: https://api.zex.finance/sequencer-whitelist.json
   tx_transmit_delay: 0.2
   mainnet: false
-  use_redis: false
   verbose: true
   sequencer_mode: "local" # "local", "eigenlayer", "docker"
   verifier_threads: 2

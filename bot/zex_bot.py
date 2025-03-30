@@ -22,6 +22,7 @@ except ImportError:
 
 HOST = os.getenv("ZEX_HOST")
 PORT = int(os.getenv("ZEX_PORT"))
+EVENT_DISTRIBUTOR_PORT = int(os.getenv("EVENT_DISTRIBUTOR_PORT"))
 
 assert HOST is not None and PORT is not None, "HOST or PORT is not defined"
 
@@ -251,7 +252,7 @@ class ZexBot:
 
         websocket.enableTrace(False)
         self.websocket = WebSocketApp(
-            f"ws://{HOST}:{PORT}/ws",
+            f"ws://{HOST}:{EVENT_DISTRIBUTOR_PORT}/v1/ws",
             on_open=self.on_open_wrapper(),
             on_message=self.on_message_wrapper(),
         )

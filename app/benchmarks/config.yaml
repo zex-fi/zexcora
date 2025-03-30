@@ -8,7 +8,6 @@ zex:
   state_save_frequency: 1000000
   tx_transmit_delay: 0.01
   mainnet: false
-  use_redis: false
   verbose: true
   fill_dummy: true
   sequencer_mode: "local" # "eigenlayer", "docker"
@@ -20,10 +19,6 @@ zex:
 
   deployer_address: "0xa16aF858AEfE32994dAcdb640683a66FDcCB9569"
   byte_code_hash: "0x972b0e0eafa2adb02ebf7b1a35917a9114211a8e393a2ac373b8af263225f0f8"
-
-  redis:
-    url: 127.0.0.1:6379
-    password: zex_super_secure_password
 
   chains:
     - HOL
