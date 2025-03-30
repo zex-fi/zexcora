@@ -1,0 +1,16 @@
+websocket_service:
+  host: "0.0.0.0" # optional
+  port: 15785 # optional
+  api_prefix: "/v1"
+  verbose: true
+  event_distributor: http://event-distributor/v1
+
+  broker:
+    broker_type: rabbitmq # rabbitmq, kafka
+    host: "127.0.0.1"
+    # host: "event-broker"
+    port: 5672
+    username: user
+    password: cora_event_broker_super_secure_password
+
+    message_ttl: 60
