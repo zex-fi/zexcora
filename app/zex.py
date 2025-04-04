@@ -628,6 +628,9 @@ class Zex(metaclass=SingletonMeta):
 
             elif name == CANCEL:
                 base_token, quote_token, pair = self._get_tx_pair(tx[1:])
+                if pair not in self.state_manager.markets:
+                    logger.debug(f"pair {pair} not found")
+                    continue
                 success = self.state_manager.markets[pair].cancel(tx)
                 if success:
                     modified_pairs.add(pair)
@@ -769,7 +772,7 @@ class Zex(metaclass=SingletonMeta):
                 )
 
             if not settings.zex.light_node:
-                asyncio.create_task(
+                self.event_batch.append(
                     self.deposit_callback(
                         public.hex(), deposit.chain, deposit.token_name, deposit.amount
                     )
@@ -912,7 +915,7 @@ class Zex(metaclass=SingletonMeta):
         self.process_withdraw(tx, token, token_contract)
 
         if not settings.zex.light_node:
-            asyncio.create_task(
+            self.event_batch.append(
                 self.withdraw_callback(
                     tx.public.hex(), tx.chain, tx.token_name, tx.amount
                 )
