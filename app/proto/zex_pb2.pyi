@@ -151,12 +151,12 @@ class Balance(_message.Message):
     def __init__(self, balances: _Optional[_Iterable[_Union[BalanceEntry, _Mapping]]] = ...) -> None: ...
 
 class BalanceEntry(_message.Message):
-    __slots__ = ("public_key", "amount")
-    PUBLIC_KEY_FIELD_NUMBER: _ClassVar[int]
+    __slots__ = ("user_id", "amount")
+    USER_ID_FIELD_NUMBER: _ClassVar[int]
     AMOUNT_FIELD_NUMBER: _ClassVar[int]
-    public_key: bytes
+    user_id: int
     amount: str
-    def __init__(self, public_key: _Optional[bytes] = ..., amount: _Optional[str] = ...) -> None: ...
+    def __init__(self, user_id: _Optional[int] = ..., amount: _Optional[str] = ...) -> None: ...
 
 class AmountEntry(_message.Message):
     __slots__ = ("tx", "amount")
@@ -167,12 +167,12 @@ class AmountEntry(_message.Message):
     def __init__(self, tx: _Optional[bytes] = ..., amount: _Optional[str] = ...) -> None: ...
 
 class TradeEntry(_message.Message):
-    __slots__ = ("public_key", "trades")
-    PUBLIC_KEY_FIELD_NUMBER: _ClassVar[int]
+    __slots__ = ("user_id", "trades")
+    USER_ID_FIELD_NUMBER: _ClassVar[int]
     TRADES_FIELD_NUMBER: _ClassVar[int]
-    public_key: bytes
+    user_id: int
     trades: _containers.RepeatedCompositeFieldContainer[Trade]
-    def __init__(self, public_key: _Optional[bytes] = ..., trades: _Optional[_Iterable[_Union[Trade, _Mapping]]] = ...) -> None: ...
+    def __init__(self, user_id: _Optional[int] = ..., trades: _Optional[_Iterable[_Union[Trade, _Mapping]]] = ...) -> None: ...
 
 class Trade(_message.Message):
     __slots__ = ("t", "amount", "pair", "order_type", "order")
@@ -189,20 +189,20 @@ class Trade(_message.Message):
     def __init__(self, t: _Optional[int] = ..., amount: _Optional[str] = ..., pair: _Optional[str] = ..., order_type: _Optional[int] = ..., order: _Optional[bytes] = ...) -> None: ...
 
 class OrderEntry(_message.Message):
-    __slots__ = ("public_key", "orders")
-    PUBLIC_KEY_FIELD_NUMBER: _ClassVar[int]
+    __slots__ = ("user_id", "orders")
+    USER_ID_FIELD_NUMBER: _ClassVar[int]
     ORDERS_FIELD_NUMBER: _ClassVar[int]
-    public_key: bytes
+    user_id: int
     orders: _containers.RepeatedScalarFieldContainer[bytes]
-    def __init__(self, public_key: _Optional[bytes] = ..., orders: _Optional[_Iterable[bytes]] = ...) -> None: ...
+    def __init__(self, user_id: _Optional[int] = ..., orders: _Optional[_Iterable[bytes]] = ...) -> None: ...
 
 class UserWithdrawEntry(_message.Message):
-    __slots__ = ("public_key", "raw_txs")
-    PUBLIC_KEY_FIELD_NUMBER: _ClassVar[int]
+    __slots__ = ("user_id", "raw_txs")
+    USER_ID_FIELD_NUMBER: _ClassVar[int]
     RAW_TXS_FIELD_NUMBER: _ClassVar[int]
-    public_key: bytes
+    user_id: int
     raw_txs: _containers.RepeatedScalarFieldContainer[bytes]
-    def __init__(self, public_key: _Optional[bytes] = ..., raw_txs: _Optional[_Iterable[bytes]] = ...) -> None: ...
+    def __init__(self, user_id: _Optional[int] = ..., raw_txs: _Optional[_Iterable[bytes]] = ...) -> None: ...
 
 class UserWithdraws(_message.Message):
     __slots__ = ("withdraws",)
@@ -217,12 +217,12 @@ class WithdrawsOnChain(_message.Message):
     def __init__(self, raw_txs: _Optional[_Iterable[bytes]] = ...) -> None: ...
 
 class WithdrawNonceEntry(_message.Message):
-    __slots__ = ("public_key", "nonce")
-    PUBLIC_KEY_FIELD_NUMBER: _ClassVar[int]
+    __slots__ = ("user_id", "nonce")
+    USER_ID_FIELD_NUMBER: _ClassVar[int]
     NONCE_FIELD_NUMBER: _ClassVar[int]
-    public_key: bytes
+    user_id: int
     nonce: int
-    def __init__(self, public_key: _Optional[bytes] = ..., nonce: _Optional[int] = ...) -> None: ...
+    def __init__(self, user_id: _Optional[int] = ..., nonce: _Optional[int] = ...) -> None: ...
 
 class WithdrawNonceOnChain(_message.Message):
     __slots__ = ("nonces",)
@@ -245,12 +245,12 @@ class DepositsOnChain(_message.Message):
     def __init__(self, deposits: _Optional[_Iterable[_Union[DepositEntry, _Mapping]]] = ...) -> None: ...
 
 class UserDepositEntry(_message.Message):
-    __slots__ = ("public_key", "deposits")
-    PUBLIC_KEY_FIELD_NUMBER: _ClassVar[int]
+    __slots__ = ("user_id", "deposits")
+    USER_ID_FIELD_NUMBER: _ClassVar[int]
     DEPOSITS_FIELD_NUMBER: _ClassVar[int]
-    public_key: bytes
+    user_id: int
     deposits: _containers.RepeatedCompositeFieldContainer[Deposit]
-    def __init__(self, public_key: _Optional[bytes] = ..., deposits: _Optional[_Iterable[_Union[Deposit, _Mapping]]] = ...) -> None: ...
+    def __init__(self, user_id: _Optional[int] = ..., deposits: _Optional[_Iterable[_Union[Deposit, _Mapping]]] = ...) -> None: ...
 
 class Deposit(_message.Message):
     __slots__ = ("tx_hash", "chain", "token_contract", "amount", "decimal", "time", "user_id", "vout")
@@ -273,12 +273,12 @@ class Deposit(_message.Message):
     def __init__(self, tx_hash: _Optional[str] = ..., chain: _Optional[str] = ..., token_contract: _Optional[str] = ..., amount: _Optional[str] = ..., decimal: _Optional[int] = ..., time: _Optional[int] = ..., user_id: _Optional[int] = ..., vout: _Optional[int] = ...) -> None: ...
 
 class NonceEntry(_message.Message):
-    __slots__ = ("public_key", "nonce")
-    PUBLIC_KEY_FIELD_NUMBER: _ClassVar[int]
+    __slots__ = ("user_id", "nonce")
+    USER_ID_FIELD_NUMBER: _ClassVar[int]
     NONCE_FIELD_NUMBER: _ClassVar[int]
-    public_key: bytes
+    user_id: int
     nonce: int
-    def __init__(self, public_key: _Optional[bytes] = ..., nonce: _Optional[int] = ...) -> None: ...
+    def __init__(self, user_id: _Optional[int] = ..., nonce: _Optional[int] = ...) -> None: ...
 
 class IDLookupEntry(_message.Message):
     __slots__ = ("public_key", "user_id")

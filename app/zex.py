@@ -33,7 +33,7 @@ from .models.transaction import (
 )
 from .proto import zex_pb2
 from .singleton import SingletonMeta
-from .zex_types import ExecutionType, Order, UserPublic
+from .zex_types import ExecutionType, Order, UserId, UserPublic
 
 BTC_DEPOSIT, DEPOSIT, WITHDRAW, BUY, SELL, CANCEL, REGISTER = b"xdwbscr"
 TRADES_TTL = 1000
@@ -54,10 +54,10 @@ class StateManager:
 
     def __init__(self):
         self.chain_states: dict[str, ChainState] = {}
-        self.assets: dict[str, dict[bytes, Decimal]] = {
+        self.assets: dict[str, dict[UserId, Decimal]] = {
             settings.zex.usdt_mainnet: {}
-        }  # token -> {public_key -> amount}
-        self.user_deposits: dict[bytes, list[Deposit]] = {}
+        }  # token -> {user_id -> amount}
+        self.user_deposits: dict[UserId, list[Deposit]] = {}
         self.markets: dict[str, Market] = {}
 
     def ensure_chain_initialized(self, chain: str) -> ChainState:
@@ -66,12 +66,12 @@ class StateManager:
             self.chain_states[chain] = ChainState.create_empty()
         return self.chain_states[chain]
 
-    def ensure_token_initialized(self, token: str, public: bytes):
+    def ensure_token_initialized(self, token: str, user_id: UserId):
         """Ensures a token's state is initialized."""
         if token not in self.assets:
             self.assets[token] = {}
-        if public not in self.assets[token]:
-            self.assets[token][public] = Decimal("0")
+        if user_id not in self.assets[token]:
+            self.assets[token][user_id] = Decimal("0")
 
     def ensure_market_initialized(
         self, token_name: str, quote_token: str, zex_instance
@@ -93,9 +93,9 @@ class StateManager:
             chain_state.to_protobuf(chain, pb_state)
 
         # Serialize user deposits
-        for public, deposits in self.user_deposits.items():
+        for user_id, deposits in self.user_deposits.items():
             entry = pb_state.user_deposits.add()
-            entry.public_key = public
+            entry.user_id = user_id
             for deposit in deposits:
                 pb_deposit = entry.deposits.add()
                 pb_deposit.tx_hash = deposit.tx_hash
@@ -110,9 +110,9 @@ class StateManager:
         # Serialize assets (balances)
         for token, balances in self.assets.items():
             pb_balance = pb_state.balances[token]
-            for public, amount in balances.items():
+            for user_id, amount in balances.items():
                 entry = pb_balance.balances.add()
-                entry.public_key = public
+                entry.user_id = user_id
                 entry.amount = str(amount)
 
         # Serialize markets
@@ -164,7 +164,7 @@ class StateManager:
 
         # Deserialize user deposits
         state_manager.user_deposits = {
-            e.public_key: [
+            e.user_id: [
                 Deposit(
                     tx_hash=pb_deposit.tx_hash,
                     chain=pb_deposit.chain,
@@ -182,7 +182,7 @@ class StateManager:
 
         # Deserialize assets (balances)
         state_manager.assets = {
-            token: {e.public_key: Decimal(e.amount) for e in pb_balance.balances}
+            token: {e.user_id: Decimal(e.amount) for e in pb_balance.balances}
             for token, pb_balance in pb_state.balances.items()
         }
 
@@ -357,12 +357,12 @@ class Zex(metaclass=SingletonMeta):
         self.saved_state_index = 0
         self.save_state_tx_index_threshold = self.save_frequency
         self.amounts: dict[Order, Decimal] = {}
-        self.trades: dict[UserPublic, deque] = {}
-        self.orders: dict[UserPublic, set[bytes]] = {}
+        self.trades: dict[UserId, deque] = {}
+        self.orders: dict[UserId, set[bytes]] = {}
         self.public_to_id_lookup: dict[UserPublic, int] = {}
         self.id_to_public_lookup: dict[int, UserPublic] = {}
 
-        self.nonces: dict[bytes, int] = {}
+        self.nonces: dict[UserId, int] = {}
         self.pair_lookup: dict[str, tuple[str, str, str]] = {}
 
         self.last_user_id_lock = Lock()
@@ -396,7 +396,7 @@ class Zex(metaclass=SingletonMeta):
             bot_private_key = (private_seed_int + i).to_bytes(32, "big")
             bot_priv = PrivateKey(bot_private_key, raw=True)
             bot_pub = bot_priv.pubkey.serialize()
-            self.register_pub(bot_pub)
+            bot_id = self.register_pub(bot_pub)
 
             for idx1, (chain, details) in enumerate(tokens.items()):
                 for idx2, (contract_address, decimal) in enumerate(details):
@@ -411,18 +411,18 @@ class Zex(metaclass=SingletonMeta):
                                 token_contract=contract_address,
                                 amount=Decimal("1_000"),
                                 decimal=decimal,
-                                time=self.public_to_id_lookup[client_pub],
+                                time=0,
                                 user_id=self.public_to_id_lookup[client_pub],
                                 vout=0,
                             ),
                             Deposit(
-                                tx_hash=f"0x0{idx1}{idx2}{self.public_to_id_lookup[bot_pub]}",
+                                tx_hash=f"0x0{idx1}{idx2}{bot_id}",
                                 chain=chain,
                                 token_contract=contract_address,
                                 amount=Decimal("100_000_000"),
                                 decimal=decimal,
-                                time=self.public_to_id_lookup[bot_pub],
-                                user_id=self.public_to_id_lookup[bot_pub],
+                                time=0,
+                                user_id=bot_id,
                                 vout=0,
                             ),
                         ],
@@ -432,16 +432,16 @@ class Zex(metaclass=SingletonMeta):
                         if not self.validate_deposit(deposit):
                             continue
 
-                        public = self.id_to_public_lookup[deposit.user_id]
-                        self.process_deposit(deposit, public)
+                        user_id = deposit.user_id
+                        self.process_deposit(deposit, user_id)
 
                         # Initialize related state if needed
-                        if public not in self.trades:
-                            self.trades[public] = deque()
-                        if public not in self.orders:
-                            self.orders[public] = set()
-                        if public not in self.nonces:
-                            self.nonces[public] = 0
+                        if user_id not in self.trades:
+                            self.trades[user_id] = deque()
+                        if user_id not in self.orders:
+                            self.orders[user_id] = set()
+                        if user_id not in self.nonces:
+                            self.nonces[user_id] = 0
 
                         if deposit.token_name != settings.zex.usdt_mainnet:
                             # Ensure market exists
@@ -480,9 +480,9 @@ class Zex(metaclass=SingletonMeta):
 
     def _serialize_trades(self, state: zex_pb2.ZexState):
         """Serialize user trades to protobuf."""
-        for public, trades in self.trades.items():
+        for user_id, trades in self.trades.items():
             entry = state.trades.add()
-            entry.public_key = public
+            entry.user_id = user_id
             for trade in trades:
                 pb_trade = entry.trades.add()
                 (
@@ -495,16 +495,16 @@ class Zex(metaclass=SingletonMeta):
 
     def _serialize_orders(self, state: zex_pb2.ZexState):
         """Serialize user orders to protobuf."""
-        for public, orders in self.orders.items():
+        for user_id, orders in self.orders.items():
             entry = state.orders.add()
-            entry.public_key = public
+            entry.user_id = user_id
             entry.orders.extend(orders)
 
     def _serialize_nonces(self, state: zex_pb2.ZexState):
         """Serialize user nonces to protobuf."""
-        for public, nonce in self.nonces.items():
+        for user_id, nonce in self.nonces.items():
             entry = state.nonces.add()
-            entry.public_key = public
+            entry.user_id = user_id
             entry.nonce = nonce
 
     def _serialize_user_lookups(self, state: zex_pb2.ZexState):
@@ -522,7 +522,7 @@ class Zex(metaclass=SingletonMeta):
     def _deserialize_trades(self, pb_state: zex_pb2.ZexState):
         """Deserialize user trades from protobuf."""
         self.trades = {
-            e.public_key: deque(
+            e.user_id: deque(
                 (
                     trade.t,
                     Decimal(trade.amount),
@@ -537,11 +537,11 @@ class Zex(metaclass=SingletonMeta):
 
     def _deserialize_orders(self, pb_state: zex_pb2.ZexState):
         """Deserialize user orders from protobuf."""
-        self.orders = {e.public_key: set(e.orders) for e in pb_state.orders}
+        self.orders = {e.user_id: set(e.orders) for e in pb_state.orders}
 
     def _deserialize_nonces(self, pb_state: zex_pb2.ZexState):
         """Deserialize user nonces from protobuf."""
-        self.nonces = {e.public_key: e.nonce for e in pb_state.nonces}
+        self.nonces = {e.user_id: e.nonce for e in pb_state.nonces}
 
     def _deserialize_user_lookups(self, pb_state: zex_pb2.ZexState):
         """Deserialize user ID lookups from protobuf."""
@@ -573,15 +573,18 @@ class Zex(metaclass=SingletonMeta):
                 tx = WithdrawTransaction.from_tx(tx)
                 self.withdraw(tx)
             elif name in (BUY, SELL):
-                operation, base_token, quote_token, amount, price, nonce, public = (
+                operation, base_token, quote_token, amount, price, nonce, user_id = (
                     _parse_transaction(tx)
                 )
                 pair = f"{base_token}-{quote_token}"
 
-                if public not in self.public_to_id_lookup:
-                    logger.debug(
-                        "public: {public} not registered",
-                        public=public,
+                if user_id not in self.id_to_public_lookup:
+                    logger.critical(
+                        "user id: {user_id} not registered",
+                        user_id=user_id,
+                    )
+                    raise ValueError(
+                        f"user_id {user_id} not found. supposedly unreachable code"
                     )
 
                 # This to make sure the log for both missing token is generated
@@ -599,7 +602,7 @@ class Zex(metaclass=SingletonMeta):
                 if missing_token:
                     continue
 
-                if not self.validate_nonce(public, nonce):
+                if not self.validate_nonce(user_id, nonce):
                     continue
 
                 market = self.state_manager.ensure_market_initialized(
@@ -616,11 +619,11 @@ class Zex(metaclass=SingletonMeta):
 
                 # fast route check for instant match
                 if market.match_instantly(
-                    tx, t, operation, amount, price, nonce, public
+                    tx, t, operation, amount, price, nonce, user_id
                 ):
                     modified_pairs.add(pair)
                     continue
-                ok = market.place(tx, operation, amount, price, nonce, public)
+                ok = market.place(tx, operation, amount, price, nonce, user_id)
                 if not ok:
                     continue
 
@@ -635,7 +638,7 @@ class Zex(metaclass=SingletonMeta):
                 if success:
                     modified_pairs.add(pair)
             elif name == REGISTER:
-                self.register_pub(public=tx[2:35])
+                _ = self.register_pub(public=tx[2:35])
             else:
                 raise ValueError(f"invalid transaction name {name}")
 
@@ -709,7 +712,7 @@ class Zex(metaclass=SingletonMeta):
 
         return True
 
-    def process_deposit(self, deposit: Deposit, public: bytes):
+    def process_deposit(self, deposit: Deposit, user_id: UserId):
         """Processes a validated deposit."""
         chain_state = self.state_manager.ensure_chain_initialized(deposit.chain)
 
@@ -723,24 +726,24 @@ class Zex(metaclass=SingletonMeta):
             )
             chain_state.contract_decimals[deposit.token_contract] = deposit.decimal
 
-        self.state_manager.ensure_token_initialized(deposit.token_name, public)
+        self.state_manager.ensure_token_initialized(deposit.token_name, user_id)
         if deposit.token_contract not in chain_state.balances:
             chain_state.balances[deposit.token_contract] = Decimal("0")
 
         # Record deposit
         chain_state.deposits.add((deposit.tx_hash, deposit.vout))
-        if public not in self.state_manager.user_deposits:
-            self.state_manager.user_deposits[public] = []
-        self.state_manager.user_deposits[public].append(deposit)
+        if user_id not in self.state_manager.user_deposits:
+            self.state_manager.user_deposits[user_id] = []
+        self.state_manager.user_deposits[user_id].append(deposit)
 
         # Update balances
-        self.state_manager.assets[deposit.token_name][public] += deposit.amount
+        self.state_manager.assets[deposit.token_name][user_id] += deposit.amount
         chain_state.balances[deposit.token_contract] += deposit.amount
 
         logger.info(
             f"deposit on chain: {deposit.chain}, token: {deposit.token_name}, "
-            f"amount: {deposit.amount} for user: {public}, tx_hash: {deposit.tx_hash}, "
-            f"new balance: {self.state_manager.assets[deposit.token_name][public]}"
+            f"amount: {deposit.amount} for user: {user_id}, tx_hash: {deposit.tx_hash}, "
+            f"new balance: {self.state_manager.assets[deposit.token_name][user_id]}"
         )
 
     # Modified Zex class methods to use the new managers
@@ -754,16 +757,16 @@ class Zex(metaclass=SingletonMeta):
                 logger.critical(f"user id: {deposit.user_id} is not registered")
                 continue
 
-            public = self.id_to_public_lookup[deposit.user_id]
-            self.process_deposit(deposit, public)
+            user_id = deposit.user_id
+            self.process_deposit(deposit, user_id)
 
             # Initialize related state if needed
-            if public not in self.trades:
-                self.trades[public] = deque()
-            if public not in self.orders:
-                self.orders[public] = set()
-            if public not in self.nonces:
-                self.nonces[public] = 0
+            if user_id not in self.trades:
+                self.trades[user_id] = deque()
+            if user_id not in self.orders:
+                self.orders[user_id] = set()
+            if user_id not in self.nonces:
+                self.nonces[user_id] = 0
 
             if deposit.token_name != settings.zex.usdt_mainnet:
                 # Ensure market exists
@@ -774,7 +777,7 @@ class Zex(metaclass=SingletonMeta):
             if not settings.zex.light_node:
                 self.event_batch.append(
                     self.deposit_callback(
-                        public.hex(), deposit.chain, deposit.token_name, deposit.amount
+                        user_id, deposit.chain, deposit.token_name, deposit.amount
                     )
                 )
 
@@ -921,16 +924,16 @@ class Zex(metaclass=SingletonMeta):
                 )
             )
 
-    def validate_nonce(self, public: bytes, nonce: int) -> bool:
-        if self.nonces[public] != nonce:
+    def validate_nonce(self, user_id: UserId, nonce: int) -> bool:
+        if self.nonces[user_id] != nonce:
             logger.debug(
                 "Invalid nonce: expected {expected_nonce}, got {nonce} for user: {user_id}",
-                expected_nonce=self.nonces[public],
+                expected_nonce=self.nonces[user_id],
                 nonce=nonce,
-                user_id=self.public_to_id_lookup[public],
+                user_id=user_id,
             )
             return False
-        self.nonces[public] += 1
+        self.nonces[user_id] += 1
         return True
 
     def get_order_book_update(self, pair: str):
@@ -1029,29 +1032,31 @@ class Zex(metaclass=SingletonMeta):
                 self.last_user_id += 1
                 self.public_to_id_lookup[public] = self.last_user_id
                 self.id_to_public_lookup[self.last_user_id] = public
-        if public not in self.state_manager.user_deposits:
-            self.state_manager.user_deposits[public] = []
+        user_id = self.public_to_id_lookup[public]
+        if user_id not in self.state_manager.user_deposits:
+            self.state_manager.user_deposits[user_id] = []
 
-        if public not in self.trades:
-            self.trades[public] = deque()
-        if public not in self.orders:
-            self.orders[public] = set()
-        if public not in self.nonces:
-            self.nonces[public] = 0
+        if user_id not in self.trades:
+            self.trades[user_id] = deque()
+        if user_id not in self.orders:
+            self.orders[user_id] = set()
+        if user_id not in self.nonces:
+            self.nonces[user_id] = 0
 
         logger.info(
             "user registered with public: {public}, user id: {user_id}",
             public=public.hex(),
-            user_id=self.public_to_id_lookup[public],
+            user_id=user_id,
         )
+        return user_id
 
 
-def _parse_transaction(tx: bytes) -> tuple[int, str, str, Decimal, Decimal, int, bytes]:
+def _parse_transaction(tx: bytes) -> tuple[int, str, str, Decimal, Decimal, int, int]:
     operation, base_token_len, quote_token_len = struct.unpack(">x B B B", tx[:4])
 
-    order_format = f">{base_token_len}s {quote_token_len}s d d I I 33s"
+    order_format = f">{base_token_len}s {quote_token_len}s d d I I Q"
     order_format_size = struct.calcsize(order_format)
-    base_token, quote_token, amount, price, t, nonce, public = struct.unpack(
+    base_token, quote_token, amount, price, t, nonce, user_id = struct.unpack(
         order_format, tx[4 : 4 + order_format_size]
     )
     base_token = base_token.decode("ascii")
@@ -1064,7 +1069,7 @@ def _parse_transaction(tx: bytes) -> tuple[int, str, str, Decimal, Decimal, int,
         Decimal(str(amount)),
         Decimal(str(price)),
         nonce,
-        public,
+        user_id,
     )
 
 
@@ -1125,7 +1130,7 @@ class Market:
         amount: Decimal,
         price: Decimal,
         nonce: int,
-        public: bytes,
+        user_id: UserId,
     ) -> bool:
         if price <= 0 or amount <= 0:
             return False
@@ -1135,14 +1140,14 @@ class Market:
                 return False
             best_sell_price = self.sell_orders[0][0]
             if price >= best_sell_price:
-                return self._execute_instant_buy(public, nonce, amount, price, tx, t)
+                return self._execute_instant_buy(user_id, nonce, amount, price, tx, t)
         elif operation == SELL:
             if not self.buy_orders:
                 return False
             # Negate because buy prices are stored negatively
             best_buy_price = -self.buy_orders[0][0]
             if price <= best_buy_price:
-                return self._execute_instant_sell(public, nonce, amount, price, tx, t)
+                return self._execute_instant_sell(user_id, nonce, amount, price, tx, t)
         else:
             raise ValueError(f"Unsupported transaction type: {operation}")
 
@@ -1150,7 +1155,7 @@ class Market:
 
     def _execute_instant_buy(
         self,
-        public: bytes,
+        user_id: UserId,
         nonce: int,
         amount: Decimal,
         price: Decimal,
@@ -1159,7 +1164,7 @@ class Market:
     ) -> bool:
         initial_amount = amount
         required = amount * price
-        balance = self.quote_token_balances.get(public, 0)
+        balance = self.quote_token_balances.get(user_id, Decimal("0"))
         if balance < required:
             logger.debug(
                 "Insufficient balance, current balance: {current_balance}, "
@@ -1179,30 +1184,30 @@ class Market:
             if not self.zex.light_node:
                 self._record_trade(tx, sell_order, trade_amount, sell_price, t)
 
-            sell_public = sell_order[-97:-64]
+            sell_user_id = struct.unpack(">Q", sell_order[-72:-64])[0]
             self._update_sell_order(
                 sell_order,
                 sell_order_nonce,
                 sell_order_amount,
                 sell_price,
-                sell_public,
+                sell_user_id,
                 trade_amount,
             )
-            self._update_balances(public, sell_public, trade_amount, sell_price)
-            self.quote_token_balances[public] -= trade_amount * sell_price
+            self._update_balances(user_id, sell_user_id, trade_amount, sell_price)
+            self.quote_token_balances[user_id] -= trade_amount * sell_price
             amount -= trade_amount
 
         if amount > 0:
             # Add remaining amount to buy orders
             self._add_remaining_amount_to_orders(
-                "bids", public, nonce, initial_amount, amount, price, tx
+                "bids", user_id, nonce, initial_amount, amount, price, tx
             )
 
             # TODO: send partial fill message for taker order
             if not settings.zex.light_node:
                 self.zex.event_batch.append(
                     self.zex.order_callback(
-                        public=public.hex(),
+                        user_id=user_id,
                         nonce=nonce,
                         symbol=self.pair,
                         side="buy",
@@ -1227,7 +1232,7 @@ class Market:
             if not settings.zex.light_node:
                 self.zex.event_batch.append(
                     self.zex.order_callback(
-                        public=public.hex(),
+                        user_id=user_id,
                         nonce=nonce,
                         symbol=self.pair,
                         side="buy",
@@ -1251,7 +1256,7 @@ class Market:
 
     def _execute_instant_sell(
         self,
-        public: bytes,
+        user_id: UserId,
         nonce: int,
         amount: Decimal,
         price: Decimal,
@@ -1259,7 +1264,7 @@ class Market:
         t: int,
     ) -> bool:
         initial_amount = amount
-        balance = self.base_token_balances.get(public, 0)
+        balance = self.base_token_balances.get(user_id, Decimal("0"))
         if balance < amount:
             logger.debug(
                 "Insufficient balance, current balance: {current_balance}, "
@@ -1279,30 +1284,30 @@ class Market:
             if not self.zex.light_node:
                 self._record_trade(buy_order, tx, trade_amount, buy_price, t)
 
-            buy_public = buy_order[-97:-64]
+            buy_user_id = struct.unpack(">Q", buy_order[-72:-64])[0]
             self._update_buy_order(
                 buy_order,
                 buy_order_nonce,
                 buy_order_amount,
                 buy_price,
-                buy_public,
+                buy_user_id,
                 trade_amount,
             )
-            self._update_balances(buy_public, public, trade_amount, buy_price)
-            self.base_token_balances[public] -= trade_amount
+            self._update_balances(buy_user_id, user_id, trade_amount, buy_price)
+            self.base_token_balances[user_id] -= trade_amount
 
             amount -= trade_amount
 
         if amount > 0:
             # Add remaining amount to sell orders
             self._add_remaining_amount_to_orders(
-                "asks", public, nonce, initial_amount, amount, price, tx
+                "asks", user_id, nonce, initial_amount, amount, price, tx
             )
 
             if not settings.zex.light_node:
                 self.zex.event_batch.append(
                     self.zex.order_callback(
-                        public=public.hex(),
+                        user_id=user_id,
                         nonce=nonce,
                         symbol=self.pair,
                         side="sell",
@@ -1326,7 +1331,7 @@ class Market:
             if not settings.zex.light_node:
                 self.zex.event_batch.append(
                     self.zex.order_callback(
-                        public=public.hex(),
+                        user_id=user_id,
                         nonce=nonce,
                         symbol=self.pair,
                         side="sell",
@@ -1348,12 +1353,18 @@ class Market:
         return True
 
     def _add_remaining_amount_to_buy_orders(
-        self, public, nonce, initial_amount, remaining_amount, price: Decimal, tx
+        self,
+        user_id: UserId,
+        nonce,
+        initial_amount,
+        remaining_amount,
+        price: Decimal,
+        tx,
     ):
         heapq.heappush(self.buy_orders, (-price, (tx, nonce, initial_amount)))
         self.zex.amounts[tx] = remaining_amount
-        self.zex.orders[public].add(tx)
-        self.quote_token_balances[public] -= remaining_amount * price
+        self.zex.orders[user_id].add(tx)
+        self.quote_token_balances[user_id] -= remaining_amount * price
 
         if not settings.zex.light_node:
             if price in self.bids_order_book:
@@ -1363,12 +1374,18 @@ class Market:
             self._order_book_updates["bids"][price] = self.bids_order_book[price]
 
     def _add_remaining_amount_to_sell_orders(
-        self, public, nonce, initial_amount, remaining_amount, price, tx
+        self,
+        user_id: UserId,
+        nonce,
+        initial_amount,
+        remaining_amount,
+        price,
+        tx,
     ):
         heapq.heappush(self.sell_orders, (price, (tx, nonce, initial_amount)))
         self.zex.amounts[tx] = remaining_amount
-        self.zex.orders[public].add(tx)
-        self.base_token_balances[public] -= remaining_amount
+        self.zex.orders[user_id].add(tx)
+        self.base_token_balances[user_id] -= remaining_amount
 
         if not settings.zex.light_node:
             if price in self.asks_order_book:
@@ -1380,7 +1397,7 @@ class Market:
     def _add_remaining_amount_to_orders(
         self,
         order_book_side: Literal["bids", "asks"],
-        public,
+        user_id: UserId,
         nonce,
         initial_amount,
         remaining_amount,
@@ -1390,11 +1407,11 @@ class Market:
         match order_book_side:
             case "bids":
                 self._add_remaining_amount_to_buy_orders(
-                    public, nonce, initial_amount, remaining_amount, price, tx
+                    user_id, nonce, initial_amount, remaining_amount, price, tx
                 )
             case "asks":
                 self._add_remaining_amount_to_sell_orders(
-                    public, nonce, initial_amount, remaining_amount, price, tx
+                    user_id, nonce, initial_amount, remaining_amount, price, tx
                 )
 
     def _record_trade(
@@ -1407,10 +1424,10 @@ class Market:
     ):
         if self.zex.light_node:
             return
-        buy_public = buy_order[-97:-64]
-        sell_public = sell_order[-97:-64]
+        buy_user_id = struct.unpack(">Q", buy_order[-72:-64])[0]
+        sell_user_id = struct.unpack(">Q", sell_order[-72:-64])[0]
 
-        for public, order_type in [(buy_public, BUY), (sell_public, SELL)]:
+        for user_id, order_type in [(buy_user_id, BUY), (sell_user_id, SELL)]:
             trade = (
                 t,
                 trade_amount,
@@ -1418,8 +1435,8 @@ class Market:
                 order_type,
                 buy_order if order_type == BUY else sell_order,
             )
-            self.zex.trades[public].append(trade)
-            self._prune_old_trades(public, t)
+            self.zex.trades[user_id].append(trade)
+            self._prune_old_trades(user_id, t)
 
         if not self.zex.benchmark_mode and not self.zex.light_node:
             self.kline_manager.update_kline(float(price), float(trade_amount))
@@ -1433,13 +1450,13 @@ class Market:
         amount: Decimal,
         price: Decimal,
         nonce: int,
-        public: bytes,
+        user_id: UserId,
     ) -> bool:
         if price <= 0 or amount <= 0:
             if not settings.zex.light_node:
                 self.zex.event_batch.append(
                     self.zex.order_callback(
-                        public=public.hex(),
+                        user_id=user_id,
                         nonce=nonce,
                         symbol=self.pair,
                         side="buy" if operation == BUY else "sell",
@@ -1469,7 +1486,7 @@ class Market:
             heap_item = (-price, (tx, nonce, amount))
 
             balances_dict = self.quote_token_balances
-            balance = balances_dict.get(public, Decimal("0"))
+            balance = balances_dict.get(user_id, Decimal("0"))
 
             required = amount * price
         elif operation == SELL:
@@ -1480,7 +1497,7 @@ class Market:
             heap_item = (price, (tx, nonce, amount))
 
             balances_dict = self.base_token_balances
-            balance = balances_dict.get(public, Decimal("0"))
+            balance = balances_dict.get(user_id, Decimal("0"))
 
             required = amount
         else:
@@ -1499,7 +1516,7 @@ class Market:
             if not settings.zex.light_node:
                 self.zex.event_batch.append(
                     self.zex.order_callback(
-                        public=public.hex(),
+                        user_id=user_id,
                         nonce=nonce,
                         symbol=self.pair,
                         side="buy" if operation == BUY else "sell",
@@ -1523,11 +1540,11 @@ class Market:
 
         heapq.heappush(orders_heap, heap_item)
 
-        balances_dict[public] = balance - required
+        balances_dict[user_id] = balance - required
 
         self.final_id += 1
         self.zex.amounts[tx] = amount
-        self.zex.orders[public].add(tx)
+        self.zex.orders[user_id].add(tx)
 
         if not settings.zex.light_node:
             if price in order_book:
@@ -1538,7 +1555,7 @@ class Market:
 
             self.zex.event_batch.append(
                 self.zex.order_callback(
-                    public=public.hex(),
+                    user_id=user_id,
                     nonce=nonce,
                     symbol=self.pair,
                     side=side,
@@ -1560,18 +1577,18 @@ class Market:
         return True
 
     def cancel(self, tx: bytes) -> bool:
-        public = tx[-97:-64]
-        order_slice = tx[2:-97]
-        for order in self.zex.orders[public]:
+        user_id = struct.unpack(">Q", tx[-72:-64])[0]
+        order_slice = tx[2:-72]
+        for order in self.zex.orders[user_id]:
             if order_slice not in order:
                 continue
-            operation, _, _, initial_amount, price, nonce, public = _parse_transaction(
+            operation, _, _, initial_amount, price, nonce, user_id = _parse_transaction(
                 order
             )
             amount = self.zex.amounts.pop(order)
-            self.zex.orders[public].remove(order)
+            self.zex.orders[user_id].remove(order)
             if operation == BUY:
-                self.quote_token_balances[public] += amount * price
+                self.quote_token_balances[user_id] += amount * price
                 self.buy_orders.remove((-price, (order, nonce, initial_amount)))
                 heapq.heapify(self.buy_orders)
                 if amount >= self.bids_order_book[price]:
@@ -1583,7 +1600,7 @@ class Market:
                         price
                     ]
             else:
-                self.base_token_balances[public] += amount
+                self.base_token_balances[user_id] += amount
                 self.sell_orders.remove((price, (order, nonce, initial_amount)))
                 heapq.heapify(self.sell_orders)
                 if amount >= self.asks_order_book[price]:
@@ -1598,7 +1615,7 @@ class Market:
             if not settings.zex.light_node:
                 self.zex.event_batch.append(
                     self.zex.order_callback(
-                        public.hex(),
+                        user_id,
                         nonce,
                         self.pair,
                         "buy" if operation == BUY else "sell",
@@ -1627,7 +1644,7 @@ class Market:
         buy_order_nonce: int,
         buy_order_amount: Decimal,
         buy_price: Decimal,
-        buy_public: bytes,
+        buy_user_id: UserId,
         trade_amount: Decimal,
     ):
         if self.zex.amounts[buy_order] > trade_amount:
@@ -1641,7 +1658,7 @@ class Market:
                 ]
                 self.zex.event_batch.append(
                     self.zex.order_callback(
-                        public=buy_public.hex(),
+                        user_id=buy_user_id,
                         nonce=buy_order_nonce,
                         symbol=self.pair,
                         side="buy",
@@ -1664,14 +1681,14 @@ class Market:
         else:
             heapq.heappop(self.buy_orders)
             del self.zex.amounts[buy_order]
-            self.zex.orders[buy_public].remove(buy_order)
+            self.zex.orders[buy_user_id].remove(buy_order)
             self.final_id += 1
             if not settings.zex.light_node:
                 self._remove_from_order_book("bids", buy_price, trade_amount)
 
                 self.zex.event_batch.append(
                     self.zex.order_callback(
-                        public=buy_public.hex(),
+                        user_id=buy_user_id,
                         nonce=buy_order_nonce,
                         symbol=self.pair,
                         side="buy",
@@ -1697,7 +1714,7 @@ class Market:
         sell_order_nonce: int,
         sell_order_amount: Decimal,
         sell_price: Decimal,
-        sell_public: bytes,
+        sell_user_id: UserId,
         trade_amount: Decimal,
     ):
         if self.zex.amounts[sell_order] > trade_amount:
@@ -1711,7 +1728,7 @@ class Market:
                 ]
                 self.zex.event_batch.append(
                     self.zex.order_callback(
-                        public=sell_public.hex(),
+                        user_id=sell_user_id,
                         nonce=sell_order_nonce,
                         symbol=self.pair,
                         side="sell",
@@ -1734,7 +1751,7 @@ class Market:
         else:
             heapq.heappop(self.sell_orders)
             del self.zex.amounts[sell_order]
-            self.zex.orders[sell_public].remove(sell_order)
+            self.zex.orders[sell_user_id].remove(sell_order)
             self.final_id += 1
 
             # TODO: fill market maker order completely
@@ -1743,7 +1760,7 @@ class Market:
 
                 self.zex.event_batch.append(
                     self.zex.order_callback(
-                        public=sell_public.hex(),
+                        user_id=sell_user_id,
                         nonce=sell_order_nonce,
                         symbol=self.pair,
                         side="sell",
@@ -1789,7 +1806,7 @@ class Market:
             self.quote_token_balances.get(sell_public, 0) + price * trade_amount
         )
 
-    def _prune_old_trades(self, public: bytes, current_time: int):
-        trades = self.zex.trades[public]
+    def _prune_old_trades(self, user_id: UserId, current_time: int):
+        trades = self.zex.trades[user_id]
         while trades and current_time - trades[0][0] > TRADES_TTL:
             trades.popleft()

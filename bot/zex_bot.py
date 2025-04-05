@@ -56,6 +56,7 @@ class ZexBot:
 
         self.pubkey = self.privkey.pubkey.serialize()
         self.user_id: int | None = None
+        self.user_id_packed: bytes | None = None
         self.nonce = -1
         self.orders = deque()
         self.websocket: WebSocketApp | None = None
@@ -159,7 +160,7 @@ class ZexBot:
             )
         name = tx[1]
         t = int(time.time())
-        tx += pack(">II", t, self.nonce) + self.pubkey
+        tx += pack(">II", t, self.nonce) + self.user_id_packed
         msg = "v: 1\n"
         msg += f"name: {'buy' if name == BUY else 'sell'}\n"
         msg += f"base token: {base_token}\n"
@@ -168,7 +169,7 @@ class ZexBot:
         msg += f"price: {np.format_float_positional(price, trim='0')}\n"
         msg += f"t: {t}\n"
         msg += f"nonce: {self.nonce}\n"
-        msg += f"public: {self.pubkey.hex()}\n"
+        msg += f"user_id: {self.user_id}\n"
         msg = "\x19Ethereum Signed Message:\n" + str(len(msg)) + msg
         self.nonce += 1
         sig = self.privkey.ecdsa_sign(keccak(msg.encode("ascii")), raw=True)
@@ -181,8 +182,8 @@ class ZexBot:
         return tx
 
     def create_cancel_order(self, order: bytes):
-        tx = version + pack(">B", CANCEL) + order[1:-97] + self.pubkey
-        msg = f"""v: {tx[0]}\nname: cancel\nslice: {order[1:-97].hex()}\npublic: {order[-97:-64].hex()}\n"""
+        tx = version + pack(">B", CANCEL) + order[1:-72] + self.user_id_packed
+        msg = f"""v: {tx[0]}\nname: cancel\nslice: {order[1:-72].hex()}\nuser_id: {self.user_id}\n"""
         msg = "".join(("\x19Ethereum Signed Message:\n", str(len(msg)), msg))
 
         sig = self.privkey.ecdsa_sign(keccak(msg.encode("ascii")), raw=True)
@@ -216,6 +217,7 @@ class ZexBot:
                 time.sleep(0.1)
                 continue
             self.user_id = data["id"]
+            self.user_id_packed = pack(">Q", self.user_id)
             break
         if self.user_id is None:
             resp.raise_for_status()
