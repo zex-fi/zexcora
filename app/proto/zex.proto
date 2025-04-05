@@ -48,7 +48,7 @@ message Balance {
 }
 
 message BalanceEntry {
-    bytes public_key = 1;
+    uint64 user_id = 1;
     string amount = 2;
 }
 
@@ -58,7 +58,7 @@ message AmountEntry {
 }
 
 message TradeEntry {
-    bytes public_key = 1;
+    uint64 user_id = 1;
     repeated Trade trades = 2;
 }
 
@@ -71,12 +71,12 @@ message Trade {
 }
 
 message OrderEntry {
-    bytes public_key = 1;
+    uint64 user_id = 1;
     repeated bytes orders = 2;
 }
 
 message UserWithdrawEntry {
-    bytes public_key = 1;
+    uint64 user_id = 1;
     repeated bytes raw_txs = 2;
 }
 
@@ -89,7 +89,7 @@ message WithdrawsOnChain {
 }
 
 message WithdrawNonceEntry {
-    bytes public_key = 1;
+    uint64 user_id = 1;
     uint64 nonce = 2;
 }
 
@@ -107,7 +107,7 @@ message DepositsOnChain {
 }
 
 message UserDepositEntry {
-    bytes public_key = 1;
+    uint64 user_id = 1;
     repeated Deposit deposits = 2;
 }
 
@@ -123,7 +123,7 @@ message Deposit {
 }
 
 message NonceEntry {
-    bytes public_key = 1;
+    uint64 user_id = 1;
     uint32 nonce = 2;
 }
 

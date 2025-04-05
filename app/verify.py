@@ -19,10 +19,12 @@ from web3 import Web3
 import numpy as np
 
 from .config import settings
+from .zex import Zex
 
 DEPOSIT, WITHDRAW, BUY, SELL, CANCEL, REGISTER = b"dwbscr"
 
 w3 = Web3()
+zex = Zex.initialize_zex()
 
 
 class MessageFormatError(Exception):
@@ -59,7 +61,7 @@ def order_msg(tx: bytes) -> bytes:
             raise MessageFormatError("Invalid token length")
 
         # Create and validate format string
-        order_format = f">{base_token_len}s {quote_token_len}s d d I I 33s"
+        order_format = f">{base_token_len}s {quote_token_len}s d d I I Q"
         order_format_size = calcsize(order_format)
 
         if len(tx) < 4 + order_format_size:
@@ -67,7 +69,7 @@ def order_msg(tx: bytes) -> bytes:
 
         # Unpack order data
         try:
-            base_token, quote_token, amount, price, t, nonce, public = unpack(
+            base_token, quote_token, amount, price, t, nonce, user_id = unpack(
                 order_format, tx[4 : 4 + order_format_size]
             )
         except struct_error as e:
@@ -86,7 +88,6 @@ def order_msg(tx: bytes) -> bytes:
 
         # Format message
         try:
-            public = public.hex()
             msg = f"""v: {version}
 name: {"buy" if side == BUY else "sell"}
 base token: {base_token}
@@ -95,11 +96,11 @@ amount: {np.format_float_positional(amount, trim="0")}
 price: {np.format_float_positional(price, trim="0")}
 t: {t}
 nonce: {nonce}
-public: {public}
+user_id: {user_id}
 """
             msg = "".join(("\x19Ethereum Signed Message:\n", str(len(msg)), msg))
             logger.debug("Order message created successfully", message=msg)
-            return msg.encode()
+            return msg.encode(), user_id
         except Exception as e:
             raise MessageFormatError(f"Failed to format message: {e}")
 
@@ -109,7 +110,7 @@ public: {public}
         raise MessageFormatError(f"Unexpected error formatting order message: {e}")
 
 
-def withdraw_msg(tx: bytes) -> bytes:
+def withdraw_msg(tx: bytes) -> tuple[bytes, int]:
     """
     Format withdrawal message for verification.
 
@@ -137,7 +138,7 @@ def withdraw_msg(tx: bytes) -> bytes:
             raise MessageFormatError("Invalid token length")
 
         # Create and validate format string
-        withdraw_format = f">3s {token_len}s d 20s I I 33s"
+        withdraw_format = f">3s {token_len}s d 20s I I Q"
         format_size = calcsize(withdraw_format)
 
         if len(tx) < 3 + format_size:
@@ -145,7 +146,7 @@ def withdraw_msg(tx: bytes) -> bytes:
 
         # Unpack withdrawal data
         try:
-            token_chain, token_name, amount, destination, t, nonce, public = unpack(
+            token_chain, token_name, amount, destination, t, nonce, user_id = unpack(
                 withdraw_format, tx[3 : 3 + format_size]
             )
         except struct_error as e:
@@ -168,11 +169,11 @@ amount: {amount}
 to: 0x{destination.hex()}
 t: {t}
 nonce: {nonce}
-public: {public.hex()}
+user_id: {user_id}
 """
             msg = "\x19Ethereum Signed Message:\n" + str(len(msg)) + msg
             logger.debug("Withdrawal message created successfully", message=msg)
-            return msg.encode()
+            return msg.encode(), user_id
         except Exception as e:
             raise MessageFormatError(f"Failed to format message: {e}")
 
@@ -216,13 +217,13 @@ def cancel_msg(tx: bytes) -> bytes:
     """
     try:
         if (
-            len(tx) < 99
-        ):  # Minimum length check (1 byte version + 1 byte type + minimum order tx + 33 bytes public key)
+            len(tx) < 74
+        ):  # Minimum length check (1 byte version + 1 byte type + minimum order tx + 8 bytes user id)
             raise MessageFormatError("Transaction too short for cancellation data")
 
         try:
-            order_tx = tx[2:-97].hex()
-            public_key = tx[-97:-64].hex()
+            order_tx = tx[2:-72].hex()
+            user_id = unpack("Q", tx[-72:-64])
         except Exception as e:
             raise MessageFormatError(f"Failed to hex encode transaction data: {e}")
 
@@ -230,11 +231,11 @@ def cancel_msg(tx: bytes) -> bytes:
             msg = f"""v: {tx[0]}
 name: cancel
 slice: {order_tx}
-public: {public_key}
+user_id: {user_id}
 """
             msg = "".join(("\x19Ethereum Signed Message:\n", str(len(msg)), msg))
             logger.debug("Cancellation message created successfully", message=msg)
-            return msg.encode()
+            return msg.encode(), user_id
         except Exception as e:
             raise MessageFormatError(f"Failed to format message: {e}")
 
@@ -372,7 +373,16 @@ def _verify_deposit_tx(
 def _verify_withdraw_tx(tx: bytes) -> VerificationResult:
     """Verify withdrawal transaction."""
     try:
-        msg, pubkey, sig = withdraw_msg(tx), tx[-97:-64], tx[-64:]
+        (msg, user_id), sig = withdraw_msg(tx), tx[-64:]
+
+        if user_id not in zex.id_to_public_lookup:
+            return VerificationResult(
+                is_valid=False,
+                error_type="WithdrawVerificationError",
+                error_message=f"Error verifying withdrawal: user_id={user_id} is not registered",
+            )
+
+        pubkey = zex.id_to_public_lookup[user_id]
         logger.debug(f"Withdraw request pubkey: {pubkey.hex()}")
         pubkey = PublicKey(pubkey, raw=True)
         sig = pubkey.ecdsa_deserialize_compact(sig)
@@ -391,10 +401,25 @@ def _verify_standard_tx(tx: bytes, tx_type: int) -> VerificationResult:
     """Verify standard transactions (CANCEL, BUY, SELL, REGISTER)."""
     try:
         if tx_type == CANCEL:
-            msg, pubkey, sig = cancel_msg(tx), tx[-97:-64], tx[-64:]
+            (msg, user_id), sig = cancel_msg(tx), tx[-64:]
+            if user_id not in zex.id_to_public_lookup:
+                return VerificationResult(
+                    is_valid=False,
+                    error_type="StandardTxVerificationError",
+                    error_message=f"Error verifying {chr(tx_type)} transaction: user_id={user_id} is not registered",
+                )
+            pubkey = zex.id_to_public_lookup[user_id]
+
         elif tx_type in (BUY, SELL):
-            msg = order_msg(tx)
-            pubkey, sig = tx[-97:-64], tx[-64:]
+            (msg, user_id), sig = order_msg(tx), tx[-64:]
+            if user_id not in zex.id_to_public_lookup:
+                return VerificationResult(
+                    is_valid=False,
+                    error_type="StandardTxVerificationError",
+                    error_message=f"Error verifying {chr(tx_type)} transaction: user_id={user_id} is not registered",
+                )
+            pubkey = zex.id_to_public_lookup[user_id]
+
         elif tx_type == REGISTER:
             msg, pubkey, sig = register_msg(), tx[2:35], tx[35 : 35 + 64]
         else:

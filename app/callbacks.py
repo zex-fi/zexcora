@@ -1,10 +1,9 @@
 from decimal import Decimal
 import time
 
-from loguru import logger
 import pandas as pd
 
-from .zex_types import ExecutionType
+from .zex_types import ExecutionType, UserId
 
 
 def kline_event(kline_symbol: str, kline: pd.DataFrame):
@@ -53,7 +52,7 @@ def depth_event(depth_symbol: str, depth: dict):
 
 
 def user_order_event(
-    public: str,
+    user_id: UserId,
     nonce: int,
     symbol: str,
     side: str,
@@ -72,7 +71,7 @@ def user_order_event(
     quote_order_quantity: Decimal,
     reject_reason: str = "NONE",
 ):
-    channel = f"{public}@executionReport"
+    channel = f"{user_id}@executionReport"
 
     data = {
         "e": "executionReport",  # Event type
@@ -119,8 +118,8 @@ def user_order_event(
     return message
 
 
-def user_deposit_event(public: str, chain: str, name: str, amount: Decimal):
-    for prefix in [public, "all"]:
+def user_deposit_event(user_id: UserId, chain: str, name: str, amount: Decimal):
+    for prefix in [user_id, "all"]:
         channel = f"{prefix}@deposit"
 
         data = {
@@ -135,8 +134,8 @@ def user_deposit_event(public: str, chain: str, name: str, amount: Decimal):
     return message
 
 
-def user_withdraw_event(public: str, chain: str, name: str, amount: Decimal):
-    for prefix in [public, "all"]:
+def user_withdraw_event(user_id: UserId, chain: str, name: str, amount: Decimal):
+    for prefix in [user_id, "all"]:
         channel = f"{prefix}@withdraw"
 
         data = {
