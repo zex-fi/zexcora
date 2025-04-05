@@ -47,41 +47,41 @@ zex:
   verified_tokens:
     zUSDT:
       HOL:
-        contract_address: "0x325CCd77e71Ac296892ed5C63bA428700ec0f868"
+        contract_address: "0x6f8cbCf0b342f6a997874F8bf1430ADE5138e15a"
         balance_withdraw_limit: 0.01
         decimal: 6
       SEP:
-        contract_address: "0x325CCd77e71Ac296892ed5C63bA428700ec0f868"
+        contract_address: "0x6f8cbCf0b342f6a997874F8bf1430ADE5138e15a"
         balance_withdraw_limit: 0.01
         decimal: 6
       BST:
-        contract_address: "0x325CCd77e71Ac296892ed5C63bA428700ec0f868"
+        contract_address: "0x6f8cbCf0b342f6a997874F8bf1430ADE5138e15a"
         balance_withdraw_limit: 0.01
         decimal: 6
     zEIGEN:
       HOL:
-        contract_address: "0x219f1708400bE5b8cC47A56ed2f18536F5Da7EF4"
+        contract_address: "0xEb704188fd9f2E4f0C965A7100BE2e0C804723f2"
         balance_withdraw_limit: 0.001
         decimal: 18
       SEP:
-        contract_address: "0x219f1708400bE5b8cC47A56ed2f18536F5Da7EF4"
+        contract_address: "0xEb704188fd9f2E4f0C965A7100BE2e0C804723f2"
         balance_withdraw_limit: 0.001
         decimal: 18
       BST:
-        contract_address: "0x219f1708400bE5b8cC47A56ed2f18536F5Da7EF4"
+        contract_address: "0xEb704188fd9f2E4f0C965A7100BE2e0C804723f2"
         balance_withdraw_limit: 0.001
         decimal: 18
     zWBTC:
       HOL:
-        contract_address: "0x9d84f6e4D734c33C2B6e7a5211780499A71aEf6A"
+        contract_address: "0xE7D28f514BBb0bDdCAeC6B9eCa9394AFAB6C470D"
         balance_withdraw_limit: 0.000001
         decimal: 8
       SEP:
-        contract_address: "0x9d84f6e4D734c33C2B6e7a5211780499A71aEf6A"
+        contract_address: "0xE7D28f514BBb0bDdCAeC6B9eCa9394AFAB6C470D"
         balance_withdraw_limit: 0.000001
         decimal: 8
       BST:
-        contract_address: "0x9d84f6e4D734c33C2B6e7a5211780499A71aEf6A"
+        contract_address: "0xE7D28f514BBb0bDdCAeC6B9eCa9394AFAB6C470D"
         balance_withdraw_limit: 0.000001
         decimal: 8
     BTC:
